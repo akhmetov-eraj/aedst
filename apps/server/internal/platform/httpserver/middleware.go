@@ -12,10 +12,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
-	"github.com/google/uuid"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+	"uuid"
 
 	platformauth "github.com/aedst/server/internal/platform/auth"
 	"github.com/aedst/server/internal/platform/observability"
@@ -54,7 +54,7 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		id := r.Header.Get("X-Request-Id")
 		if id == "" {
-			id = uuid.Must(uuid.NewV7()).String()
+			id = uuid.NewV7().String()
 		}
 		w.Header().Set("X-Request-Id", id)
 		ctx := observability.WithRequestID(r.Context(), id)

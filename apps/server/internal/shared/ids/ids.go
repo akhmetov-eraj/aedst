@@ -5,8 +5,7 @@ package ids
 import (
 	"database/sql/driver"
 	"fmt"
-
-	"github.com/google/uuid"
+	"uuid"
 )
 
 // ID is a UUIDv7 identifier: time-ordered, so it sorts well as a Postgres
@@ -18,7 +17,7 @@ var Nil ID
 
 // New generates a new time-ordered ID.
 func New() ID {
-	return ID(uuid.Must(uuid.NewV7()))
+	return ID(uuid.NewV7())
 }
 
 // Parse parses a canonical UUID string into an ID.

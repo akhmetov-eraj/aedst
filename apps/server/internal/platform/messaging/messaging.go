@@ -8,8 +8,8 @@ package messaging
 import (
 	"context"
 	"fmt"
+	"uuid"
 
-	"github.com/google/uuid"
 	"github.com/nats-io/nats.go"
 	"github.com/nats-io/nats.go/jetstream"
 	"go.opentelemetry.io/otel/trace"
@@ -83,7 +83,7 @@ func (c *Client) Publish(ctx context.Context, subject string, event proto.Messag
 
 	msg := nats.NewMsg(subject)
 	msg.Data = payload
-	msg.Header.Set(HeaderEventID, uuid.Must(uuid.NewV7()).String())
+	msg.Header.Set(HeaderEventID, uuid.NewV7().String())
 	if sc := trace.SpanContextFromContext(ctx); sc.HasTraceID() {
 		msg.Header.Set(HeaderTraceID, sc.TraceID().String())
 	}
