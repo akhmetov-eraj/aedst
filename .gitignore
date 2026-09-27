@@ -1,3 +1,7 @@
+# --- Claude Code session state ---
+.claude/worktrees/
+.claude/scheduled_tasks.lock
+
 # --- OS / editor ---
 .DS_Store
 *.pem
