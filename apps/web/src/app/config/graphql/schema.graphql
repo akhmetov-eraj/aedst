@@ -1,8 +1,0 @@
-"""
-Placeholder SDL until apps/server ships a real schema. Swap `codegen.ts`'s
-`schema` field for the server's introspection endpoint (or a generated SDL
-file) once it exists — the rest of the codegen pipeline stays the same.
-"""
-type Query {
-  health: String!
-}
