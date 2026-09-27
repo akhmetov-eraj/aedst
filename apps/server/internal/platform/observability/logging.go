@@ -1,0 +1,84 @@
+// Package observability wires structured logging, tracing and metrics with
+// consistent correlation (trace_id/request_id on every log line) — see
+// docs/observability.md conventions embedded in the project brief section 24.
+package observability
+
+import (
+	"context"
+	"log/slog"
+	"os"
+)
+
+type ctxKey int
+
+const (
+	requestIDKey ctxKey = iota
+	traceIDKey
+	userIDKey
+)
+
+// NewLogger builds the process-wide slog.Logger. Format/level come from
+// config so the same binary logs human-readable text locally and structured
+// JSON in every deployed environment.
+func NewLogger(level, format, serviceName string) *slog.Logger {
+	var lvl slog.Level
+	if err := lvl.UnmarshalText([]byte(level)); err != nil {
+		lvl = slog.LevelInfo
+	}
+
+	handlerOpts := &slog.HandlerOptions{Level: lvl}
+
+	var handler slog.Handler
+	if format == "text" {
+		handler = slog.NewTextHandler(os.Stdout, handlerOpts)
+	} else {
+		handler = slog.NewJSONHandler(os.Stdout, handlerOpts)
+	}
+
+	return slog.New(&contextHandler{Handler: handler}).With(
+		slog.String("service", serviceName),
+	)
+}
+
+// contextHandler injects request_id/trace_id/user_id from context into every
+// log record, so a handler never has to remember to attach them manually.
+type contextHandler struct {
+	slog.Handler
+}
+
+func (h *contextHandler) Handle(ctx context.Context, r slog.Record) error {
+	if id, ok := ctx.Value(requestIDKey).(string); ok && id != "" {
+		r.AddAttrs(slog.String("request_id", id))
+	}
+	if id, ok := ctx.Value(traceIDKey).(string); ok && id != "" {
+		r.AddAttrs(slog.String("trace_id", id))
+	}
+	if id, ok := ctx.Value(userIDKey).(string); ok && id != "" {
+		r.AddAttrs(slog.String("user_id", id))
+	}
+	return h.Handler.Handle(ctx, r)
+}
+
+func (h *contextHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	return &contextHandler{Handler: h.Handler.WithAttrs(attrs)}
+}
+
+func (h *contextHandler) WithGroup(name string) slog.Handler {
+	return &contextHandler{Handler: h.Handler.WithGroup(name)}
+}
+
+// WithRequestID returns a context carrying the request ID for log correlation.
+func WithRequestID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, requestIDKey, id)
+}
+
+// WithTraceID returns a context carrying the trace ID for log correlation.
+func WithTraceID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, traceIDKey, id)
+}
+
+// WithUserID returns a context carrying the authenticated user ID for log
+// correlation.
+func WithUserID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, userIDKey, id)
+}

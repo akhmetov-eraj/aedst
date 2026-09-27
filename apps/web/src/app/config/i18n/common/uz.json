@@ -1,0 +1,17 @@
+{
+  "appName": "iman",
+  "actions": {
+    "submit": "Yuborish",
+    "cancel": "Bekor qilish",
+    "save": "Saqlash",
+    "back": "Orqaga",
+    "goHome": "Bosh sahifaga",
+    "tryAgain": "Qaytadan urinib ko'ring"
+  },
+  "errors": {
+    "generic": "Xatolik yuz berdi. Qaytadan urinib ko'ring.",
+    "title": "Xatolik yuz berdi",
+    "notFoundTitle": "Sahifa topilmadi",
+    "notFoundDescription": "Siz izlagan sahifa mavjud emas yoki koʻchirilgan."
+  }
+}

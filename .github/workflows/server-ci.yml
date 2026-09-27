@@ -1,0 +1,90 @@
+name: server-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/server/**", ".github/workflows/server-ci.yml"]
+  pull_request:
+    paths: ["apps/server/**", ".github/workflows/server-ci.yml"]
+
+defaults:
+  run:
+    working-directory: apps/server
+
+env:
+  GO_VERSION: "1.27.1"
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/server/go.sum
+
+      - name: Install tools
+        run: |
+          go install mvdan.cc/gofumpt@latest
+          go install github.com/bufbuild/buf/cmd/buf@latest
+          go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
+
+      - uses: golangci/golangci-lint-action@v6
+        with:
+          working-directory: apps/server
+
+      - name: gofumpt
+        run: test -z "$(gofumpt -l .)"
+
+      - name: buf lint
+        run: buf lint
+
+      - name: buf breaking (against main)
+        if: github.event_name == 'pull_request'
+        run: buf breaking --against "https://github.com/${{ github.repository }}.git#branch=main,subdir=apps/server"
+
+      - name: Verify generated code is up to date
+        run: |
+          buf generate
+          sqlc generate
+          git diff --exit-code -- gen/ || (echo "::error::gen/ is out of date — run 'make generate' and commit the result" && exit 1)
+
+      - name: Architecture boundary tests
+        run: go test ./architecturetest/...
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/server/go.sum
+
+      - name: Unit tests
+        run: go test ./internal/... ./cmd/...
+
+  build:
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/server/go.sum
+
+      - run: go build -o bin/aedst-server ./cmd/server
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/server/go.sum
+
+      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: govulncheck ./...

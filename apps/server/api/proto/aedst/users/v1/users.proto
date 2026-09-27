@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package aedst.users.v1;
+
+import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
+import "aedst/auth/v1/auth.proto";
+
+option go_package = "github.com/aedst/server/gen/go/aedst/users/v1;usersv1";
+
+// UsersService is the users module's public API boundary (see docs/modules.md).
+// It owns the core identity record and is the entry point for registration;
+// it calls auth's api/ package in-process to create the credential and the
+// first session (users depends on auth, never the other way around).
+service UsersService {
+  rpc RegisterUser(RegisterUserRequest) returns (RegisterUserResponse);
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+  // GetUserByEmail is for internal use and is not exposed through the public
+  // edge.
+  rpc GetUserByEmail(GetUserByEmailRequest) returns (GetUserByEmailResponse);
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+  repeated string roles = 3;
+  google.protobuf.Timestamp created_at = 4;
+}
+
+message RegisterUserRequest {
+  string email = 1 [(buf.validate.field).string.email = true];
+  string password = 2 [(buf.validate.field).string.min_len = 8];
+  string device_id = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message RegisterUserResponse {
+  User user = 1;
+  aedst.auth.v1.TokenPair tokens = 2;
+}
+
+message GetUserRequest {
+  string user_id = 1 [(buf.validate.field).string.uuid = true];
+}
+
+message GetUserResponse {
+  User user = 1;
+}
+
+message GetUserByEmailRequest {
+  string email = 1 [(buf.validate.field).string.email = true];
+}
+
+message GetUserByEmailResponse {
+  User user = 1;
+}

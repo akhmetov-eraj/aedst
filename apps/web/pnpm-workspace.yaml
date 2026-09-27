@@ -1,0 +1,12 @@
+allowBuilds:
+  '@parcel/watcher': set this to true or false
+  '@swc/core': set this to true or false
+  msw: false
+minimumReleaseAgeExclude:
+  - react-resizable-panels@4.14.1
+"allowScripts": {
+  "@parcel/watcher@2.6.0": true,
+  "@swc/core@1.16.2": true,
+  "protobufjs@7.6.6": true,
+  "@sentry/cli": false
+}

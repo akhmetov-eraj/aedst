@@ -1,0 +1,34 @@
+version: "2"
+sql:
+  - schema: migrations/auth
+    queries: sql/auth
+    engine: postgresql
+    gen:
+      go:
+        package: authdb
+        out: gen/db/auth
+        sql_package: pgx/v5
+        emit_json_tags: true
+        emit_interface: true
+
+  - schema: migrations/users
+    queries: sql/users
+    engine: postgresql
+    gen:
+      go:
+        package: usersdb
+        out: gen/db/users
+        sql_package: pgx/v5
+        emit_json_tags: true
+        emit_interface: true
+
+  - schema: migrations/profile
+    queries: sql/profile
+    engine: postgresql
+    gen:
+      go:
+        package: profiledb
+        out: gen/db/profile
+        sql_package: pgx/v5
+        emit_json_tags: true
+        emit_interface: true

@@ -1,0 +1,43 @@
+name: aedst
+
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      POSTGRES_USER: aedst
+      POSTGRES_PASSWORD: aedst
+      POSTGRES_DB: aedst
+    ports:
+      - "5432:5432"
+    volumes:
+      - aedst_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aedst"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  redis:
+    image: redis:8
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  nats:
+    image: nats:2-alpine
+    command: ["-js"]
+    ports:
+      - "4222:4222"
+      - "8222:8222"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+volumes:
+  aedst_postgres_data:

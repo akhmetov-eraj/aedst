@@ -1,0 +1,17 @@
+{
+  "appName": "iman",
+  "actions": {
+    "submit": "Submit",
+    "cancel": "Cancel",
+    "save": "Save",
+    "back": "Back",
+    "goHome": "Go home",
+    "tryAgain": "Try again"
+  },
+  "errors": {
+    "generic": "Something went wrong. Please try again.",
+    "title": "Something went wrong",
+    "notFoundTitle": "Page not found",
+    "notFoundDescription": "The page you’re looking for doesn’t exist or has been moved."
+  }
+}

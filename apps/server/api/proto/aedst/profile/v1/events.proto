@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package aedst.profile.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/aedst/server/gen/go/aedst/profile/v1;profilev1";
+
+// ProfileUpdated is published to "aedst.profile.profile_updated.v1" whenever a
+// profile is created or changed (see docs/events.md). Consumers such as
+// social/marketplace/search build local read-models from this instead of
+// querying profile's tables directly.
+message ProfileUpdated {
+  string event_id = 1;
+  string user_id = 2;
+  string display_name = 3;
+  string avatar_url = 4;
+  google.protobuf.Timestamp occurred_at = 5;
+}
