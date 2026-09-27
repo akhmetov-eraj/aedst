@@ -37,6 +37,11 @@ type HTTPConfig struct {
 	Addr            string `env:"AEDST_HTTP_ADDR" envDefault:":8080"`
 	MetricsAddr     string `env:"AEDST_METRICS_ADDR" envDefault:":9090"`
 	ShutdownTimeout int    `env:"AEDST_SHUTDOWN_TIMEOUT_SECONDS" envDefault:"15"`
+	// AllowedOrigins lists the browser origins (e.g. apps/web in local dev)
+	// permitted to call the ConnectRPC API cross-origin. Connect's protocol is
+	// plain HTTP/JSON so browsers can call it directly (see
+	// docs/decisions/0002-connectrpc.md), but that still requires CORS.
+	AllowedOrigins []string `env:"AEDST_CORS_ALLOWED_ORIGINS" envSeparator:"," envDefault:"http://localhost:3000"`
 }
 
 type DatabaseConfig struct {

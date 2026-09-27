@@ -187,6 +187,7 @@ func run() error {
 		Metrics:        metrics,
 		Tokens:         tokens,
 		RequestTimeout: 30 * time.Second,
+		AllowedOrigins: cfg.HTTP.AllowedOrigins,
 	})
 
 	authPath, authConnectHandler := authv1connect.NewAuthServiceHandler(authHandler, interceptors)

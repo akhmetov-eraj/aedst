@@ -12,6 +12,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
@@ -28,6 +29,11 @@ type Options struct {
 	Metrics        *observability.Metrics
 	Tokens         *platformauth.TokenService
 	RequestTimeout time.Duration
+	// AllowedOrigins are the browser origins permitted to call the API
+	// cross-origin (see config.HTTPConfig.AllowedOrigins). A Connect-ES web
+	// client (e.g. apps/web) is on a different origin in local dev, so this
+	// must be set or every browser call fails CORS preflight.
+	AllowedOrigins []string
 }
 
 // NewRouter builds the base chi router with the standard middleware stack
@@ -36,6 +42,7 @@ type Options struct {
 func NewRouter(opts Options) *chi.Mux {
 	r := chi.NewRouter()
 
+	r.Use(corsMiddleware(opts.AllowedOrigins))
 	r.Use(requestIDMiddleware)
 	r.Use(recoveryMiddleware(opts.Logger))
 	r.Use(tracingMiddleware(opts.Tracer))
@@ -48,6 +55,34 @@ func NewRouter(opts Options) *chi.Mux {
 	}
 
 	return r
+}
+
+// corsMiddleware allows a Connect-ES browser client on allowedOrigins to call
+// this API cross-origin. Connect's unary protocol runs over plain HTTP
+// POST+JSON (or protobuf), so it needs the usual CORS headers plus the
+// Connect-specific ones a browser client sends; auth is a bearer token, not a
+// cookie, so credentials aren't required.
+func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
+	return cors.Handler(cors.Options{
+		AllowedOrigins: allowedOrigins,
+		AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodOptions},
+		AllowedHeaders: []string{
+			"Content-Type",
+			"Authorization",
+			"Connect-Protocol-Version",
+			"Connect-Timeout-Ms",
+			"Connect-Content-Encoding",
+			"Connect-Accept-Encoding",
+			"X-Request-Id",
+			"X-Grpc-Web",
+		},
+		ExposedHeaders: []string{
+			"Connect-Content-Encoding",
+			"Connect-Accept-Encoding",
+			"X-Request-Id",
+		},
+		MaxAge: 3600,
+	})
 }
 
 func requestIDMiddleware(next http.Handler) http.Handler {
