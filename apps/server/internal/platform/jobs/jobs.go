@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"github.com/riverqueue/river/rivermigrate"
 )
 
 // Client is the River client type every module's job-enqueuing code depends
@@ -34,6 +35,23 @@ func NewClient(pool *pgxpool.Pool, workers *river.Workers) (*Client, error) {
 		return nil, fmt.Errorf("jobs: new river client: %w", err)
 	}
 	return client, nil
+}
+
+// Migrate applies River's own schema migrations (the river_job/river_leader
+// tables etc., see ADR-0005) against the shared Postgres pool. It uses
+// River's bundled Go migrator rather than a hand-copied goose SQL file under
+// migrations/ so the schema stays byte-for-byte in sync with the installed
+// River version; it's idempotent (safe to call on every startup) since the
+// migrator tracks applied versions itself in river_migration.
+func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
+	migrator, err := rivermigrate.New(riverpgxv5.New(pool), nil)
+	if err != nil {
+		return fmt.Errorf("jobs: new migrator: %w", err)
+	}
+	if _, err := migrator.Migrate(ctx, rivermigrate.DirectionUp, nil); err != nil {
+		return fmt.Errorf("jobs: migrate up: %w", err)
+	}
+	return nil
 }
 
 func Start(ctx context.Context, client *Client) error {

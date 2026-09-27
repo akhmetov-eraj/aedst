@@ -28,6 +28,7 @@ import (
 	profileapplication "github.com/aedst/server/internal/modules/profile/application"
 	profileevents "github.com/aedst/server/internal/modules/profile/events"
 	profilepostgres "github.com/aedst/server/internal/modules/profile/infrastructure/postgres"
+	profilejobs "github.com/aedst/server/internal/modules/profile/jobs"
 	profiletransport "github.com/aedst/server/internal/modules/profile/transport"
 
 	usersapplication "github.com/aedst/server/internal/modules/users/application"
@@ -39,10 +40,13 @@ import (
 	"github.com/aedst/server/internal/platform/config"
 	"github.com/aedst/server/internal/platform/database"
 	"github.com/aedst/server/internal/platform/httpserver"
+	"github.com/aedst/server/internal/platform/jobs"
 	"github.com/aedst/server/internal/platform/messaging"
 	"github.com/aedst/server/internal/platform/observability"
 	platformredis "github.com/aedst/server/internal/platform/redis"
 	sharedtime "github.com/aedst/server/internal/shared/time"
+
+	"github.com/riverqueue/river"
 )
 
 func main() {
@@ -146,8 +150,23 @@ func run() error {
 	)
 	profileHandler := profiletransport.NewHandler(profileService)
 
+	// --- background jobs (River, see docs/decisions/0005-river-for-jobs.md) ---
+	// Each module registers its own job kinds' workers here; this is the only
+	// place job wiring happens, mirroring how modules are wired above.
+	jobWorkers := river.NewWorkers()
+	river.AddWorker(jobWorkers, profilejobs.NewWelcomeEmailWorker(logger))
+
+	if err := jobs.Migrate(ctx, pool); err != nil {
+		return err
+	}
+
+	jobsClient, err := jobs.NewClient(pool, jobWorkers)
+	if err != nil {
+		return err
+	}
+
 	go func() {
-		if err := profileevents.ConsumeUserRegistered(ctx, natsClient, profileService); err != nil && !errors.Is(err, context.Canceled) {
+		if err := profileevents.ConsumeUserRegistered(ctx, natsClient, profileService, jobsClient); err != nil && !errors.Is(err, context.Canceled) {
 			logger.ErrorContext(ctx, "profile UserRegistered consumer stopped", slog.Any("error", err))
 		}
 	}()
@@ -196,6 +215,10 @@ func run() error {
 		}
 	}()
 
+	if err := jobs.Start(ctx, jobsClient); err != nil {
+		return err
+	}
+
 	<-ctx.Done()
 	logger.Info("shutting down")
 
@@ -204,6 +227,7 @@ func run() error {
 
 	_ = server.Shutdown(shutdownCtx)
 	_ = metricsServer.Shutdown(shutdownCtx)
+	_ = jobs.Stop(shutdownCtx, jobsClient)
 
 	return nil
 }
