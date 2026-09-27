@@ -9,7 +9,6 @@ import { Toaster } from "sonner";
 import "@app/styles/globals.css";
 import { getLocaleDirection, type Locale } from "@/app/config/i18n/locales";
 import { routing } from "@/app/config/i18n/routing";
-import { ApolloProvider } from "@/app/providers/apollo-provider";
 import { QueryProvider } from "@/app/providers/query-provider";
 import { ThemeProvider } from "@/app/providers/theme-provider";
 import { DirectionProvider } from "@/shared/ui/direction";
@@ -53,11 +52,9 @@ export default async function RootLayout({
               enableSystem
               disableTransitionOnChange
             >
-              <ApolloProvider>
-                <QueryProvider>
-                  <main className="flex flex-1 flex-col">{children}</main>
-                </QueryProvider>
-              </ApolloProvider>
+              <QueryProvider>
+                <main className="flex flex-1 flex-col">{children}</main>
+              </QueryProvider>
 
               <Toaster richColors dir={direction} />
             </ThemeProvider>
