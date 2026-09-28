@@ -94,6 +94,26 @@ func (c *Client) Publish(ctx context.Context, subject string, event proto.Messag
 	return nil
 }
 
+// PublishRaw publishes an already-serialized payload to subject, tagged with
+// the caller-supplied eventID rather than a freshly generated one. Used by
+// internal/platform/outbox's Forwarder so the idempotency key a consumer's
+// inbox dedupes on is the same outbox row id that was committed alongside
+// the domain change — not an id invented at publish time, which would let a
+// redelivered-after-crash retry of the same row be seen as a new event.
+func (c *Client) PublishRaw(ctx context.Context, subject, eventID string, payload []byte) error {
+	msg := nats.NewMsg(subject)
+	msg.Data = payload
+	msg.Header.Set(HeaderEventID, eventID)
+	if sc := trace.SpanContextFromContext(ctx); sc.HasTraceID() {
+		msg.Header.Set(HeaderTraceID, sc.TraceID().String())
+	}
+
+	if _, err := c.js.PublishMsg(ctx, msg); err != nil {
+		return fmt.Errorf("messaging: publish raw %s: %w", subject, err)
+	}
+	return nil
+}
+
 // HandlerFunc processes one delivered message. Returning an error leaves the
 // message unacked for JetStream redelivery; handlers must be idempotent (see
 // docs/events.md).
