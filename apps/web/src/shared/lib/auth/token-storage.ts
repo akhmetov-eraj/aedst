@@ -3,7 +3,7 @@
 /**
  * Client-side session storage for this reference app. Real AEDST products
  * are expected to move to a server-issued httpOnly cookie (see
- * `AUTH_COOKIE_NAME` in `.env.example` / `shared/lib/env/server.ts` —
+ * `AUTH_COOKIE_NAME` in `.env.example` / `shared/env/server.ts` —
  * reserved, not read yet) once a Server Actions/Route Handler-based BFF
  * exists; that's a bigger change than this reference module's scope
  * justifies on its own. `localStorage` is the honest middle ground: it

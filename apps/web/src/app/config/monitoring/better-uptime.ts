@@ -1,4 +1,4 @@
-import { clientEnv } from "@/shared/lib/env/client";
+import { clientEnv } from "@/shared/env/client";
 
 /**
  * Better Uptime has no SDK — monitoring is just a periodic GET to a

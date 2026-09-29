@@ -21,7 +21,7 @@ import {
   TaskSortField,
   type TaskStatus,
 } from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
-import { formatDate } from "@/shared/lib/date/format-date";
+import { formatDate } from "@/shared/date/format-date";
 import { Button } from "@/shared/ui/button";
 import {
   Empty,

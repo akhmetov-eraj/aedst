@@ -1,4 +1,4 @@
-import { clientEnv } from "@/shared/lib/env/client";
+import { clientEnv } from "@/shared/env/client";
 
 const isProduction = process.env.NODE_ENV === "production";
 

@@ -49,7 +49,7 @@ cp .env.example .env.local
 
 See [`.env.example`](.env.example) for the full, commented list (public vars
 the browser sees vs. server-only ones — see
-[`src/shared/lib/env`](src/shared/lib/env)); the ones worth calling out:
+[`src/shared/env`](src/shared/env)); the ones worth calling out:
 
 | Variable | Description | Default |
 | --- | --- | --- |
@@ -126,12 +126,33 @@ src/
     robots.ts         # /robots.txt
     manifest.ts       # /manifest.webmanifest
     global-error.tsx  # catches errors the root layout itself throws
-  modules/            # feature modules (UI + co-located i18n catalogs)
-  shared/
-    api/connect/      # Connect-ES transport/client setup + generated stubs
-    ui/               # shared UI components (shadcn-based)
-    lib/
-      env/            # client.ts (NEXT_PUBLIC_* only) / server.ts (`server-only`-guarded secrets)
+  modules/            # feature modules (ui/ + i18n/ + lib/, one dir per business feature)
+  shared/             # cross-feature infrastructure — see src/shared/README.md
+    ui/               # shared UI primitives (shadcn-based) — the web "design system"
+    api/connect/      # Connect-ES transport/client setup + generated stubs — the web "network" layer
+    date/             # date-fns formatting helpers, locale-aware
+    env/              # client.ts (NEXT_PUBLIC_* only) / server.ts (`server-only`-guarded secrets)
+    lib/              # remaining cross-cutting utilities: auth/ (session state, token storage,
+                       # auth interceptor), hooks/, utils/, query-client.ts
 ```
 
+Feature modules only ever import from `shared/**` (or from `app/**`, which
+composes them) — never from another module directly. This is enforced by
+`pnpm check:feature-boundaries` (see [`scripts/check-feature-boundaries.sh`](scripts/check-feature-boundaries.sh)),
+the same rule Android/Apple/Desktop enforce between their own feature
+modules.
+
 See `AGENTS.md` for Next.js-version-specific conventions used in this app.
+
+## Cross-platform module vocabulary
+
+AEDST's Android, Apple, Desktop and Web clients all converge on the same
+two-layer shape: a `core`/`shared` layer of non-feature-specific
+infrastructure, organized by concern, plus one `feature` directory per
+business feature that may only reach other features through that shared
+layer. Web keeps its own technology (Next.js/React/TypeScript) — this is a
+naming/organization convention, not a platform behavior change. See
+[`src/shared/README.md`](src/shared/README.md) for the detailed mapping from
+`src/shared/*`'s subfolders to each native platform's `core/*` module names,
+and for why some equivalences are documented rather than physically renamed
+(import-path risk vs. benefit).

@@ -17,7 +17,7 @@ import {
 } from "@/modules/tasks/ui/task-form";
 import { TasksService } from "@/shared/api/connect/client";
 import { TaskStatus } from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
-import { formatDate, formatDateTime } from "@/shared/lib/date/format-date";
+import { formatDate, formatDateTime } from "@/shared/date/format-date";
 import {
   AlertDialog,
   AlertDialogAction,

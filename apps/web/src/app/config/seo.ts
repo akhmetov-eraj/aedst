@@ -1,5 +1,5 @@
 import { defaultLocale, locales } from "@/app/config/i18n/locales";
-import { clientEnv } from "@/shared/lib/env/client";
+import { clientEnv } from "@/shared/env/client";
 
 /**
  * Central SEO/branding constants. Everything metadata-related (root
