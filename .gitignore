@@ -40,4 +40,43 @@ apps/web/src/shared/api/rest/generated
 apps/web/test-results/
 apps/web/playwright-report/
 
-# --- apps/android, apps/apple, apps/desktop (placeholders for now) ---
+# --- docs (Next.js / Nextra) ---
+docs/node_modules/
+docs/.next/
+docs/out/
+docs/build/
+docs/*.tsbuildinfo
+docs/next-env.d.ts
+docs/public/_pagefind/
+
+# --- apps/android (Gradle) --- see apps/android/.gitignore for the full list
+apps/android/**/build/
+apps/android/.gradle/
+apps/android/local.properties
+apps/android/app/google-services.json
+# generated ConnectRPC/Protobuf Kotlin stubs (run `make generate` from
+# apps/android/) — sourced from apps/server/api/proto, regenerated rather
+# than hand-edited. See apps/android/buf.gen.yaml.
+apps/android/core/network/src/main/kotlin-gen/
+
+# --- apps/apple (Swift/Xcode) ---
+apps/apple/**/.build/
+apps/apple/**/.swiftpm/
+apps/apple/AEDST.xcodeproj/
+apps/apple/*.xcworkspace/
+apps/apple/DerivedData/
+apps/apple/**/xcuserdata/
+apps/apple/**/*.xcuserstate
+apps/apple/Core/AedstNetwork/Sources/AedstNetwork/Generated/*.swift
+
+# --- apps/desktop (C++/Qt/CMake/Conan) --- see apps/desktop/.gitignore for the full list
+apps/desktop/build/
+apps/desktop/cmake-build-*/
+apps/desktop/CMakeUserPresets.json
+apps/desktop/**/compile_commands.json
+apps/desktop/docs/generated/
+apps/desktop/**/*.user
+apps/desktop/packaging/**/build/
+apps/desktop/**/*.msix
+apps/desktop/**/*.appimage
+apps/desktop/**/*.AppImage

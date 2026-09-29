@@ -2,7 +2,7 @@
 
 The web client for the `aedst` monorepo. It's a Next.js app that talks
 directly to `apps/server`'s ConnectRPC API — no GraphQL or REST gateway in
-between (see [`docs/decisions/0002-connectrpc.md`](../../docs/decisions/0002-connectrpc.md):
+between (see [`docs/decisions/0002-connectrpc.md`](../../docs/content/decisions/0002-connectrpc.md):
 ConnectRPC's wire protocol is plain HTTP/1.1 + JSON/protobuf, so a browser can
 call it directly).
 
@@ -15,6 +15,11 @@ call it directly).
   straight from `apps/server/api/proto`
 - **TanStack Query** for client-side caching around Connect calls
 - **next-intl** for i18n across five locales: `ar`, `en`, `ru`, `tj`, `uz`
+- **Sentry** (`@sentry/nextjs`) for error tracking + session replay — client/server/edge
+  configs in [`src/app/config/sentry`](src/app/config/sentry), wired through
+  [`src/instrumentation.ts`](src/instrumentation.ts) /
+  [`src/instrumentation-client.ts`](src/instrumentation-client.ts) and every
+  route segment's `error.tsx` + the root `global-error.tsx`
 - **Biome** for linting and formatting
 - **Vitest** + Testing Library for unit tests
 - **Playwright** for end-to-end tests
@@ -42,11 +47,17 @@ Copy `.env.example` to `.env.local` and adjust as needed:
 cp .env.example .env.local
 ```
 
+See [`.env.example`](.env.example) for the full, commented list (public vars
+the browser sees vs. server-only ones — see
+[`src/shared/lib/env`](src/shared/lib/env)); the ones worth calling out:
+
 | Variable | Description | Default |
 | --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | Base URL of `apps/server`'s ConnectRPC API | `http://localhost:8080` |
+| `NEXT_PUBLIC_SITE_URL` | This app's public origin — drives metadata/SEO | `http://localhost:3000` |
+| `NEXT_PUBLIC_API_BASE_URL` | Base URL of `apps/server`'s ConnectRPC API | `http://localhost:8080` |
 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN (optional) | — |
 | `NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL` | Better Uptime heartbeat URL (optional) | — |
+| `SENTRY_AUTH_TOKEN` | Server-only; enables Sentry source-map upload during `next build` (optional) | — |
 
 ### Generate the ConnectRPC client
 
@@ -95,20 +106,32 @@ pnpm test:e2e:report  # view the last HTML report
 
 ```bash
 pnpm lint             # biome check
+pnpm lint:fix         # biome check --write
 pnpm format           # biome format --write
-npx tsc --noEmit      # type check
+pnpm typecheck        # tsc --noEmit
 ```
+
+Both run automatically as a Lefthook pre-commit hook, scoped to only fire
+when `apps/web/**` files are staged — see [`../../lefthook.yml`](../../lefthook.yml).
+`lefthook install` (run once per clone, from the repo root, after
+installing the `lefthook` CLI) wires it up; without that, nothing changes —
+these still run individually as above, and CI still runs them regardless.
 
 ## Project structure
 
 ```
 src/
-  app/            # Next.js App Router: routes, providers, env/i18n/sentry config
-  modules/        # feature modules (UI + co-located i18n catalogs)
+  app/                # Next.js App Router: routes, providers, i18n/sentry/seo config
+    sitemap.ts        # /sitemap.xml — one entry per locale, hreflang alternates
+    robots.ts         # /robots.txt
+    manifest.ts       # /manifest.webmanifest
+    global-error.tsx  # catches errors the root layout itself throws
+  modules/            # feature modules (UI + co-located i18n catalogs)
   shared/
-    api/connect/  # Connect-ES transport/client setup + generated stubs
-    ui/           # shared UI components (shadcn-based)
-    lib/          # shared hooks/utilities
+    api/connect/      # Connect-ES transport/client setup + generated stubs
+    ui/               # shared UI components (shadcn-based)
+    lib/
+      env/            # client.ts (NEXT_PUBLIC_* only) / server.ts (`server-only`-guarded secrets)
 ```
 
 See `AGENTS.md` for Next.js-version-specific conventions used in this app.

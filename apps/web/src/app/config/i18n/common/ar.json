@@ -1,5 +1,6 @@
 {
   "appName": "iman",
+  "appDescription": "سجّل الدخول إلى iman.",
   "actions": {
     "submit": "إرسال",
     "cancel": "إلغاء",

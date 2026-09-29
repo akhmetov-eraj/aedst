@@ -1,5 +1,6 @@
 {
   "appName": "iman",
+  "appDescription": "Sign in to iman.",
   "actions": {
     "submit": "Submit",
     "cancel": "Cancel",

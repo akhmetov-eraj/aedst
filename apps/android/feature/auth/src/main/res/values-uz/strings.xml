@@ -1,0 +1,24 @@
+<resources>
+    <string name="auth_login_title">Kirish</string>
+    <string name="auth_login_email_label">Email</string>
+    <string name="auth_login_password_label">Parol</string>
+    <string name="auth_login_invalid_email">To\'g\'ri email manzilini kiriting.</string>
+    <string name="auth_login_invalid_password">Parolni kiriting.</string>
+    <string name="auth_login_submit">Kirish</string>
+    <string name="auth_login_switch_prompt">Hisobingiz yo\'qmi?</string>
+    <string name="auth_login_switch_action">Yaratish</string>
+    <string name="auth_login_error">Kirish muvaffaqiyatsiz: %1$s</string>
+
+    <string name="auth_register_title">Hisob yaratish</string>
+    <string name="auth_register_email_label">Email</string>
+    <string name="auth_register_password_label">Parol</string>
+    <string name="auth_register_invalid_email">To\'g\'ri email manzilini kiriting.</string>
+    <string name="auth_register_password_too_short">Kamida 8 ta belgi ishlating.</string>
+    <string name="auth_register_submit">Hisob yaratish</string>
+    <string name="auth_register_switch_prompt">Hisobingiz bormi?</string>
+    <string name="auth_register_switch_action">Kirish</string>
+    <string name="auth_register_error">Ro\'yxatdan o\'tish muvaffaqiyatsiz: %1$s</string>
+
+    <string name="auth_sign_out">Chiqish</string>
+    <string name="auth_signed_in_as">%1$s sifatida kirdingiz</string>
+</resources>

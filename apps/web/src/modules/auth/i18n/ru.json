@@ -1,0 +1,26 @@
+{
+  "login": {
+    "title": "Вход",
+    "emailLabel": "Email",
+    "passwordLabel": "Пароль",
+    "invalidEmail": "Введите корректный email.",
+    "invalidPassword": "Введите пароль.",
+    "submit": "Войти",
+    "switchPrompt": "Нет аккаунта?",
+    "switchAction": "Создать",
+    "error": "Не удалось войти: {message}"
+  },
+  "register": {
+    "title": "Регистрация",
+    "emailLabel": "Email",
+    "passwordLabel": "Пароль",
+    "invalidEmail": "Введите корректный email.",
+    "passwordTooShort": "Минимум 8 символов.",
+    "submit": "Зарегистрироваться",
+    "switchPrompt": "Уже есть аккаунт?",
+    "switchAction": "Войти",
+    "error": "Не удалось зарегистрироваться: {message}"
+  },
+  "signOut": "Выйти",
+  "signedInAs": "Вы вошли как {email}"
+}

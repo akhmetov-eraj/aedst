@@ -77,6 +77,24 @@ func (q *Queries) FindCredentialByEmail(ctx context.Context, email string) (Auth
 	return i, err
 }
 
+const findCredentialByUserID = `-- name: FindCredentialByUserID :one
+SELECT user_id, email, password_hash, created_at
+FROM auth.credentials
+WHERE user_id = $1
+`
+
+func (q *Queries) FindCredentialByUserID(ctx context.Context, userID pgtype.UUID) (AuthCredential, error) {
+	row := q.db.QueryRow(ctx, findCredentialByUserID, userID)
+	var i AuthCredential
+	err := row.Scan(
+		&i.UserID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.CreatedAt,
+	)
+	return i, err
+}
+
 const findSessionByID = `-- name: FindSessionByID :one
 SELECT id, user_id, device_id, refresh_token_hash, expires_at, revoked_at, created_at
 FROM auth.sessions

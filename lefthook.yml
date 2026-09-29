@@ -1,0 +1,44 @@
+# Lefthook (https://lefthook.dev) git hooks. Install the CLI once per
+# machine — `go install github.com/evilmartians/lefthook@latest` (Go is
+# already a repo prerequisite for apps/server), `npm i -g lefthook`, or
+# `brew install lefthook` — then run `lefthook install` once per clone to
+# wire these into `.git/hooks`.
+#
+# Every command is `glob`-scoped to one app, so a commit touching only
+# apps/server never pays for apps/web's typecheck and vice versa. `glob`
+# paths are always relative to the repo root regardless of `root:` (see
+# https://lefthook.dev/configuration/glob.html) — matched twice per app
+# (`app/**/*.ext` and `app/*.ext`) because lefthook's `**` requires at
+# least one directory in between, so it alone would miss a top-level file
+# like `apps/web/next.config.ts`. `root:` does two things once a command
+# actually runs: it `cd`s into that directory, AND it rewrites
+# `{staged_files}` to be relative to it instead of the repo root —
+# verified empirically (not just from the docs) before relying on it here.
+#
+# apps/web is the only app wired up today. Add a same-shaped block for
+# another app (e.g. `apps/server/**/*.go` running `gofumpt -l .` +
+# `go vet ./...` with `root: "apps/server/"`) the same way, once that app
+# wants hooks.
+pre-commit:
+  parallel: true
+  commands:
+    web-typecheck:
+      root: "apps/web/"
+      glob:
+        - "apps/web/**/*.{ts,tsx}"
+        - "apps/web/*.{ts,tsx}"
+      # Whole-project — tsc has no meaningful single-file mode, and a type
+      # error anywhere can be caused by a change anywhere.
+      run: pnpm typecheck
+    web-lint:
+      root: "apps/web/"
+      glob:
+        - "apps/web/**/*.{ts,tsx,js,jsx,mjs,json}"
+        - "apps/web/*.{ts,tsx,js,jsx,mjs,json}"
+      # Staged files only, deliberately — `pnpm lint` (whole project) would
+      # also fail on any pre-existing violation in a file this commit never
+      # touched, blocking unrelated work. `--write` autofixes what Biome
+      # can (import order, quote style, ...); `stage_fixed` re-stages
+      # exactly what it changed so the commit includes the fix.
+      run: pnpm biome check --write --no-errors-on-unmatched {staged_files}
+      stage_fixed: true

@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  MSIX manifest template, configured by cmake/packaging/Windows.cmake.
+  @AEDST_MSIX_PUBLISHER@ must match the subject of the certificate that signs
+  the package (signing is a scope cut; see Windows.cmake).
+  The Assets\*.png files referenced below are not committed yet — see
+  App/resources/icons/README.md for the required sizes.
+-->
+<Package
+  xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
+  xmlns:uap="http://schemas.microsoft.com/appx/manifest/uap/windows10"
+  xmlns:rescap="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
+  IgnorableNamespaces="uap rescap">
+
+  <Identity
+    Name="com.aedst.Desktop"
+    Publisher="@AEDST_MSIX_PUBLISHER@"
+    Version="@AEDST_MSIX_VERSION@"
+    ProcessorArchitecture="x64" />
+
+  <Properties>
+    <DisplayName>@AEDST_DISPLAY_NAME@</DisplayName>
+    <PublisherDisplayName>AEDST</PublisherDisplayName>
+    <Logo>Assets\StoreLogo.png</Logo>
+  </Properties>
+
+  <Dependencies>
+    <TargetDeviceFamily Name="Windows.Desktop" MinVersion="10.0.17763.0" MaxVersionTested="10.0.26100.0" />
+  </Dependencies>
+
+  <Resources>
+    <Resource Language="en-us" />
+  </Resources>
+
+  <Applications>
+    <Application Id="AEDST" Executable="bin\aedst-desktop.exe" EntryPoint="Windows.FullTrustApplication">
+      <uap:VisualElements
+        DisplayName="@AEDST_DISPLAY_NAME@"
+        Description="@PROJECT_DESCRIPTION@"
+        BackgroundColor="transparent"
+        Square150x150Logo="Assets\Square150x150Logo.png"
+        Square44x44Logo="Assets\Square44x44Logo.png" />
+    </Application>
+  </Applications>
+
+  <Capabilities>
+    <Capability Name="internetClient" />
+    <rescap:Capability Name="runFullTrust" />
+  </Capabilities>
+</Package>

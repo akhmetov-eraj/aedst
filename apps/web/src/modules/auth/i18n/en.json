@@ -1,0 +1,26 @@
+{
+  "login": {
+    "title": "Sign in",
+    "emailLabel": "Email",
+    "passwordLabel": "Password",
+    "invalidEmail": "Enter a valid email address.",
+    "invalidPassword": "Enter your password.",
+    "submit": "Log in",
+    "switchPrompt": "Don't have an account?",
+    "switchAction": "Create one",
+    "error": "Sign-in failed: {message}"
+  },
+  "register": {
+    "title": "Create account",
+    "emailLabel": "Email",
+    "passwordLabel": "Password",
+    "invalidEmail": "Enter a valid email address.",
+    "passwordTooShort": "Use at least 8 characters.",
+    "submit": "Create account",
+    "switchPrompt": "Already have an account?",
+    "switchAction": "Sign in",
+    "error": "Registration failed: {message}"
+  },
+  "signOut": "Sign out",
+  "signedInAs": "Signed in as {email}"
+}

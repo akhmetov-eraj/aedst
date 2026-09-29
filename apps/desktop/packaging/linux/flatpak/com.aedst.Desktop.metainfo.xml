@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.aedst.Desktop</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>LicenseRef-proprietary</project_license>
+  <name>AEDST</name>
+  <summary>AEDST desktop client</summary>
+  <developer id="com.aedst">
+    <name>AEDST</name>
+  </developer>
+  <description>
+    <p>
+      The AEDST desktop client: sign in, view your account and profile, and keep
+      working with a locally cached copy of your profile while offline.
+    </p>
+  </description>
+  <launchable type="desktop-id">com.aedst.Desktop.desktop</launchable>
+  <url type="homepage">https://aedst.com</url>
+  <content_rating type="oars-1.1" />
+  <releases>
+    <release version="0.1.0" date="2026-09-27" />
+  </releases>
+</component>

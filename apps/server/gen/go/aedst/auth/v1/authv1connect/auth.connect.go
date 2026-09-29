@@ -33,6 +33,8 @@ const (
 // reflection-formatted method names, remove the leading slash and convert the remaining slash to a
 // period.
 const (
+	// AuthServiceRegisterProcedure is the fully-qualified name of the AuthService's Register RPC.
+	AuthServiceRegisterProcedure = "/aedst.auth.v1.AuthService/Register"
 	// AuthServiceLoginProcedure is the fully-qualified name of the AuthService's Login RPC.
 	AuthServiceLoginProcedure = "/aedst.auth.v1.AuthService/Login"
 	// AuthServiceRefreshTokenProcedure is the fully-qualified name of the AuthService's RefreshToken
@@ -40,13 +42,23 @@ const (
 	AuthServiceRefreshTokenProcedure = "/aedst.auth.v1.AuthService/RefreshToken"
 	// AuthServiceLogoutProcedure is the fully-qualified name of the AuthService's Logout RPC.
 	AuthServiceLogoutProcedure = "/aedst.auth.v1.AuthService/Logout"
+	// AuthServiceGetCurrentUserProcedure is the fully-qualified name of the AuthService's
+	// GetCurrentUser RPC.
+	AuthServiceGetCurrentUserProcedure = "/aedst.auth.v1.AuthService/GetCurrentUser"
 )
 
 // AuthServiceClient is a client for the aedst.auth.v1.AuthService service.
 type AuthServiceClient interface {
+	Register(context.Context, *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error)
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
 	RefreshToken(context.Context, *connect.Request[v1.RefreshTokenRequest]) (*connect.Response[v1.RefreshTokenResponse], error)
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
+	// GetCurrentUser derives identity from the authenticated request's bearer
+	// token (internal/platform/httpserver's AuthInterceptor) — the request
+	// carries no user id. A client-supplied id here would be exactly the kind
+	// of IDOR bug modules/tasks' ownership check exists to avoid; this RPC
+	// never takes one to begin with.
+	GetCurrentUser(context.Context, *connect.Request[v1.GetCurrentUserRequest]) (*connect.Response[v1.GetCurrentUserResponse], error)
 }
 
 // NewAuthServiceClient constructs a client for the aedst.auth.v1.AuthService service. By default,
@@ -60,6 +72,12 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 	baseURL = strings.TrimRight(baseURL, "/")
 	authServiceMethods := v1.File_aedst_auth_v1_auth_proto.Services().ByName("AuthService").Methods()
 	return &authServiceClient{
+		register: connect.NewClient[v1.RegisterRequest, v1.RegisterResponse](
+			httpClient,
+			baseURL+AuthServiceRegisterProcedure,
+			connect.WithSchema(authServiceMethods.ByName("Register")),
+			connect.WithClientOptions(opts...),
+		),
 		login: connect.NewClient[v1.LoginRequest, v1.LoginResponse](
 			httpClient,
 			baseURL+AuthServiceLoginProcedure,
@@ -78,14 +96,27 @@ func NewAuthServiceClient(httpClient connect.HTTPClient, baseURL string, opts ..
 			connect.WithSchema(authServiceMethods.ByName("Logout")),
 			connect.WithClientOptions(opts...),
 		),
+		getCurrentUser: connect.NewClient[v1.GetCurrentUserRequest, v1.GetCurrentUserResponse](
+			httpClient,
+			baseURL+AuthServiceGetCurrentUserProcedure,
+			connect.WithSchema(authServiceMethods.ByName("GetCurrentUser")),
+			connect.WithClientOptions(opts...),
+		),
 	}
 }
 
 // authServiceClient implements AuthServiceClient.
 type authServiceClient struct {
-	login        *connect.Client[v1.LoginRequest, v1.LoginResponse]
-	refreshToken *connect.Client[v1.RefreshTokenRequest, v1.RefreshTokenResponse]
-	logout       *connect.Client[v1.LogoutRequest, v1.LogoutResponse]
+	register       *connect.Client[v1.RegisterRequest, v1.RegisterResponse]
+	login          *connect.Client[v1.LoginRequest, v1.LoginResponse]
+	refreshToken   *connect.Client[v1.RefreshTokenRequest, v1.RefreshTokenResponse]
+	logout         *connect.Client[v1.LogoutRequest, v1.LogoutResponse]
+	getCurrentUser *connect.Client[v1.GetCurrentUserRequest, v1.GetCurrentUserResponse]
+}
+
+// Register calls aedst.auth.v1.AuthService.Register.
+func (c *authServiceClient) Register(ctx context.Context, req *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error) {
+	return c.register.CallUnary(ctx, req)
 }
 
 // Login calls aedst.auth.v1.AuthService.Login.
@@ -103,11 +134,23 @@ func (c *authServiceClient) Logout(ctx context.Context, req *connect.Request[v1.
 	return c.logout.CallUnary(ctx, req)
 }
 
+// GetCurrentUser calls aedst.auth.v1.AuthService.GetCurrentUser.
+func (c *authServiceClient) GetCurrentUser(ctx context.Context, req *connect.Request[v1.GetCurrentUserRequest]) (*connect.Response[v1.GetCurrentUserResponse], error) {
+	return c.getCurrentUser.CallUnary(ctx, req)
+}
+
 // AuthServiceHandler is an implementation of the aedst.auth.v1.AuthService service.
 type AuthServiceHandler interface {
+	Register(context.Context, *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error)
 	Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error)
 	RefreshToken(context.Context, *connect.Request[v1.RefreshTokenRequest]) (*connect.Response[v1.RefreshTokenResponse], error)
 	Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error)
+	// GetCurrentUser derives identity from the authenticated request's bearer
+	// token (internal/platform/httpserver's AuthInterceptor) — the request
+	// carries no user id. A client-supplied id here would be exactly the kind
+	// of IDOR bug modules/tasks' ownership check exists to avoid; this RPC
+	// never takes one to begin with.
+	GetCurrentUser(context.Context, *connect.Request[v1.GetCurrentUserRequest]) (*connect.Response[v1.GetCurrentUserResponse], error)
 }
 
 // NewAuthServiceHandler builds an HTTP handler from the service implementation. It returns the path
@@ -117,6 +160,12 @@ type AuthServiceHandler interface {
 // and JSON codecs. They also support gzip compression.
 func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption) (string, http.Handler) {
 	authServiceMethods := v1.File_aedst_auth_v1_auth_proto.Services().ByName("AuthService").Methods()
+	authServiceRegisterHandler := connect.NewUnaryHandler(
+		AuthServiceRegisterProcedure,
+		svc.Register,
+		connect.WithSchema(authServiceMethods.ByName("Register")),
+		connect.WithHandlerOptions(opts...),
+	)
 	authServiceLoginHandler := connect.NewUnaryHandler(
 		AuthServiceLoginProcedure,
 		svc.Login,
@@ -135,14 +184,24 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 		connect.WithSchema(authServiceMethods.ByName("Logout")),
 		connect.WithHandlerOptions(opts...),
 	)
+	authServiceGetCurrentUserHandler := connect.NewUnaryHandler(
+		AuthServiceGetCurrentUserProcedure,
+		svc.GetCurrentUser,
+		connect.WithSchema(authServiceMethods.ByName("GetCurrentUser")),
+		connect.WithHandlerOptions(opts...),
+	)
 	return "/aedst.auth.v1.AuthService/", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
+		case AuthServiceRegisterProcedure:
+			authServiceRegisterHandler.ServeHTTP(w, r)
 		case AuthServiceLoginProcedure:
 			authServiceLoginHandler.ServeHTTP(w, r)
 		case AuthServiceRefreshTokenProcedure:
 			authServiceRefreshTokenHandler.ServeHTTP(w, r)
 		case AuthServiceLogoutProcedure:
 			authServiceLogoutHandler.ServeHTTP(w, r)
+		case AuthServiceGetCurrentUserProcedure:
+			authServiceGetCurrentUserHandler.ServeHTTP(w, r)
 		default:
 			http.NotFound(w, r)
 		}
@@ -151,6 +210,10 @@ func NewAuthServiceHandler(svc AuthServiceHandler, opts ...connect.HandlerOption
 
 // UnimplementedAuthServiceHandler returns CodeUnimplemented from all methods.
 type UnimplementedAuthServiceHandler struct{}
+
+func (UnimplementedAuthServiceHandler) Register(context.Context, *connect.Request[v1.RegisterRequest]) (*connect.Response[v1.RegisterResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aedst.auth.v1.AuthService.Register is not implemented"))
+}
 
 func (UnimplementedAuthServiceHandler) Login(context.Context, *connect.Request[v1.LoginRequest]) (*connect.Response[v1.LoginResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aedst.auth.v1.AuthService.Login is not implemented"))
@@ -162,4 +225,8 @@ func (UnimplementedAuthServiceHandler) RefreshToken(context.Context, *connect.Re
 
 func (UnimplementedAuthServiceHandler) Logout(context.Context, *connect.Request[v1.LogoutRequest]) (*connect.Response[v1.LogoutResponse], error) {
 	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aedst.auth.v1.AuthService.Logout is not implemented"))
+}
+
+func (UnimplementedAuthServiceHandler) GetCurrentUser(context.Context, *connect.Request[v1.GetCurrentUserRequest]) (*connect.Response[v1.GetCurrentUserResponse], error) {
+	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("aedst.auth.v1.AuthService.GetCurrentUser is not implemented"))
 }

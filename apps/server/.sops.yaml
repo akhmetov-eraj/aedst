@@ -1,0 +1,4 @@
+creation_rules:
+  - path_regex: deployments/secrets/secrets\..*\.enc\.yaml$
+    age: >-
+      age1REPLACE0WITH0YOUR0OWN0AGE0PUBLIC0KEY0FROM0AGE-KEYGEN0abcdefghijk

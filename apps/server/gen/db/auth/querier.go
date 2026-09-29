@@ -14,6 +14,7 @@ type Querier interface {
 	CreateCredential(ctx context.Context, arg CreateCredentialParams) error
 	CreateSession(ctx context.Context, arg CreateSessionParams) error
 	FindCredentialByEmail(ctx context.Context, email string) (AuthCredential, error)
+	FindCredentialByUserID(ctx context.Context, userID pgtype.UUID) (AuthCredential, error)
 	FindSessionByID(ctx context.Context, id pgtype.UUID) (AuthSession, error)
 	RevokeSession(ctx context.Context, arg RevokeSessionParams) error
 	RotateSession(ctx context.Context, arg RotateSessionParams) error

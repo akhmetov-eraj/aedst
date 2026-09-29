@@ -1,0 +1,32 @@
+meta {
+  name: Logout
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/aedst.auth.v1.AuthService/Logout
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "refreshToken": "{{refreshToken}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Public — bypasses AuthInterceptor. Revokes `{{refreshToken}}`; run last.
+  After this, `Refresh Token` with the same `{{refreshToken}}` should fail —
+  see `Users/Get User (Invalid Token)` for the equivalent check on the
+  access-token side.
+}

@@ -15,6 +15,7 @@ import (
 type CredentialRepository interface {
 	Create(ctx context.Context, cred domain.Credential) error
 	FindByEmail(ctx context.Context, email string) (domain.Credential, error)
+	FindByUserID(ctx context.Context, userID ids.ID) (domain.Credential, error)
 }
 
 type SessionRepository interface {
@@ -48,4 +49,14 @@ type RefreshClaims struct {
 type PasswordHasher interface {
 	Hash(password string) (string, error)
 	Verify(hash, password string) bool
+}
+
+// User is the identity DTO Register/GetCurrentUser return — deliberately not
+// domain.Credential (which carries PasswordHash): api/api.go type-aliases
+// this, never domain types, so a password hash can never leak across the
+// module boundary by accident.
+type User struct {
+	ID        ids.ID
+	Email     string
+	CreatedAt time.Time
 }

@@ -7,10 +7,13 @@ import (
 	"context"
 
 	"connectrpc.com/connect"
+	"google.golang.org/protobuf/types/known/timestamppb"
 
 	authv1 "github.com/aedst/server/gen/go/aedst/auth/v1"
 	"github.com/aedst/server/internal/modules/auth/api"
+	platformauth "github.com/aedst/server/internal/platform/auth"
 	"github.com/aedst/server/internal/platform/httpserver"
+	sharederrors "github.com/aedst/server/internal/shared/errors"
 )
 
 type Handler struct {
@@ -19,6 +22,17 @@ type Handler struct {
 
 func NewHandler(service api.Service) *Handler {
 	return &Handler{service: service}
+}
+
+func (h *Handler) Register(ctx context.Context, req *connect.Request[authv1.RegisterRequest]) (*connect.Response[authv1.RegisterResponse], error) {
+	user, pair, err := h.service.Register(ctx, req.Msg.GetEmail(), req.Msg.GetPassword(), req.Msg.GetDeviceId())
+	if err != nil {
+		return nil, httpserver.ToConnectError(err)
+	}
+	return connect.NewResponse(&authv1.RegisterResponse{
+		User:   toProtoUser(user),
+		Tokens: toProtoTokenPair(pair),
+	}), nil
 }
 
 func (h *Handler) Login(ctx context.Context, req *connect.Request[authv1.LoginRequest]) (*connect.Response[authv1.LoginResponse], error) {
@@ -45,6 +59,31 @@ func (h *Handler) Logout(ctx context.Context, req *connect.Request[authv1.Logout
 		return nil, httpserver.ToConnectError(err)
 	}
 	return connect.NewResponse(&authv1.LogoutResponse{}), nil
+}
+
+func (h *Handler) GetCurrentUser(ctx context.Context, _ *connect.Request[authv1.GetCurrentUserRequest]) (*connect.Response[authv1.GetCurrentUserResponse], error) {
+	identity, ok := platformauth.FromContext(ctx)
+	if !ok {
+		// Unreachable in practice: GetCurrentUser is never in
+		// publicProcedures, so AuthInterceptor has already rejected any
+		// request that reaches here without a verified identity. Guarded
+		// anyway rather than trusting that wiring never changes.
+		return nil, httpserver.ToConnectError(sharederrors.Unauthorized("auth.GetCurrentUser", "missing identity"))
+	}
+
+	user, err := h.service.GetCurrentUser(ctx, identity.UserID)
+	if err != nil {
+		return nil, httpserver.ToConnectError(err)
+	}
+	return connect.NewResponse(&authv1.GetCurrentUserResponse{User: toProtoUser(user)}), nil
+}
+
+func toProtoUser(user api.User) *authv1.User {
+	return &authv1.User{
+		Id:        user.ID.String(),
+		Email:     user.Email,
+		CreatedAt: timestamppb.New(user.CreatedAt),
+	}
 }
 
 func toProtoTokenPair(pair api.TokenPair) *authv1.TokenPair {

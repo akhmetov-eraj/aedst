@@ -62,6 +62,23 @@ func (r *CredentialRepository) FindByEmail(ctx context.Context, email string) (d
 	}, nil
 }
 
+func (r *CredentialRepository) FindByUserID(ctx context.Context, userID ids.ID) (domain.Credential, error) {
+	q := authdb.New(r.pool)
+	row, err := q.FindCredentialByUserID(ctx, toPgUUID(userID))
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return domain.Credential{}, sharederrors.NotFound("auth.FindCredentialByUserID", "credential not found")
+		}
+		return domain.Credential{}, sharederrors.Wrap("auth.FindCredentialByUserID", err)
+	}
+	return domain.Credential{
+		UserID:       fromPgUUID(row.UserID),
+		Email:        row.Email,
+		PasswordHash: row.PasswordHash,
+		CreatedAt:    row.CreatedAt.Time,
+	}, nil
+}
+
 type SessionRepository struct {
 	pool *pgxpool.Pool
 }

@@ -1,0 +1,8 @@
+# One entry per app — each app's own reviewer owns its path only. GitHub
+# CODEOWNERS matches the *last* matching pattern, so a more specific path
+# below overrides a broader one above it.
+#
+# Replace @your-github-username with real GitHub handles/teams before this
+# has any effect — an unresolvable owner is silently ignored, not an error.
+/apps/server/  @your-github-username
+/apps/web/     @your-github-username

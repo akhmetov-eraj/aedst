@@ -1,0 +1,38 @@
+meta {
+  name: Refresh Token
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/aedst.auth.v1.AuthService/RefreshToken
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "refreshToken": "{{refreshToken}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("accessToken", res.body.tokens.accessToken);
+    bru.setVar("refreshToken", res.body.tokens.refreshToken);
+  }
+}
+
+docs {
+  Public — bypasses AuthInterceptor by design (an expired access token must
+  not block getting a new one via a still-valid refresh token). Run
+  `Register` or `Login` first to populate `{{refreshToken}}`.
+}

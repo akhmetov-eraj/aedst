@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 11 and below (Auto Backup). Excludes the Keystore-encrypted auth
+     prefs: the values would restore fine, but the Keystore key backing their
+     encryption does not survive a device restore, making the entry useless
+     data to ship over the wire. See core/security/EncryptedPreferencesImpl. -->
+<full-backup-content>
+    <exclude domain="sharedpref" path="aedst_encrypted_prefs.xml" />
+</full-backup-content>

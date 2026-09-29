@@ -6,6 +6,11 @@ on:
     paths: ["apps/server/**", ".github/workflows/server-ci.yml"]
   pull_request:
     paths: ["apps/server/**", ".github/workflows/server-ci.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: server-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 defaults:
   run:
@@ -13,8 +18,32 @@ defaults:
 
 env:
   GO_VERSION: "1.27.1"
+  # Keep in sync with apps/web's `@bufbuild/buf` devDependency version.
+  BUF_VERSION: "1.73.0"
+  SQLC_VERSION: "1.31.1"
+  TASK_VERSION: "3.53.1"
 
+# Every job below is one Taskfile.yml target — the same `task <name>` a
+# contributor runs locally, so there is exactly one place ("what does lint
+# actually run?") to look, not a Makefile version and a CI-YAML version that
+# can drift apart. The `ci` job is the only required status check: adding a
+# new job here never requires touching branch protection settings.
 jobs:
+  gen-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/server/go.sum
+      - run: go install github.com/bufbuild/buf/cmd/buf@v${{ env.BUF_VERSION }}
+      - run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v${{ env.SQLC_VERSION }}
+      - run: go install mvdan.cc/gofumpt@latest
+      - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: task gen:check
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -23,37 +52,16 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: apps/server/go.sum
-
-      - name: Install tools
-        run: |
-          go install mvdan.cc/gofumpt@latest
-          go install github.com/bufbuild/buf/cmd/buf@latest
-          go install github.com/sqlc-dev/sqlc/cmd/sqlc@latest
-
+      - run: go install github.com/bufbuild/buf/cmd/buf@v${{ env.BUF_VERSION }}
+      - run: go install mvdan.cc/gofumpt@latest
+      - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - uses: golangci/golangci-lint-action@v6
         with:
           working-directory: apps/server
+      - run: task lint
 
-      - name: gofumpt
-        run: test -z "$(gofumpt -l .)"
-
-      - name: buf lint
-        run: buf lint
-
-      - name: buf breaking (against main)
-        if: github.event_name == 'pull_request'
-        run: buf breaking --against "https://github.com/${{ github.repository }}.git#branch=main,subdir=apps/server"
-
-      - name: Verify generated code is up to date
-        run: |
-          buf generate
-          sqlc generate
-          git diff --exit-code -- gen/ || (echo "::error::gen/ is out of date — run 'make generate' and commit the result" && exit 1)
-
-      - name: Architecture boundary tests
-        run: go test ./architecturetest/...
-
-  test:
+  arch:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -61,23 +69,11 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: apps/server/go.sum
+      - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: task arch
 
-      - name: Unit tests
-        run: go test ./internal/... ./cmd/...
-
-  build:
-    runs-on: ubuntu-latest
-    needs: [lint, test]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ env.GO_VERSION }}
-          cache-dependency-path: apps/server/go.sum
-
-      - run: go build -o bin/aedst-server ./cmd/server
-
-  security:
+  vuln:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -85,6 +81,114 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: apps/server/go.sum
-
       - run: go install golang.org/x/vuln/cmd/govulncheck@latest
-      - run: govulncheck ./...
+      - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: task vuln
+
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/server/go.sum
+      - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: task test
+
+  lint-migrations:
+    # squawk runs via Docker inside the task (see Taskfile.yml's
+    # lint:migrations) — no separate tool install needed, github-hosted
+    # runners already have Docker.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/server/go.sum
+      - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: task lint:migrations
+
+  breaking:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/server/go.sum
+      - run: go install github.com/bufbuild/buf/cmd/buf@v${{ env.BUF_VERSION }}
+      - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - if: github.event_name == 'pull_request'
+        run: task breaking
+
+  integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/server/go.sum
+      - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: task test:integration
+
+  docker-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -f deployments/docker/Dockerfile -t aedst-server:ci .
+
+  # Not part of the `ci` gate's needs: a trend to watch, not a merge blocker
+  # — a slow query shouldn't block an unrelated PR the way a correctness
+  # regression should. Only runs on push to main / manual dispatch, so PRs
+  # aren't waiting on a k6 run every time.
+  load:
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: apps/server/go.sum
+      - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
+      - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+      - run: docker compose -f deployments/docker/docker-compose.yml up -d --wait
+      - run: task migrate
+      - run: |
+          nohup go run ./cmd/server > server.log 2>&1 &
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8080/livez && break
+            sleep 1
+          done
+      - run: task test:load
+      - if: always()
+        run: docker compose -f deployments/docker/docker-compose.yml down -v
+
+  ci:
+    if: always()
+    needs:
+      [
+        gen-check,
+        lint,
+        arch,
+        vuln,
+        unit,
+        lint-migrations,
+        breaking,
+        integration,
+        docker-build,
+      ]
+    runs-on: ubuntu-latest
+    steps:
+      - if: contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled')
+        run: exit 1

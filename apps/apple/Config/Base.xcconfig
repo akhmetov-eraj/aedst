@@ -1,0 +1,10 @@
+// Shared across every target and configuration. Platform- and
+// configuration-specific overrides live in the other files in this
+// directory and are layered on top by project.yml.
+
+SWIFT_VERSION = 6.0
+SWIFT_STRICT_CONCURRENCY = complete
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1
+PRODUCT_BUNDLE_IDENTIFIER_PREFIX = com.aedst.apple
+ENABLE_USER_SCRIPT_SANDBOXING = YES

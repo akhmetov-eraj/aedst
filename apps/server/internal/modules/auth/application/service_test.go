@@ -42,6 +42,15 @@ func (f *fakeCredentials) FindByEmail(_ context.Context, email string) (domain.C
 	return cred, nil
 }
 
+func (f *fakeCredentials) FindByUserID(_ context.Context, userID ids.ID) (domain.Credential, error) {
+	for _, cred := range f.byEmail {
+		if cred.UserID == userID {
+			return cred, nil
+		}
+	}
+	return domain.Credential{}, sharederrors.NotFound("fake.FindByUserID", "not found")
+}
+
 type fakeSessions struct {
 	byID map[ids.ID]domain.Session
 }
@@ -158,17 +167,71 @@ func TestService_Login_UnknownEmail(t *testing.T) {
 	}
 }
 
-func TestService_CreateCredential_DuplicateEmail(t *testing.T) {
+func TestService_Register_Success(t *testing.T) {
+	creds := newFakeCredentials()
+	sessions := newFakeSessions()
+	svc := application.NewService(creds, sessions, &fakeTokens{}, fakeHasher{}, sharedtime.Fixed{At: time.Now()})
+
+	user, pair, err := svc.Register(context.Background(), "new@example.com", "password123", "device-1")
+	if err != nil {
+		t.Fatalf("Register() error = %v", err)
+	}
+	if user.Email != "new@example.com" {
+		t.Errorf("Register() user.Email = %q, want %q", user.Email, "new@example.com")
+	}
+	if user.ID.IsNil() {
+		t.Error("Register() returned a nil user ID")
+	}
+	if pair.AccessToken == "" || pair.RefreshToken == "" {
+		t.Errorf("Register() returned empty tokens: %+v", pair)
+	}
+	if len(sessions.byID) != 1 {
+		t.Errorf("expected exactly one session to be created, got %d", len(sessions.byID))
+	}
+
+	stored, err := creds.FindByEmail(context.Background(), "new@example.com")
+	if err != nil {
+		t.Fatalf("credential was not persisted: %v", err)
+	}
+	if stored.PasswordHash == "password123" {
+		t.Error("password was stored in plaintext")
+	}
+}
+
+func TestService_Register_DuplicateEmail(t *testing.T) {
 	creds := newFakeCredentials()
 	svc := application.NewService(creds, newFakeSessions(), &fakeTokens{}, fakeHasher{}, sharedtime.Fixed{At: time.Now()})
 
 	ctx := context.Background()
-	if err := svc.CreateCredential(ctx, ids.New(), "dup@example.com", "password123"); err != nil {
-		t.Fatalf("first CreateCredential: %v", err)
+	if _, _, err := svc.Register(ctx, "dup@example.com", "password123", "device-1"); err != nil {
+		t.Fatalf("first Register: %v", err)
 	}
 
-	err := svc.CreateCredential(ctx, ids.New(), "dup@example.com", "password123")
+	_, _, err := svc.Register(ctx, "dup@example.com", "password123", "device-2")
 	if sharederrors.KindOf(err) != sharederrors.KindAlreadyExists {
-		t.Fatalf("second CreateCredential: got err = %v, want KindAlreadyExists", err)
+		t.Fatalf("second Register: got err = %v, want KindAlreadyExists", err)
+	}
+}
+
+func TestService_GetCurrentUser(t *testing.T) {
+	creds := newFakeCredentials()
+	svc := application.NewService(creds, newFakeSessions(), &fakeTokens{}, fakeHasher{}, sharedtime.Fixed{At: time.Now()})
+
+	ctx := context.Background()
+	registered, _, err := svc.Register(ctx, "me@example.com", "password123", "device-1")
+	if err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+
+	got, err := svc.GetCurrentUser(ctx, registered.ID)
+	if err != nil {
+		t.Fatalf("GetCurrentUser() error = %v", err)
+	}
+	if got.Email != "me@example.com" {
+		t.Errorf("GetCurrentUser() email = %q, want %q", got.Email, "me@example.com")
+	}
+
+	if _, err := svc.GetCurrentUser(ctx, ids.New()); sharederrors.KindOf(err) != sharederrors.KindNotFound {
+		t.Fatalf("GetCurrentUser() for unknown id: got err = %v, want KindNotFound", err)
 	}
 }

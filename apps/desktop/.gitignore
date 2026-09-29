@@ -1,0 +1,26 @@
+# Build trees (CMake presets write to build/<preset>/, Conan generators too)
+build/
+cmake-build-*/
+out/
+
+# Local-only CMake/Conan state
+CMakeUserPresets.json
+compile_commands.json
+.conan2/
+conan.lock
+
+# Qt Creator / IDE
+*.user
+*.user.*
+.qtc_clangd/
+.qtcreator/
+
+# Doxygen output
+docs/generated/
+
+# Packaging output
+packaging/**/build/
+*.msix
+*.appimage
+*.AppImage
+*.flatpak

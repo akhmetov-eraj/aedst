@@ -1,0 +1,59 @@
+module AedstDesignSystem
+singleton Theme 1.0 Theme.qml
+
+# Layout
+AedstCard 1.0 AedstCard.qml
+AedstSeparator 1.0 AedstSeparator.qml
+AedstAspectRatio 1.0 AedstAspectRatio.qml
+AedstScrollArea 1.0 AedstScrollArea.qml
+AedstCollapsible 1.0 AedstCollapsible.qml
+
+# Actions
+AedstButton 1.0 AedstButton.qml
+AedstIconButton 1.0 AedstIconButton.qml
+AedstToggleButton 1.0 AedstToggleButton.qml
+AedstToggleGroup 1.0 AedstToggleGroup.qml
+
+# Forms
+AedstTextField 1.0 AedstTextField.qml
+AedstTextArea 1.0 AedstTextArea.qml
+AedstLabel 1.0 AedstLabel.qml
+AedstCheckBox 1.0 AedstCheckBox.qml
+AedstSwitch 1.0 AedstSwitch.qml
+AedstRadioButton 1.0 AedstRadioButton.qml
+AedstRadioGroup 1.0 AedstRadioGroup.qml
+AedstComboBox 1.0 AedstComboBox.qml
+AedstSearchableComboBox 1.0 AedstSearchableComboBox.qml
+AedstSlider 1.0 AedstSlider.qml
+AedstOtpInput 1.0 AedstOtpInput.qml
+
+# Feedback
+AedstAlert 1.0 AedstAlert.qml
+AedstAlertDialog 1.0 AedstAlertDialog.qml
+AedstToast 1.0 AedstToast.qml
+AedstProgressBar 1.0 AedstProgressBar.qml
+AedstCircularProgress 1.0 AedstCircularProgress.qml
+AedstSkeleton 1.0 AedstSkeleton.qml
+AedstBadge 1.0 AedstBadge.qml
+AedstToolTip 1.0 AedstToolTip.qml
+
+# Overlay / navigation
+AedstDialog 1.0 AedstDialog.qml
+AedstDrawer 1.0 AedstDrawer.qml
+AedstPopover 1.0 AedstPopover.qml
+AedstDropdownMenu 1.0 AedstDropdownMenu.qml
+AedstContextMenu 1.0 AedstContextMenu.qml
+AedstMenuBar 1.0 AedstMenuBar.qml
+AedstTabBar 1.0 AedstTabBar.qml
+AedstSearchableList 1.0 AedstSearchableList.qml
+AedstHoverCard 1.0 AedstHoverCard.qml
+
+# Data display
+AedstAvatar 1.0 AedstAvatar.qml
+AedstTableView 1.0 AedstTableView.qml
+AedstCalendar 1.0 AedstCalendar.qml
+AedstCarousel 1.0 AedstCarousel.qml
+AedstAccordion 1.0 AedstAccordion.qml
+AedstBreadcrumb 1.0 AedstBreadcrumb.qml
+AedstPagination 1.0 AedstPagination.qml
+AedstChart 1.0 AedstChart.qml

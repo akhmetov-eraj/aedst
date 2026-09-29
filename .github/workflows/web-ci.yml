@@ -37,6 +37,9 @@ jobs:
       - name: Biome (lint + format check)
         run: pnpm lint
 
+      - name: Feature module boundaries
+        run: pnpm check:feature-boundaries
+
   typecheck:
     runs-on: ubuntu-latest
     steps:
@@ -62,7 +65,7 @@ jobs:
         run: git diff --exit-code -- src/shared/api/connect/generated || (echo "::error::apps/web/src/shared/api/connect/generated is out of date relative to apps/server/api/proto — run 'pnpm connect:generate' and commit the result" && exit 1)
 
       - name: Type check
-        run: npx tsc --noEmit -p tsconfig.json
+        run: pnpm typecheck
 
   test:
     runs-on: ubuntu-latest
@@ -112,7 +115,7 @@ jobs:
 
       - name: Build
         env:
-          NEXT_PUBLIC_API_URL: http://localhost:8080
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
         run: pnpm build
 
   e2e:
@@ -146,7 +149,7 @@ jobs:
       - name: Playwright e2e tests
         env:
           CI: "1"
-          NEXT_PUBLIC_API_URL: http://localhost:8080
+          NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
         run: pnpm test:e2e:prod
 
       - name: Upload Playwright report

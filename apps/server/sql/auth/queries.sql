@@ -7,6 +7,11 @@ SELECT user_id, email, password_hash, created_at
 FROM auth.credentials
 WHERE email = $1;
 
+-- name: FindCredentialByUserID :one
+SELECT user_id, email, password_hash, created_at
+FROM auth.credentials
+WHERE user_id = $1;
+
 -- name: CreateSession :exec
 INSERT INTO auth.sessions (id, user_id, device_id, refresh_token_hash, expires_at, created_at)
 VALUES ($1, $2, $3, $4, $5, $6);

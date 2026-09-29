@@ -1,0 +1,159 @@
+name: apple-ci
+
+on:
+  push:
+    branches: [main]
+    paths: ["apps/apple/**", ".github/workflows/apple-ci.yml"]
+  pull_request:
+    paths: ["apps/apple/**", ".github/workflows/apple-ci.yml"]
+
+concurrency:
+  group: apple-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/apple
+
+env:
+  # `lint`/`test` below don't need the generated Connect client — the local
+  # Swift packages compile without it (see each feature's
+  # `ConnectAuthRemoteDataSource`-style pending-codegen file). Codegen itself
+  # is verified by the `connect-generate-check` job.
+  DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+  SWIFTLINT_VERSION: "0.57.0"
+
+jobs:
+  # Mirrors apps/web's `pnpm connect:generate && git diff --exit-code` job
+  # (see web-ci.yml's `typecheck` job): regenerate the Connect-Swift stubs
+  # from apps/server/api/proto and fail if that changes anything checked in.
+  # Like apps/web's generated/ dir, AedstNetwork/Sources/AedstNetwork/Generated
+  # is gitignored (nothing is committed there), so `git diff --exit-code` is
+  # a safety net rather than a real drift check on its own — the meaningful
+  # check here is the `swift build` below, which proves the stubs buf just
+  # generated from the *current* protos actually compile against AedstNetwork.
+  # buf itself needs no special auth for the public protovalidate BSR module
+  # (server-ci.yml's gen-check job does the same `buf generate` fine on
+  # ubuntu-latest) — a real `xcodebuild` of the app targets is a separate,
+  # bigger gap (see the `xcodegen-validate` job's comment below), not a
+  # buf/codegen limitation.
+  connect-generate-check:
+    runs-on: macos-14
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      SWIFT_PROTOBUF_VERSION: "1.28.0"
+      CONNECT_SWIFT_VERSION: "0.13.0"
+      # Keep in sync with apps/server-ci.yml's BUF_VERSION.
+      BUF_VERSION: "1.73.0"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ../server/go.mod
+
+      - name: Install buf
+        run: go install github.com/bufbuild/buf/cmd/buf@v${{ env.BUF_VERSION }}
+
+      # protoc-gen-swift and protoc-gen-connect-swift have no Homebrew
+      # formula; build them from the same tagged sources AedstNetwork's
+      # Package.swift already pins (see its `dependencies:`), the Swift-side
+      # equivalent of `go install`/npm for the other platforms' buf plugins.
+      - name: Build protoc-gen-swift
+        run: |
+          git clone --depth 1 --branch "${SWIFT_PROTOBUF_VERSION}" https://github.com/apple/swift-protobuf.git /tmp/swift-protobuf
+          swift build -c release --package-path /tmp/swift-protobuf --product protoc-gen-swift
+          echo "/tmp/swift-protobuf/.build/release" >> "$GITHUB_PATH"
+
+      - name: Build protoc-gen-connect-swift
+        run: |
+          git clone --depth 1 --branch "${CONNECT_SWIFT_VERSION}" https://github.com/connectrpc/connect-swift.git /tmp/connect-swift
+          swift build -c release --package-path /tmp/connect-swift --product protoc-gen-connect-swift
+          echo "/tmp/connect-swift/.build/release" >> "$GITHUB_PATH"
+
+      - name: go env PATH
+        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+      - name: Generate Connect-Swift client stubs
+        run: make generate
+
+      - name: Verify generated stubs are up to date
+        run: git diff --exit-code -- Core/AedstNetwork/Sources/AedstNetwork/Generated || (echo "::error::apps/apple's Generated stubs are out of date relative to apps/server/api/proto — run 'make generate' from apps/apple" && exit 1)
+
+      - name: swift build (AedstNetwork, with real generated stubs)
+        working-directory: Core/AedstNetwork
+        run: swift build
+
+  lint:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SwiftLint (pinned)
+        run: |
+          curl -sSL -o swiftlint.zip \
+            "https://github.com/realm/SwiftLint/releases/download/${SWIFTLINT_VERSION}/portable_swiftlint.zip"
+          unzip -o swiftlint.zip -d "$RUNNER_TEMP/swiftlint"
+          echo "$RUNNER_TEMP/swiftlint" >> "$GITHUB_PATH"
+
+      - name: SwiftLint
+        run: swiftlint lint --config .swiftlint.yml --strict
+
+      - name: Feature package boundaries
+        run: ./scripts/check-feature-boundaries.sh
+
+  test:
+    runs-on: macos-14
+    strategy:
+      matrix:
+        package:
+          - Core/AedstCore
+          - Core/AedstNetwork
+          - Core/AedstPersistence
+          - Core/AedstDesignSystem
+          - Core/AedstNavigation
+          - Core/AedstAnalytics
+          - Features/Auth
+          - App/Shared
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            apps/apple/${{ matrix.package }}/.build
+            ~/Library/Caches/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ matrix.package }}-${{ hashFiles(format('apps/apple/{0}/Package.resolved', matrix.package)) }}
+          restore-keys: |
+            spm-${{ runner.os }}-${{ matrix.package }}-
+
+      - name: swift test (${{ matrix.package }})
+        working-directory: apps/apple/${{ matrix.package }}
+        run: swift test
+
+  # xcodegen-validate catches project.yml / target-graph mistakes (unknown
+  # package refs, bad target settings) without needing the generated Connect
+  # stubs — it only runs `xcodegen generate`, not a real `xcodebuild`.
+  #
+  # Building the .xcodeproj app targets and archiving each app is a further
+  # step beyond this: it needs a full Xcode project build (simulator/device
+  # provisioning, signing config), not just `swift build` on the local
+  # packages that `connect-generate-check`/`test` already cover — intentionally
+  # not wired up here yet, same reasoning as apps/android's instrumented-tests
+  # gap (see apps/android/README.md's "Distribution" note). Extend this job
+  # with `xcodebuild build -scheme App_iOS -destination
+  # 'platform=iOS Simulator,name=iPhone 15'` (and the macOS equivalent) when
+  # that's prioritized.
+  xcodegen-validate:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      # Homebrew core doesn't keep versioned formulas for xcodegen, unlike
+      # SwiftLint's GitHub release zips above — this installs whatever
+      # brew's current formula resolves to.
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: xcodegen generate
+        run: xcodegen generate

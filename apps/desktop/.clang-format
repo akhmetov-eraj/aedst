@@ -1,0 +1,42 @@
+---
+Language: Cpp
+BasedOnStyle: LLVM
+Standard: Latest
+IndentWidth: 4
+ContinuationIndentWidth: 4
+ColumnLimit: 120
+AccessModifierOffset: -4
+NamespaceIndentation: None
+FixNamespaceComments: true
+BreakBeforeBraces: Attach
+PointerAlignment: Left
+ReferenceAlignment: Left
+AllowShortFunctionsOnASingleLine: Inline
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortLambdasOnASingleLine: All
+AllowShortBlocksOnASingleLine: Never
+AllowShortEnumsOnASingleLine: false
+AlwaysBreakTemplateDeclarations: Yes
+BreakConstructorInitializers: BeforeColon
+PackConstructorInitializers: NextLine
+Cpp11BracedListStyle: true
+InsertBraces: true
+SeparateDefinitionBlocks: Always
+EmptyLineBeforeAccessModifier: LogicalBlock
+SortIncludes: CaseSensitive
+IncludeBlocks: Regroup
+IncludeCategories:
+  # Project headers (feature-relative or aedst/...)
+  - Regex: '^"'
+    Priority: 1
+  # Qt
+  - Regex: '^<Q[A-Za-z]'
+    Priority: 2
+  # Third-party
+  - Regex: '^<(spdlog|fmt|gtest|gmock|openssl|sqlite3|boost)'
+    Priority: 3
+  # Standard library / platform
+  - Regex: '^<'
+    Priority: 4
+...

@@ -30,30 +30,60 @@ func NewService(credentials CredentialRepository, sessions SessionRepository, to
 	return &Service{credentials: credentials, sessions: sessions, tokens: tokens, hasher: hasher, clock: clock}
 }
 
-// CreateCredential stores a new credential for userID. Called by the users
-// module's RegisterUser flow in-process (users depends on auth — see
-// docs/modules.md) after it has decided the email is available.
-func (s *Service) CreateCredential(ctx context.Context, userID ids.ID, email, password string) error {
-	hash, err := s.hasher.Hash(password)
-	if err != nil {
-		return sharederrors.Wrap("auth.CreateCredential", err)
+// Register creates a new credential and its first session in one step. This
+// used to be split across two modules — a separate users module called
+// CreateCredential then IssueSession in-process — before that module was
+// merged into auth (see docs/decisions/0007-merge-users-into-auth.md); the
+// two-step shape is gone; the two-transaction risk it existed to explain
+// (credential committed, identity insert fails) went with it, since there's
+// now only one row to write.
+func (s *Service) Register(ctx context.Context, email, password, deviceID string) (User, TokenPair, error) {
+	if _, err := s.credentials.FindByEmail(ctx, email); err == nil {
+		return User{}, TokenPair{}, sharederrors.AlreadyExists("auth.Register", "email already registered")
 	}
 
-	err = s.credentials.Create(ctx, domain.Credential{
-		UserID:       userID,
+	hash, err := s.hasher.Hash(password)
+	if err != nil {
+		return User{}, TokenPair{}, sharederrors.Wrap("auth.Register", err)
+	}
+
+	cred := domain.Credential{
+		UserID:       ids.New(),
 		Email:        email,
 		PasswordHash: hash,
 		CreatedAt:    s.clock.Now(),
-	})
-	if err != nil {
-		return err
 	}
-	return nil
+	if err := s.credentials.Create(ctx, cred); err != nil {
+		return User{}, TokenPair{}, err
+	}
+
+	pair, err := s.IssueSession(ctx, cred.UserID, deviceID)
+	if err != nil {
+		return User{}, TokenPair{}, err
+	}
+
+	return toUser(cred), pair, nil
+}
+
+// GetCurrentUser looks up the identity behind userID, which callers derive
+// from the authenticated request context (platform/auth.FromContext) —
+// never from a request field (see api/proto/aedst/auth/v1/auth.proto's
+// GetCurrentUser doc comment on why that's an IDOR risk, not a convenience).
+func (s *Service) GetCurrentUser(ctx context.Context, userID ids.ID) (User, error) {
+	cred, err := s.credentials.FindByUserID(ctx, userID)
+	if err != nil {
+		return User{}, err
+	}
+	return toUser(cred), nil
+}
+
+func toUser(cred domain.Credential) User {
+	return User{ID: cred.UserID, Email: cred.Email, CreatedAt: cred.CreatedAt}
 }
 
 // IssueSession creates a new session for userID/deviceID and returns the
-// initial token pair. Called by users.RegisterUser right after
-// CreateCredential, and by Login below.
+// initial token pair. Called by Register right after creating the
+// credential, and by Login below.
 func (s *Service) IssueSession(ctx context.Context, userID ids.ID, deviceID string) (TokenPair, error) {
 	sessionID := ids.New()
 

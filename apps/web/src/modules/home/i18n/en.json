@@ -1,14 +1,4 @@
 {
   "title": "Hello, World!",
-  "description": "Welcome to the application.",
-  "auth": {
-    "title": "Sign in",
-    "emailLabel": "Email",
-    "passwordLabel": "Password",
-    "invalidEmail": "Enter a valid email address.",
-    "invalidPassword": "Enter your password.",
-    "submit": "Log in",
-    "success": "Signed in as {userId}.",
-    "error": "Sign-in failed: {message}"
-  }
+  "description": "Welcome to the application."
 }

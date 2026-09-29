@@ -1,0 +1,12 @@
+#!/bin/sh
+# AppImage entry point. linuxdeploy-plugin-qt also writes a qt.conf next to the
+# binary; these variables are the belt-and-braces fallback for hosts whose own
+# QT_* environment would otherwise leak in.
+HERE="$(dirname "$(readlink -f "$0")")"
+
+export LD_LIBRARY_PATH="${HERE}/usr/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+export QT_PLUGIN_PATH="${HERE}/usr/plugins"
+export QML_IMPORT_PATH="${HERE}/usr/qml"
+export XDG_DATA_DIRS="${HERE}/usr/share${XDG_DATA_DIRS:+:${XDG_DATA_DIRS}}"
+
+exec "${HERE}/usr/bin/aedst-desktop" "$@"

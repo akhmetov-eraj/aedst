@@ -1,0 +1,59 @@
+---
+# Run against compile_commands.json from a configured preset, e.g.
+#   run-clang-tidy -p build/debug -quiet 'Modules/|App/'
+# moc/rcc output lives under build/**/*_autogen and is excluded by HeaderFilterRegex
+# plus the path filter above.
+Checks: >
+  -*,
+  bugprone-*,
+  clang-analyzer-*,
+  cppcoreguidelines-*,
+  modernize-*,
+  performance-*,
+  readability-braces-around-statements,
+  readability-const-return-type,
+  readability-container-size-empty,
+  readability-else-after-return,
+  readability-identifier-naming,
+  readability-make-member-function-const,
+  readability-redundant-*,
+  -bugprone-easily-swappable-parameters,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
+  -cppcoreguidelines-pro-type-reinterpret-cast,
+  -modernize-use-trailing-return-type,
+  -modernize-use-designated-initializers
+
+# Why the disabled checks:
+# - cppcoreguidelines-owning-memory: Qt's ownership model is parent/child
+#   (`new QObject(parent)` is owned by the parent). gsl::owner<> can't express
+#   that, so every idiomatic Qt allocation would be flagged.
+# - cppcoreguidelines-pro-bounds-array-to-pointer-decay: fires inside Q_OBJECT,
+#   Q_PROPERTY, qDebug() and spdlog format-string macros we don't control.
+# - cppcoreguidelines-pro-type-reinterpret-cast: the only reinterpret_casts are
+#   at C API boundaries (sqlite3 text columns, OpenSSL/DPAPI byte buffers).
+# - bugprone-easily-swappable-parameters: noisy for DTO-shaped constructors.
+# - cppcoreguidelines-avoid-magic-numbers: theme tokens and HTTP status codes.
+# - modernize-use-trailing-return-type: style preference, not a defect.
+WarningsAsErrors: ''
+HeaderFilterRegex: '.*/(Modules|App)/.*\.hpp$'
+FormatStyle: file
+CheckOptions:
+  - key: readability-identifier-naming.NamespaceCase
+    value: lower_case
+  - key: readability-identifier-naming.ClassCase
+    value: CamelCase
+  - key: readability-identifier-naming.StructCase
+    value: CamelCase
+  - key: readability-identifier-naming.FunctionCase
+    value: camelBack
+  - key: readability-identifier-naming.PrivateMemberSuffix
+    value: _
+  - key: readability-identifier-naming.ConstexprVariablePrefix
+    value: k
+  - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
+    value: true
+  - key: performance-unnecessary-value-param.AllowedTypes
+    value: 'std::function;.*Completion'
+...

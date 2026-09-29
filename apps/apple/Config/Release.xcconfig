@@ -1,0 +1,5 @@
+#include "Base.xcconfig"
+
+AEDST_API_ENVIRONMENT = production
+ONLY_ACTIVE_ARCH = NO
+VALIDATE_PRODUCT = YES

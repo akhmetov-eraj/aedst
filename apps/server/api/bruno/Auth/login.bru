@@ -1,0 +1,42 @@
+meta {
+  name: Login
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/aedst.auth.v1.AuthService/Login
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "qa+{{runId}}@example.com",
+    "password": "correct-horse-battery-staple",
+    "deviceId": "bruno-{{runId}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("userId", res.body.userId);
+    bru.setVar("accessToken", res.body.tokens.accessToken);
+    bru.setVar("refreshToken", res.body.tokens.refreshToken);
+  }
+}
+
+docs {
+  Public — bypasses AuthInterceptor. Logs in the user `Register` created
+  (same `runId`-derived email) and refreshes `userId`/`accessToken`/
+  `refreshToken`. Run `Register` first in a fresh environment — this fails
+  with `not_found`/401-mapped error if that user doesn't exist yet.
+}

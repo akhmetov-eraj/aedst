@@ -1,0 +1,16 @@
+<resources>
+    <string name="common_app_name">iman</string>
+    <string name="common_app_description">iman ga kiring.</string>
+
+    <string name="common_action_submit">Yuborish</string>
+    <string name="common_action_cancel">Bekor qilish</string>
+    <string name="common_action_save">Saqlash</string>
+    <string name="common_action_back">Orqaga</string>
+    <string name="common_action_go_home">Bosh sahifaga</string>
+    <string name="common_action_try_again">Qaytadan urinib ko\'ring</string>
+
+    <string name="common_error_generic">Xatolik yuz berdi. Qaytadan urinib ko\'ring.</string>
+    <string name="common_error_title">Xatolik yuz berdi</string>
+    <string name="common_error_not_found_title">Sahifa topilmadi</string>
+    <string name="common_error_not_found_description">Siz izlagan sahifa mavjud emas yoki koʻchirilgan.</string>
+</resources>

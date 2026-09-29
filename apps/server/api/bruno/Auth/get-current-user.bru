@@ -1,0 +1,31 @@
+meta {
+  name: Get Current User
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/aedst.auth.v1.AuthService/GetCurrentUser
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+  Authorization: Bearer {{accessToken}}
+}
+
+body:json {
+  {}
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Requires `Authorization: Bearer {{accessToken}}`. Takes no id — the
+  caller's identity comes from the bearer token
+  (internal/platform/auth.FromContext), never from the request body. Run
+  `Register` or `Login` first.
+}

@@ -1,5 +1,6 @@
 {
   "appName": "iman",
+  "appDescription": "iman ga kiring.",
   "actions": {
     "submit": "Yuborish",
     "cancel": "Bekor qilish",

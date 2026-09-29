@@ -1,0 +1,24 @@
+<resources>
+    <string name="auth_login_title">Sign in</string>
+    <string name="auth_login_email_label">Email</string>
+    <string name="auth_login_password_label">Password</string>
+    <string name="auth_login_invalid_email">Enter a valid email address.</string>
+    <string name="auth_login_invalid_password">Enter your password.</string>
+    <string name="auth_login_submit">Log in</string>
+    <string name="auth_login_switch_prompt">Don\'t have an account?</string>
+    <string name="auth_login_switch_action">Create one</string>
+    <string name="auth_login_error">Sign-in failed: %1$s</string>
+
+    <string name="auth_register_title">Create account</string>
+    <string name="auth_register_email_label">Email</string>
+    <string name="auth_register_password_label">Password</string>
+    <string name="auth_register_invalid_email">Enter a valid email address.</string>
+    <string name="auth_register_password_too_short">Use at least 8 characters.</string>
+    <string name="auth_register_submit">Create account</string>
+    <string name="auth_register_switch_prompt">Already have an account?</string>
+    <string name="auth_register_switch_action">Sign in</string>
+    <string name="auth_register_error">Registration failed: %1$s</string>
+
+    <string name="auth_sign_out">Sign out</string>
+    <string name="auth_signed_in_as">Signed in as %1$s</string>
+</resources>

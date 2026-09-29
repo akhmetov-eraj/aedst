@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AEDST
+Comment=AEDST desktop client
+Exec=aedst-desktop
+Icon=com.aedst.Desktop
+Terminal=false
+Categories=Network;Office;
+X-AppImage-Version=0.1.0

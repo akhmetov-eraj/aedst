@@ -1,0 +1,7 @@
+overrides:
+  # nextra-theme-docs@4.6.1's <Layout> throws "expected nonoptional, received
+  # undefined -> at children" on zod >=4.4.0 (upstream: shuding/nextra#4989,
+  # #5008, #5036 — fix landed for #4990 but not yet in a published 4.x
+  # release as of this writing). Pin below the regression until a fixed
+  # nextra-theme-docs release lands, then drop this override.
+  zod: 4.3.6

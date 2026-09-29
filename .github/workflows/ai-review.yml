@@ -1,0 +1,36 @@
+name: ai-review-server
+
+on:
+  pull_request:
+    paths: ["apps/server/**"]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+concurrency:
+  group: ai-review-server-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          claude_args: --max-turns 30
+          prompt: |
+            Review this PR's changes under apps/server/.
+
+            First read apps/server/AGENTS.md for the module and layering
+            rules. Then apply the checklists in
+            apps/server/.claude/agents/architect-reviewer.md and
+            apps/server/.claude/agents/security-auditor.md against the diff.
+
+            Post your findings as a PR review. If nothing in either
+            checklist applies, approve with no comments — don't invent
+            issues to have something to say.

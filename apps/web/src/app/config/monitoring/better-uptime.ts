@@ -1,4 +1,4 @@
-import { env } from "@/app/config/env";
+import { clientEnv } from "@/shared/lib/env/client";
 
 /**
  * Better Uptime has no SDK — monitoring is just a periodic GET to a
@@ -7,9 +7,11 @@ import { env } from "@/app/config/env";
  * it's a no-op without it so this stays safe to call unconditionally.
  */
 export async function sendBetterUptimeHeartbeat() {
-  if (!env.NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL) {
+  if (!clientEnv.NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL) {
     return;
   }
 
-  await fetch(env.NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL, { method: "GET" });
+  await fetch(clientEnv.NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL, {
+    method: "GET",
+  });
 }

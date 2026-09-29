@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=AEDST
+GenericName=AEDST Client
+Comment=AEDST desktop client
+Exec=aedst-desktop
+Icon=com.aedst.Desktop
+Terminal=false
+Categories=Network;Office;
+StartupWMClass=aedst-desktop

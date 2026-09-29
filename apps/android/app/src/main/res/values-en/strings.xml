@@ -1,0 +1,16 @@
+<resources>
+    <string name="common_app_name">iman</string>
+    <string name="common_app_description">Sign in to iman.</string>
+
+    <string name="common_action_submit">Submit</string>
+    <string name="common_action_cancel">Cancel</string>
+    <string name="common_action_save">Save</string>
+    <string name="common_action_back">Back</string>
+    <string name="common_action_go_home">Go home</string>
+    <string name="common_action_try_again">Try again</string>
+
+    <string name="common_error_generic">Something went wrong. Please try again.</string>
+    <string name="common_error_title">Something went wrong</string>
+    <string name="common_error_not_found_title">Page not found</string>
+    <string name="common_error_not_found_description">The page you\'re looking for doesn\'t exist or has been moved.</string>
+</resources>

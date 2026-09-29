@@ -1,0 +1,44 @@
+# Doxygen config for apps/desktop. Run from apps/desktop: `doxygen Doxyfile`
+# Only non-default values are listed.
+
+PROJECT_NAME           = "AEDST Desktop"
+PROJECT_NUMBER         = 0.1.0
+PROJECT_BRIEF          = "Qt 6 / QML desktop client — Core libraries and Features"
+OUTPUT_DIRECTORY       = docs/generated
+CREATE_SUBDIRS         = NO
+
+INPUT                  = Modules App README.md
+USE_MDFILE_AS_MAINPAGE = README.md
+RECURSIVE              = YES
+FILE_PATTERNS          = *.hpp *.cpp *.md
+EXCLUDE_PATTERNS       = */tests/* */build/* */*_autogen/*
+EXCLUDE_SYMBOLS        = detail
+
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = NO
+EXTRACT_STATIC         = YES
+HIDE_UNDOC_MEMBERS     = NO
+JAVADOC_AUTOBRIEF      = YES
+BUILTIN_STL_SUPPORT    = YES
+
+# Make Qt's moc macros invisible to the parser so class bodies document cleanly.
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = "Q_OBJECT=" \
+                         "Q_GADGET=" \
+                         "Q_INVOKABLE=" \
+                         "Q_PROPERTY(x)=" \
+                         "signals=public" \
+                         "Q_SIGNALS=public" \
+                         "slots=" \
+                         "Q_SLOTS="
+
+GENERATE_HTML          = YES
+HTML_OUTPUT            = html
+GENERATE_LATEX         = NO
+GENERATE_TREEVIEW      = YES
+
+QUIET                  = YES
+WARN_IF_UNDOCUMENTED   = NO
+WARN_NO_PARAMDOC       = NO

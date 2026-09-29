@@ -1,0 +1,42 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "packageRules": [
+    {
+      "matchManagers": ["github-actions"],
+      "groupName": "GitHub Actions",
+      "commitMessagePrefix": "chore(ci):"
+    },
+    {
+      "matchFileNames": ["apps/server/**"],
+      "groupName": "server (Go)",
+      "commitMessagePrefix": "chore(server):"
+    },
+    {
+      "matchFileNames": ["apps/web/**"],
+      "groupName": "web (Next.js)",
+      "commitMessagePrefix": "chore(web):"
+    },
+    {
+      "matchFileNames": ["apps/android/**"],
+      "groupName": "android (Gradle)",
+      "commitMessagePrefix": "chore(android):"
+    },
+    {
+      "matchFileNames": ["apps/apple/**"],
+      "groupName": "apple (SwiftPM)",
+      "commitMessagePrefix": "chore(apple):"
+    },
+    {
+      "matchFileNames": ["apps/desktop/**"],
+      "groupName": "desktop (CMake/Conan)",
+      "commitMessagePrefix": "chore(desktop):"
+    }
+  ],
+  "gradle": {
+    "fileMatch": ["apps/android/.*\\.gradle\\.kts$", "apps/android/gradle/libs\\.versions\\.toml$"]
+  },
+  "swift": {
+    "fileMatch": ["apps/apple/.*Package\\.swift$"]
+  }
+}

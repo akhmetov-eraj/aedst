@@ -13,7 +13,11 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
-const modulePrefix = "github.com/aedst/server/internal/modules/"
+const (
+	modulePrefix    = "github.com/aedst/server/internal/modules/"
+	platformPrefix  = "github.com/aedst/server/internal/platform/"
+	natsPackagePath = "github.com/nats-io/nats.go"
+)
 
 func TestModuleBoundaries(t *testing.T) {
 	pkgs := loadPackages(t)
@@ -55,6 +59,30 @@ func TestDomainDoesNotImportInfrastructure(t *testing.T) {
 		for _, imp := range pkg.Imports {
 			if moduleOf(imp.PkgPath) == module && layerOf(imp.PkgPath, module) == "infrastructure" {
 				t.Errorf("layering violation: %s (domain) imports %s (infrastructure)", pkg.PkgPath, imp.PkgPath)
+			}
+		}
+	}
+}
+
+// TestOnlyMessagingImportsNATSDirectly enforces that internal/platform/messaging
+// is the sole owner of the NATS client library — every other package depends
+// on messaging.Publisher/Subscriber (or internal/platform/outbox's own
+// Publisher interface) instead, so the broker is swappable behind those
+// interfaces without touching module code (see docs/events.md).
+func TestOnlyMessagingImportsNATSDirectly(t *testing.T) {
+	pkgs := loadPackages(t)
+
+	for _, pkg := range pkgs {
+		if strings.HasPrefix(pkg.PkgPath, platformPrefix+"messaging") {
+			continue
+		}
+
+		for path := range pkg.Imports {
+			if path == natsPackagePath || strings.HasPrefix(path, natsPackagePath+"/") {
+				t.Errorf(
+					"boundary violation: %s imports %s directly — only internal/platform/messaging may depend on the NATS client; everything else depends on its Publisher/Subscriber interfaces",
+					pkg.PkgPath, path,
+				)
 			}
 		}
 	}

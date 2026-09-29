@@ -1,5 +1,6 @@
 {
   "appName": "iman",
+  "appDescription": "Ба iman ворид шавед.",
   "actions": {
     "submit": "Фиристодан",
     "cancel": "Бекор кардан",

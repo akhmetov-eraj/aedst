@@ -3,18 +3,46 @@ syntax = "proto3";
 package aedst.auth.v1;
 
 import "buf/validate/validate.proto";
+import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/aedst/server/gen/go/aedst/auth/v1;authv1";
 
-// AuthService is the auth module's public API boundary: it owns credentials
-// and sessions, and is the only module that issues or verifies tokens (see
-// docs/modules.md and platform/auth). Registration lives in UsersService,
-// which calls this module's api/ package in-process to create the
-// credential and the initial session.
+// AuthService is the auth module's public API boundary (see docs/modules.md
+// and docs/decisions/0006-module-boundaries.md): it owns credentials,
+// sessions, and the core identity record, and is the only module that
+// issues or verifies tokens. Registration used to live in a separate
+// UsersService that called into auth in-process; that module was removed
+// (see docs/decisions/0007-merge-users-into-auth.md) once nothing else in
+// the product needed a standalone user directory — auth now owns identity
+// end to end.
 service AuthService {
+  rpc Register(RegisterRequest) returns (RegisterResponse);
   rpc Login(LoginRequest) returns (LoginResponse);
   rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse);
   rpc Logout(LogoutRequest) returns (LogoutResponse);
+  // GetCurrentUser derives identity from the authenticated request's bearer
+  // token (internal/platform/httpserver's AuthInterceptor) — the request
+  // carries no user id. A client-supplied id here would be exactly the kind
+  // of IDOR bug modules/tasks' ownership check exists to avoid; this RPC
+  // never takes one to begin with.
+  rpc GetCurrentUser(GetCurrentUserRequest) returns (GetCurrentUserResponse);
+}
+
+message User {
+  string id = 1;
+  string email = 2;
+  google.protobuf.Timestamp created_at = 3;
+}
+
+message RegisterRequest {
+  string email = 1 [(buf.validate.field).string.email = true];
+  string password = 2 [(buf.validate.field).string.min_len = 8];
+  string device_id = 3 [(buf.validate.field).string.min_len = 1];
+}
+
+message RegisterResponse {
+  User user = 1;
+  TokenPair tokens = 2;
 }
 
 message LoginRequest {
@@ -41,6 +69,12 @@ message LogoutRequest {
 }
 
 message LogoutResponse {}
+
+message GetCurrentUserRequest {}
+
+message GetCurrentUserResponse {
+  User user = 1;
+}
 
 message TokenPair {
   string access_token = 1;

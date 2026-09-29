@@ -1,0 +1,26 @@
+{
+  "login": {
+    "title": "Kirish",
+    "emailLabel": "Email",
+    "passwordLabel": "Parol",
+    "invalidEmail": "To'g'ri email manzilini kiriting.",
+    "invalidPassword": "Parolni kiriting.",
+    "submit": "Kirish",
+    "switchPrompt": "Hisobingiz yo'qmi?",
+    "switchAction": "Yaratish",
+    "error": "Kirish muvaffaqiyatsiz: {message}"
+  },
+  "register": {
+    "title": "Hisob yaratish",
+    "emailLabel": "Email",
+    "passwordLabel": "Parol",
+    "invalidEmail": "To'g'ri email manzilini kiriting.",
+    "passwordTooShort": "Kamida 8 ta belgi ishlating.",
+    "submit": "Hisob yaratish",
+    "switchPrompt": "Hisobingiz bormi?",
+    "switchAction": "Kirish",
+    "error": "Ro'yxatdan o'tish muvaffaqiyatsiz: {message}"
+  },
+  "signOut": "Chiqish",
+  "signedInAs": "{email} sifatida kirdingiz"
+}

@@ -8,6 +8,6 @@
  * `import(\`@/modules/${module}/i18n/${locale}.json\`)` in messages.ts
  * stays statically analyzable by the bundler.
  */
-export const i18nModules = ["home"] as const;
+export const i18nModules = ["home", "auth", "tasks"] as const;
 
 export type I18nModule = (typeof i18nModules)[number];

@@ -1,0 +1,17 @@
+# squawk lints every module's goose migrations (`task lint:migrations`) for
+# changes that would lock a large table in production before they reach
+# `task migrate` / `make migrate-up`. Run via Docker (see Taskfile.yml), not
+# a locally installed binary — one less tool version to pin per machine.
+# https://squawkhq.com/docs/rules for the full rule list.
+
+excluded_rules = [
+  "prefer-text-field",
+]
+
+[require-concurrent-index-creation]
+[ban-drop-column]
+[ban-drop-table]
+[ban-drop-not-null]
+[adding-field-with-default]
+[disallowed-unique-constraint]
+[require-concurrent-index-deletion]

@@ -6,6 +6,7 @@ require (
 	buf.build/gen/go/bufbuild/protovalidate/protocolbuffers/go v1.36.12-20260825204119-511051f7f437.2
 	connectrpc.com/connect v1.21.0
 	github.com/caarlos0/env/v11 v11.4.1
+	github.com/coder/websocket v1.8.15
 	github.com/go-chi/chi/v5 v5.3.2
 	github.com/go-chi/cors v1.2.2
 	github.com/go-redis/redis_rate/v10 v10.0.1

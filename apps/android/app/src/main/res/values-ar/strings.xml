@@ -1,0 +1,16 @@
+<resources>
+    <string name="common_app_name">iman</string>
+    <string name="common_app_description">سجّل الدخول إلى iman.</string>
+
+    <string name="common_action_submit">إرسال</string>
+    <string name="common_action_cancel">إلغاء</string>
+    <string name="common_action_save">حفظ</string>
+    <string name="common_action_back">رجوع</string>
+    <string name="common_action_go_home">الذهاب إلى الرئيسية</string>
+    <string name="common_action_try_again">المحاولة مرة أخرى</string>
+
+    <string name="common_error_generic">حدث خطأ ما. يرجى المحاولة مرة أخرى.</string>
+    <string name="common_error_title">حدث خطأ ما</string>
+    <string name="common_error_not_found_title">الصفحة غير موجودة</string>
+    <string name="common_error_not_found_description">الصفحة التي تبحث عنها غير موجودة أو تم نقلها.</string>
+</resources>

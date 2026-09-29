@@ -19,4 +19,14 @@ export default withSentryConfig(withNextIntl(nextConfig), {
     disable: !process.env.SENTRY_AUTH_TOKEN,
   },
   silent: !process.env.CI,
+  // Readable stack traces through Next.js-internal frames too, at the cost
+  // of a longer source-map upload — worth it while this is still a small app.
+  widenClientFileUpload: true,
+  // Routes the client SDK's beacon through our own server instead of
+  // Sentry's ingest domain directly, so ad blockers that block known
+  // Sentry hostnames don't silently drop events. Requires `src/proxy.ts`'s
+  // matcher to exclude this path (next-intl's middleware would otherwise
+  // 30x-redirect it to add a locale prefix, breaking the tunnel) — see the
+  // `monitoring` exclusion there.
+  tunnelRoute: "/monitoring",
 });

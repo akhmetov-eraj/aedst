@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+	"uuid"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -16,7 +17,6 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
-	"uuid"
 
 	platformauth "github.com/aedst/server/internal/platform/auth"
 	"github.com/aedst/server/internal/platform/observability"
@@ -53,6 +53,16 @@ func NewRouter(opts Options) *chi.Mux {
 	if opts.RequestTimeout > 0 {
 		r.Use(chimw.Timeout(opts.RequestTimeout))
 	}
+
+	// Liveness probe: process is up and serving, nothing more — no DB/NATS
+	// check here, so a dependency outage doesn't make an orchestrator
+	// restart otherwise-healthy instances. Used by docker-compose's
+	// healthcheck and CI's load-test job to know when to start sending
+	// traffic (see deployments/docker/docker-compose.yml, Taskfile.yml's
+	// test:load).
+	r.Get("/livez", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
 
 	return r
 }
@@ -100,9 +110,10 @@ func requestIDMiddleware(next http.Handler) http.Handler {
 func recoveryMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := r.Context()
 			defer func() {
 				if rec := recover(); rec != nil {
-					logger.ErrorContext(r.Context(), "panic recovered", slog.Any("panic", rec))
+					logger.ErrorContext(ctx, "panic recovered", slog.Any("panic", rec))
 					http.Error(w, "internal server error", http.StatusInternalServerError)
 				}
 			}()

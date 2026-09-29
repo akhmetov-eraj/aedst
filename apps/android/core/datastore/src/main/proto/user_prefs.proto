@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+option java_package = "com.aedst.core.datastore";
+option java_multiple_files = true;
+
+// One key-value prefs document per device. Feature-specific preferences
+// (e.g. auth's "remember device" flag) add fields here rather than creating
+// a second DataStore file, matching how the server keeps config in one
+// env-driven struct per docs/architecture.md's platform/config.
+message UserPrefs {
+  string last_logged_in_user_id = 1;
+  bool has_completed_onboarding = 2;
+}

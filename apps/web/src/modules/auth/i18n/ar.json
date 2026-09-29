@@ -1,0 +1,26 @@
+{
+  "login": {
+    "title": "تسجيل الدخول",
+    "emailLabel": "البريد الإلكتروني",
+    "passwordLabel": "كلمة المرور",
+    "invalidEmail": "أدخل بريدًا إلكترونيًا صحيحًا.",
+    "invalidPassword": "أدخل كلمة المرور.",
+    "submit": "تسجيل الدخول",
+    "switchPrompt": "ليس لديك حساب؟",
+    "switchAction": "إنشاء حساب",
+    "error": "فشل تسجيل الدخول: {message}"
+  },
+  "register": {
+    "title": "إنشاء حساب",
+    "emailLabel": "البريد الإلكتروني",
+    "passwordLabel": "كلمة المرور",
+    "invalidEmail": "أدخل بريدًا إلكترونيًا صحيحًا.",
+    "passwordTooShort": "استخدم 8 أحرف على الأقل.",
+    "submit": "إنشاء حساب",
+    "switchPrompt": "لديك حساب بالفعل؟",
+    "switchAction": "تسجيل الدخول",
+    "error": "فشل إنشاء الحساب: {message}"
+  },
+  "signOut": "تسجيل الخروج",
+  "signedInAs": "تم تسجيل الدخول باسم {email}"
+}

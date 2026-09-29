@@ -1,0 +1,26 @@
+{
+  "login": {
+    "title": "Ворид шудан",
+    "emailLabel": "Email",
+    "passwordLabel": "Парол",
+    "invalidEmail": "Email-и дурустро ворид кунед.",
+    "invalidPassword": "Паролро ворид кунед.",
+    "submit": "Ворид шудан",
+    "switchPrompt": "Ҳисоб надоред?",
+    "switchAction": "Сохтан",
+    "error": "Ворид шудан ноком монд: {message}"
+  },
+  "register": {
+    "title": "Сохтани ҳисоб",
+    "emailLabel": "Email",
+    "passwordLabel": "Парол",
+    "invalidEmail": "Email-и дурустро ворид кунед.",
+    "passwordTooShort": "Ҳадди ақал 8 аломат истифода баред.",
+    "submit": "Сохтани ҳисоб",
+    "switchPrompt": "Аллакай ҳисоб доред?",
+    "switchAction": "Ворид шудан",
+    "error": "Сохтани ҳисоб ноком монд: {message}"
+  },
+  "signOut": "Баромадан",
+  "signedInAs": "Шумо ҳамчун {email} ворид шудед"
+}

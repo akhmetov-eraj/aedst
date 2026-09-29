@@ -1,0 +1,26 @@
+{
+  "name": "docs",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next --turbopack",
+    "build": "next build",
+    "postbuild": "pagefind --site .next/server/app --output-path public/_pagefind",
+    "start": "next start",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "next": "16.3.6",
+    "nextra": "^4.6.1",
+    "nextra-theme-docs": "^4.6.1",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^26",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "pagefind": "^1.5.2",
+    "typescript": "^5.9.3"
+  }
+}

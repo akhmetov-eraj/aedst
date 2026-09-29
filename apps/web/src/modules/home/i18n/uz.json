@@ -1,14 +1,4 @@
 {
   "title": "Salom, Dunyo!",
-  "description": "Ilovaga xush kelibsiz.",
-  "auth": {
-    "title": "Kirish",
-    "emailLabel": "Elektron pochta",
-    "passwordLabel": "Parol",
-    "invalidEmail": "To'g'ri elektron pochta manzilini kiriting.",
-    "invalidPassword": "Parolingizni kiriting.",
-    "submit": "Kirish",
-    "success": "{userId} sifatida tizimga kirdingiz.",
-    "error": "Kirish amalga oshmadi: {message}"
-  }
+  "description": "Ilovaga xush kelibsiz."
 }

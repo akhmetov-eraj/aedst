@@ -1,0 +1,45 @@
+meta {
+  name: Register
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/aedst.auth.v1.AuthService/Register
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "email": "qa+{{runId}}@example.com",
+    "password": "correct-horse-battery-staple",
+    "deviceId": "bruno-{{runId}}"
+  }
+}
+
+assert {
+  res.status: eq 200
+}
+
+script:post-response {
+  if (res.status === 200) {
+    bru.setVar("userId", res.body.user.id);
+    bru.setVar("accessToken", res.body.tokens.accessToken);
+    bru.setVar("refreshToken", res.body.tokens.refreshToken);
+  }
+}
+
+docs {
+  Public — bypasses AuthInterceptor (see `publicProcedures` in cmd/server/main.go).
+  Creates a fresh user (email/deviceId keyed on the collection's `runId`, set
+  once per Runner run) and captures `userId`/`accessToken`/`refreshToken` for
+  every other request in this collection.
+
+  Run this once per session, or use `Login` instead against a user this
+  request already created.
+}

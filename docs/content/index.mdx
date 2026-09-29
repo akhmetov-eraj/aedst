@@ -1,0 +1,27 @@
+---
+title: Overview
+---
+
+# AEDST docs
+
+Architecture, module boundaries and decision records for the `aedst` monorepo — a Go backend (`apps/server`) plus five clients (`apps/web`, `apps/android`, `apps/apple`, `apps/desktop`) built around one shared principle: **monolith first, boundaries first, microservices later**.
+
+## Start here
+
+- **[Backend architecture](/architecture)** — the modular monolith, its module boundary rule (ADR‑0006), and the extraction path to real services.
+- **[Modules](/modules)** — the full planned module set, which ones are implemented, and their dependency graph.
+- **[Database](/database)** — schema ownership and per-module data boundaries.
+- **[Events](/events)** — NATS JetStream event conventions: subject naming, versioning, idempotency.
+- **[Deployment](/deployment)** — how `aedst-server` ships and sits behind the edge.
+
+## Clients
+
+Each native client translates the backend's module-boundary rule to its own build graph — read the backend architecture first, then the client:
+
+- **[Android architecture](/architecture-android)** — Gradle module graph (`feature/*` → `core/*`).
+- **[Apple architecture](/architecture-apple)** — SwiftPM package graph (`Features/*` → `Core/*`), shared between iOS and macOS.
+- **[Desktop architecture](/architecture-desktop)** — CMake target graph (`Aedst::Feature::*` → `Aedst::*`), C++23 / Qt 6.
+
+## Decision records
+
+**[Decisions](/decisions)** holds the ADRs behind the stack choices referenced throughout these docs — why ConnectRPC over REST/GraphQL, why PostgreSQL, why NATS JetStream, why River for background jobs, and the module-boundary rule itself.

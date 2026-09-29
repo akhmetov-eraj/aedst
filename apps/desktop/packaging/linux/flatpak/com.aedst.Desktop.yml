@@ -1,0 +1,72 @@
+# Flatpak manifest for AEDST Desktop.
+#
+# Build locally (from apps/desktop):
+#   flatpak-builder --force-clean --user --install-deps-from=flathub \
+#     build-flatpak packaging/linux/flatpak/com.aedst.Desktop.yml
+# or via the CMake `package_flatpak` target (cmake/packaging/Linux.cmake).
+#
+# Conan is not used inside the sandbox (flatpak-builder has no network during
+# builds). Qt, OpenSSL and SQLite come from the KDE/freedesktop runtime;
+# spdlog/fmt are built as modules below. The CMake project resolves all of them
+# through the same find_package() names CMakeDeps generates, so nothing in
+# Modules/ needs to know which path produced the dependency.
+#
+# Git sources are pinned by tag only. Before publishing to Flathub, pin each
+# one to its `commit:` as Flathub requires.
+app-id: com.aedst.Desktop
+runtime: org.kde.Platform
+runtime-version: "6.8"
+sdk: org.kde.Sdk
+command: aedst-desktop
+
+finish-args:
+  - --share=ipc
+  - --share=network
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+
+cleanup:
+  - /include
+  - /lib/cmake
+  - /lib/pkgconfig
+  - "*.a"
+
+modules:
+  - name: fmt
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DFMT_TEST=OFF
+      - -DFMT_DOC=OFF
+      - -DBUILD_SHARED_LIBS=ON
+    sources:
+      - type: git
+        url: https://github.com/fmtlib/fmt.git
+        tag: "10.2.1"
+
+  - name: spdlog
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DSPDLOG_FMT_EXTERNAL=ON
+      - -DSPDLOG_BUILD_SHARED=ON
+      - -DSPDLOG_BUILD_EXAMPLE=OFF
+    sources:
+      - type: git
+        url: https://github.com/gabime/spdlog.git
+        tag: v1.14.1
+
+  - name: aedst-desktop
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_TESTING=OFF
+      - -DAEDST_ENABLE_ASIO=OFF
+      - -DAEDST_DEPLOY_QT=OFF
+    sources:
+      - type: dir
+        path: ../../..
+        skip:
+          - build
+          - packaging/linux/flatpak/.flatpak-builder

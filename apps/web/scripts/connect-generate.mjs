@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { spawnSync } from "node:child_process";
 // Generates the Connect-ES TypeScript client stubs used by
 // `src/shared/api/connect/client.ts` straight from apps/server's proto
 // sources (apps/server/api/proto is the single source of truth — nothing is
@@ -11,7 +12,7 @@
 // no separate protoc-gen-connect-es plugin/output for this codegen style.
 //
 // Two `buf generate` invocations are required:
-//   1. The three RPC-bearing protos from apps/server (auth, users, profile).
+//   1. The RPC-bearing protos from apps/server (auth, tasks).
 //      `events.proto` files are deliberately excluded — those describe NATS
 //      messages, not RPCs, and have no business in a browser client.
 //   2. `buf/validate/validate.proto`, the protovalidate dependency that (1)'s
@@ -21,11 +22,17 @@
 import { rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { spawnSync } from "node:child_process";
 
 const rootDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const serverProtoDir = join(rootDir, "..", "server", "api", "proto");
-const generatedDir = join(rootDir, "src", "shared", "api", "connect", "generated");
+const generatedDir = join(
+  rootDir,
+  "src",
+  "shared",
+  "api",
+  "connect",
+  "generated",
+);
 const binDir = join(rootDir, "node_modules", ".bin");
 
 const env = {
@@ -57,11 +64,14 @@ buf([
   "--path",
   join(serverProtoDir, "aedst", "auth", "v1", "auth.proto"),
   "--path",
-  join(serverProtoDir, "aedst", "users", "v1", "users.proto"),
-  "--path",
-  join(serverProtoDir, "aedst", "profile", "v1", "profile.proto"),
+  join(serverProtoDir, "aedst", "tasks", "v1", "tasks.proto"),
 ]);
 
-buf(["generate", "buf.build/bufbuild/protovalidate", "--path", "buf/validate/validate.proto"]);
+buf([
+  "generate",
+  "buf.build/bufbuild/protovalidate",
+  "--path",
+  "buf/validate/validate.proto",
+]);
 
 console.log("Connect-ES stubs generated into src/shared/api/connect/generated");

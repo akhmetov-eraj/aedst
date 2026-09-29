@@ -1,7 +1,7 @@
 # aedst-server
 
-The AEDST backend: a modular monolith (see [../../docs/architecture.md](../../docs/architecture.md)
-for the full architecture and [../../docs/modules.md](../../docs/modules.md) for
+The AEDST backend: a modular monolith (see [../../docs/content/architecture.md](../../docs/content/architecture.md)
+for the full architecture and [../../docs/content/modules.md](../../docs/content/modules.md) for
 the module list and dependency graph).
 
 ## Prerequisites
@@ -26,15 +26,31 @@ Try it against the running server (Connect's protocol accepts plain JSON over
 HTTP/1.1, so `curl` works with no gRPC tooling):
 
 ```bash
-curl -s http://localhost:8080/aedst.users.v1.UsersService/RegisterUser \
+curl -s http://localhost:8080/aedst.auth.v1.AuthService/Register \
   -H 'Content-Type: application/json' \
   -d '{"email":"you@example.com","password":"password123","deviceId":"cli"}'
 ```
 
-That call: creates a credential (auth module), creates the identity record
-(users module), issues the first session/token pair, and publishes
-`UserRegistered` — which the profile module consumes to create a default
-profile (see [../../docs/events.md](../../docs/events.md)).
+That call creates the credential and identity record (both owned by the
+auth module — see [ADR-0007](../../docs/content/decisions/0007-merge-users-into-auth.md))
+and issues the first session/token pair. Try the reference module next:
+
+```bash
+curl -s http://localhost:8080/aedst.tasks.v1.TasksService/CreateTask \
+  -H 'Content-Type: application/json' \
+  -H "Authorization: Bearer $(echo '<paste accessToken from the Register response>')" \
+  -d '{"title":"Try the reference module","priority":"TASK_PRIORITY_MEDIUM"}'
+```
+
+See [`api/bruno/`](api/bruno/README.md) for the full request set instead of
+copy-pasting tokens by hand.
+
+For anything past a one-off curl — the full request set, with auth-token
+chaining and negative tests for the 401/403 paths — see
+[`api/bruno/`](api/bruno/README.md): a [Bruno](https://www.usebruno.com/)
+collection, this project's Swagger-UI equivalent for a ConnectRPC API (no
+generated try-it-out page exists for Connect the way OpenAPI/Swagger has
+one, so this is a real, runnable, git-committed collection instead).
 
 ## Common tasks
 
@@ -43,15 +59,28 @@ profile (see [../../docs/events.md](../../docs/events.md)).
 | `make up` / `make down` | start/stop local Postgres, Redis, NATS |
 | `make migrate-up` / `make migrate-down` | apply/roll back migrations, per module schema |
 | `make generate` | regenerate proto (buf) and SQL (sqlc) code — commit the diff |
-| `make lint` | format check, vet, golangci-lint, buf lint, architecture boundary tests |
+| `make lint` | format check, vet, golangci-lint, buf lint/format, architecture boundary tests |
+| `make breaking` | fail if this branch's proto changes break compatibility against `main` |
 | `make test` | unit tests (no external services needed) |
 | `make integration-test` | tests against real Postgres/Redis/NATS via Testcontainers |
 | `make security` | `govulncheck` |
 | `make build` | compile `bin/aedst-server` |
 
+## API governance (Buf)
+
+`api/proto/` is the single source of truth every client generates from
+(`apps/web`, `apps/apple`, and this server's own Go stubs — see
+`buf.gen.yaml` in each). `buf.yaml` pins the lint ruleset (`STANDARD`) and
+breaking-change detection (`FILE`-level compatibility). `make lint` runs
+`buf lint` + `buf format -d --exit-code` (fails on unformatted `.proto`);
+`make breaking` checks the current branch against `main` — CI runs the
+equivalent of both on every PR touching `apps/server/**`
+(`.github/workflows/server-ci.yml`), plus a check that `gen/` isn't stale
+relative to `api/proto/`.
+
 ## Adding a module
 
-1. Add a row + dependency edges to [../../docs/modules.md](../../docs/modules.md).
+1. Add a row + dependency edges to [../../docs/content/modules.md](../../docs/content/modules.md).
 2. Scaffold `internal/modules/<name>/{domain,application,infrastructure,repository,transport,events,api}`.
 3. Add `api/proto/aedst/<name>/v1/<name>.proto` (+ `events.proto` if it publishes events) and `make generate`.
 4. Add `migrations/<name>/` (its own schema) and `sql/<name>/` + an `sqlc.yaml` entry.

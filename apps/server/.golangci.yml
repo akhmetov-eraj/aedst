@@ -1,0 +1,170 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - gocritic
+    - revive
+    - depguard
+    - bodyclose
+    - contextcheck
+    - errorlint
+    - noctx
+    - sqlclosecheck
+    - wrapcheck
+
+  settings:
+    revive:
+      rules:
+        # revive's own default rule set enables `exported` (require a doc
+        # comment on every exported symbol) and `package-comments`, which
+        # fight this codebase's actual convention (see the repo's own
+        # CLAUDE.md): self-documenting names, with a comment added only
+        # where the WHY is non-obvious. Disabled explicitly rather than
+        # left off `rules:` entirely, because omitting `rules:` falls back
+        # to revive's own defaults, which include both.
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+
+    wrapcheck:
+      ignore-sigs:
+        - .Errorf(
+        - errors.New(
+        - errors.Join(
+        - connect.NewError(
+        - sharederrors.New(
+        - sharederrors.NotFound(
+        - sharederrors.AlreadyExists(
+        - sharederrors.Conflict(
+        - sharederrors.Validation(
+        - sharederrors.Unauthorized(
+        - sharederrors.Forbidden(
+        - sharederrors.Wrap(
+        - ids.New(
+
+    depguard:
+      rules:
+        # A module's domain package is the one place that must stay free of
+        # every dependency except stdlib and shared, business-agnostic
+        # primitives — see docs/architecture.md and
+        # internal/shared/{errors,ids,time}'s own doc comments. This is the
+        # property architecturetest.TestDomainDoesNotImportInfrastructure
+        # also enforces at the application/infrastructure boundary; depguard
+        # catches it earlier, at lint time, file-glob scoped instead of
+        # requiring `go test` to load the whole module graph.
+        domain-is-pure:
+          files:
+            - "**/internal/modules/*/domain/**/*.go"
+          allow:
+            - $gostd
+            - github.com/aedst/server/internal/shared
+            - github.com/aedst/server/internal/shared/**
+          deny:
+            - pkg: github.com/aedst/server/internal/modules
+              desc: "domain must not depend on any module package, including its own application/infrastructure/transport"
+            - pkg: github.com/aedst/server/internal/platform
+              desc: "domain must not depend on platform infrastructure"
+
+        # Mirrors architecturetest.TestModuleBoundaries: a module may only
+        # import another module's api/ package, never its internals
+        # directly.
+        no-cross-module-imports-auth:
+          files:
+            - "**/internal/modules/auth/**/*.go"
+          deny:
+            - pkg: github.com/aedst/server/internal/modules/tasks/domain
+              desc: "modules may only depend on another module's api/ package"
+            - pkg: github.com/aedst/server/internal/modules/tasks/application
+              desc: "modules may only depend on another module's api/ package"
+            - pkg: github.com/aedst/server/internal/modules/tasks/infrastructure
+              desc: "modules may only depend on another module's api/ package"
+            - pkg: github.com/aedst/server/internal/modules/tasks/transport
+              desc: "modules may only depend on another module's api/ package"
+        no-cross-module-imports-tasks:
+          files:
+            - "**/internal/modules/tasks/**/*.go"
+          deny:
+            - pkg: github.com/aedst/server/internal/modules/auth/domain
+              desc: "modules may only depend on another module's api/ package"
+            - pkg: github.com/aedst/server/internal/modules/auth/application
+              desc: "modules may only depend on another module's api/ package"
+            - pkg: github.com/aedst/server/internal/modules/auth/infrastructure
+              desc: "modules may only depend on another module's api/ package"
+            - pkg: github.com/aedst/server/internal/modules/auth/transport
+              desc: "modules may only depend on another module's api/ package"
+
+        # "only internal/platform/messaging may import the NATS client" is
+        # enforced by architecturetest.TestOnlyMessagingImportsNATSDirectly
+        # instead of a depguard rule here — depguard's glob negation
+        # (`!path`) didn't reliably exclude messaging's own files from its
+        # own ban in testing, and the Go test is exact rather than
+        # glob-approximate.
+
+        platform-no-modules:
+          files:
+            - "**/internal/platform/**/*.go"
+          deny:
+            - pkg: github.com/aedst/server/internal/modules
+              desc: "platform must not depend on modules — modules depend on platform, never the reverse"
+            - pkg: github.com/aedst/server/internal/modules/**
+              desc: "platform must not depend on modules — modules depend on platform, never the reverse"
+
+  exclusions:
+    generated: lax
+    rules:
+      - path: '_test\.go$'
+        linters:
+          - wrapcheck
+          - contextcheck
+          - noctx
+          - errcheck
+      - path: 'internal/modules/.*/(transport|application|infrastructure|jobs)/'
+        linters:
+          - wrapcheck
+        # transport passes through sharederrors.Kind-classified errors from
+        # application unchanged (httpserver.ToConnectError does the actual
+        # mapping); application passes through Repository port errors, which
+        # infrastructure already classified via sharederrors.Wrap/NotFound/
+        # etc. at the point a pgx/sqlc error originates — wrapping again at
+        # every layer above that would bury the one useful wrap under
+        # several redundant ones (see docs/architecture.md's error model).
+      - path: 'cmd/'
+        linters:
+          - wrapcheck
+        # cmd/server only ever returns errors straight from platform
+        # constructors, which already wrap with fmt.Errorf("pkg: action: %w").
+      - path: 'internal/platform/(httpserver|observability|resilience|rpc)/'
+        linters:
+          - wrapcheck
+        # These platform packages sit at the same architectural layer as the
+        # errors they pass through (net/http, slog.Handler, another platform
+        # package's already-wrapped error) rather than above it.
+      - path: 'internal/platform/resilience/roundtripper\.go$'
+        linters:
+          - bodyclose
+      - path: 'gen/'
+        linters:
+          - all
+
+formatters:
+  enable:
+    - gofumpt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/aedst/server
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

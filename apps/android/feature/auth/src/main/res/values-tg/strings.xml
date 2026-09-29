@@ -1,0 +1,24 @@
+<resources>
+    <string name="auth_login_title">Ворид шудан</string>
+    <string name="auth_login_email_label">Email</string>
+    <string name="auth_login_password_label">Парол</string>
+    <string name="auth_login_invalid_email">Email-и дурустро ворид кунед.</string>
+    <string name="auth_login_invalid_password">Паролро ворид кунед.</string>
+    <string name="auth_login_submit">Ворид шудан</string>
+    <string name="auth_login_switch_prompt">Ҳисоб надоред?</string>
+    <string name="auth_login_switch_action">Сохтан</string>
+    <string name="auth_login_error">Ворид шудан ноком монд: %1$s</string>
+
+    <string name="auth_register_title">Сохтани ҳисоб</string>
+    <string name="auth_register_email_label">Email</string>
+    <string name="auth_register_password_label">Парол</string>
+    <string name="auth_register_invalid_email">Email-и дурустро ворид кунед.</string>
+    <string name="auth_register_password_too_short">Ҳадди ақал 8 аломат истифода баред.</string>
+    <string name="auth_register_submit">Сохтани ҳисоб</string>
+    <string name="auth_register_switch_prompt">Аллакай ҳисоб доред?</string>
+    <string name="auth_register_switch_action">Ворид шудан</string>
+    <string name="auth_register_error">Сохтани ҳисоб ноком монд: %1$s</string>
+
+    <string name="auth_sign_out">Баромадан</string>
+    <string name="auth_signed_in_as">Шумо ҳамчун %1$s ворид шудед</string>
+</resources>
