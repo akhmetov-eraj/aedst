@@ -1,9 +1,9 @@
 #pragma once
 
-// Scope cut: Qt Network (ApiClient) is the only transport today, and nothing
+// Scope cut: Qt Network (ConnectClient) is the only transport today, and nothing
 // includes this header yet.
 //
-// Boost.Asio is available as an opt-in dependency (Conan option `with_asio`,
+// Boost.Asio is available as an opt-in dependency (vcpkg feature `asio`,
 // CMake option AEDST_ENABLE_ASIO) for the first need Qt Network covers
 // poorly — e.g. a raw TCP/UDP or custom-framed socket for a future realtime
 // module (see docs/modules.md: messenger), or bulk async I/O kept off the GUI

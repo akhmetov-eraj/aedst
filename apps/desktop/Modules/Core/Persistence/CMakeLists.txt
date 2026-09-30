@@ -5,7 +5,7 @@ find_package(OpenSSL REQUIRED)
 
 # Thin RAII wrapper over the sqlite3 C API rather than Qt Sql: it keeps
 # persistence usable from Qt-free code and GoogleTest, and gives one SQLite
-# version everywhere (Conan's) instead of whichever QSQLITE plugin Qt shipped.
+# version everywhere (vcpkg's) instead of whichever QSQLITE plugin Qt shipped.
 add_library(AedstPersistence STATIC
     include/aedst/persistence/sqlite_connection.hpp
     include/aedst/persistence/sqlite_statement.hpp

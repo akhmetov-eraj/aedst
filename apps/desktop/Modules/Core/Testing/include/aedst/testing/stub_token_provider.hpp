@@ -9,7 +9,7 @@
 namespace aedst::testing {
 
 /// network::TokenProvider with a settable token, for exercising AuthInterceptor
-/// and ApiClient without a TokenStore/SQLite behind them.
+/// and ConnectClient without a TokenStore/SQLite behind them.
 class StubTokenProvider final : public network::TokenProvider {
 public:
     explicit StubTokenProvider(std::optional<std::string> token = std::nullopt) : token_(std::move(token)) {}

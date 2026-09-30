@@ -1,13 +1,11 @@
-# Build trees (CMake presets write to build/<preset>/, Conan generators too)
+# Build trees (CMake presets write to build/<preset>/; vcpkg installs into build/<preset>/vcpkg_installed)
 build/
 cmake-build-*/
 out/
 
-# Local-only CMake/Conan state
+# Local-only CMake state
 CMakeUserPresets.json
 compile_commands.json
-.conan2/
-conan.lock
 
 # Qt Creator / IDE
 *.user

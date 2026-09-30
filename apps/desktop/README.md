@@ -7,10 +7,11 @@ scope cut). Same "monolith first, boundaries first" module architecture as
 the server's modules map onto CMake targets and why features never link each
 other.
 
-> **Not built in the authoring environment.** This tree was written without a
-> Qt/Conan toolchain available, to be internally consistent (target graph,
-> include paths, Qt 6.8 CMake API, Conan 2 recipe names). Run the Getting
-> started steps below and fix anything the first real configure/compile flags.
+> **Not built in the authoring environment.** This tree (including the Connect
+> client, generated-Protobuf contract, vcpkg migration and performance work) was
+> written without a C++/Qt toolchain available. Run the Getting started steps
+> below and fix anything the first real configure/compile flags; nothing here
+> has been compiled, run, or benchmarked yet.
 
 ## Stack
 
@@ -19,11 +20,11 @@ other.
 | Language | C++23 (`std::expected`, designated initializers) |
 | UI | Qt 6.8+ Qt Quick / QML, Qt Quick Controls (Basic style) |
 | Architecture | Module Architecture (Core libraries + Feature libraries + App composition root); MVVM + Clean Architecture (Domain / Data / Presentation / Navigation) per feature |
-| Build | CMake ≥ 3.25 with `CMakePresets.json` (`debug`, `release`), Ninja |
-| Packages | Conan 2 (`conanfile.py`) for everything except Qt |
-| Qt itself | Official Qt online installer or [aqtinstall](https://github.com/miurahr/aqtinstall); found via `CMAKE_PREFIX_PATH` / `$QT_ROOT_DIR` |
-| Networking | Qt Network (`QNetworkAccessManager`) speaking ConnectRPC's JSON protocol; Boost.Asio optional for future low-level I/O |
-| Database | SQLite (Conan `sqlite3`) behind a thin RAII wrapper (`AedstPersistence`) |
+| Build | CMake ≥ 3.25 with `CMakePresets.json` (`msvc-*`, `gcc-*`, `clang-*`, plus host-default `debug`/`release`/`bench`), Ninja; LTO, sccache/ccache, mold/lld auto-enabled — [performance.md](docs/performance.md) |
+| Packages | vcpkg manifest mode (`vcpkg.json`) for everything except Qt — [ADR-0002](docs/adr/0002-dependency-management.md) |
+| Qt itself | Official binaries (Qt installer / [aqtinstall](https://github.com/miurahr/aqtinstall)) at the version in `qt-version.txt` (single source of truth; CMake enforces it); found via `$QT_ROOT_DIR` |
+| API contract | Generated Protobuf C++ messages (protoc at build time from `apps/server/api/proto`) + a thin Connect-protocol client on Qt Network (unary + server streaming, retries, deadlines, cancellation) — [ADR-0001](docs/adr/0001-api-contract-client.md); Boost.Asio optional for future low-level I/O |
+| Database | SQLite (vcpkg `sqlite3`) behind a thin RAII wrapper (`AedstPersistence`) |
 | Crypto / secrets | Windows DPAPI; OpenSSL 3 AES-256-GCM elsewhere; OpenSSL SHA-256 for token fingerprints |
 | Logging | spdlog (`AedstLogger`: console + rotating file) for app code; Qt `QLoggingCategory` reserved for Qt/QML framework messages |
 | Tests | GoogleTest/gMock (pure C++) + Qt Test (QObject/ViewModels), all via CTest |
@@ -35,8 +36,8 @@ other.
 ## Layout
 
 ```
-Modules/Core/{Common,Network,Persistence,Navigation,Analytics,DesignSystem,Testing}
-                                  -> Aedst::Core, Aedst::Network, ... (never depend on a feature)
+Modules/Core/{Common,Network,Contract,Persistence,Navigation,Analytics,DesignSystem,Testing}
+                                  -> Aedst::Core, Aedst::Network, Aedst::Contract, ... (never depend on a feature)
 Modules/Features/{Auth,Users,Profile}
                                   -> Aedst::Feature::Auth, ... (depend on Core only)
 App/                              -> aedst-desktop (the only target linking every feature)
@@ -46,65 +47,80 @@ cmake/, packaging/                -> warnings, CPack, NSIS/MSIX/Flatpak/AppImage
 
 ## Getting started
 
-Prerequisites: a C++23 compiler (MSVC 17.10+, GCC 13+, Clang 17+), CMake ≥ 3.25,
-Ninja, Python 3 + `pip install conan` (2.x), and Qt 6.8+:
+Prerequisites: a C++23 compiler (MSVC 19.37+ / VS 2022 17.7, GCC 13+, Clang 17+
+with libstdc++ 13+), CMake ≥ 3.25, Ninja, git, [vcpkg](https://github.com/microsoft/vcpkg),
+and Qt at the version pinned in `qt-version.txt`. Configure fails early, with a
+message, if the compiler or Qt version is wrong.
 
 ```bash
-# Qt via aqtinstall (or the official online installer)
+# vcpkg (once): dependencies are installed automatically during `cmake --preset`
+git clone https://github.com/microsoft/vcpkg ~/vcpkg && ~/vcpkg/bootstrap-vcpkg.sh   # Windows: bootstrap-vcpkg.bat
+export VCPKG_ROOT=~/vcpkg                                       # PowerShell: $env:VCPKG_ROOT="C:\vcpkg"
+
+# Qt via aqtinstall (or the official online installer) - version from qt-version.txt
 pip install aqtinstall
-aqt install-qt linux desktop 6.8.3 linux_gcc_64 -O ~/Qt        # Windows: windows desktop 6.8.3 win64_msvc2022_64
-export QT_ROOT_DIR=~/Qt/6.8.3/gcc_64                              # PowerShell: $env:QT_ROOT_DIR="C:\Qt\6.8.3\msvc2022_64"
-
-conan profile detect --force                                       # once per machine
+aqt install-qt linux desktop "$(cat qt-version.txt)" linux_gcc_64 -O ~/Qt   # Windows: windows desktop <ver> win64_msvc2022_64
+export QT_ROOT_DIR=~/Qt/$(cat qt-version.txt)/gcc_64                        # PowerShell: $env:QT_ROOT_DIR="C:\Qt\6.8.3\msvc2022_64"
 ```
 
-Debug build + tests (run from `apps/desktop`; on Windows, from a
-"x64 Native Tools" prompt so Ninja finds MSVC):
+Optional but recommended for build speed: `sccache` (or `ccache`), and `mold`
+(or `lld`) on Linux — CMake picks them up automatically.
+
+Debug build + tests (run from `apps/desktop`; on Windows from a "x64 Native
+Tools" prompt so Ninja finds MSVC):
 
 ```bash
-conan install . --output-folder=build --build=missing -s build_type=Debug
-cmake --preset debug
-cmake --build --preset debug
-ctest --preset debug                 # or: debug-unit / debug-qttest
+cmake --preset gcc-debug          # msvc-debug | clang-debug | debug (host default)
+cmake --build --preset gcc-debug
+ctest --preset gcc-debug          # or: debug-unit / debug-qttest (host-default preset)
 ```
 
-Release:
+The first configure builds protobuf + abseil (minutes); vcpkg's binary cache
+(`VCPKG_BINARY_SOURCES`) makes later ones instant. Release: `cmake --preset
+gcc-release && cmake --build --preset gcc-release` (LTO on, tests off).
+Benchmarks: `cmake --preset bench && cmake --build --preset bench && ctest --preset bench -V`.
 
-```bash
-conan install . --output-folder=build --build=missing -s build_type=Release
-cmake --preset release
-cmake --build --preset release
-```
-
-`conan install` writes `build/<preset>/generators/conan_toolchain.cmake`, which
-is exactly the `toolchainFile` each preset points at. Add `-o with_asio=True`
+The generated Protobuf C++ comes from `../server/api/proto` (override with
+`-DAEDST_PROTO_ROOT=...`). Add `-DVCPKG_MANIFEST_FEATURES=asio -DAEDST_ENABLE_ASIO=ON`
 to make Boost.Asio available (see `Modules/Core/Network/include/aedst/network/asio_support.hpp`).
 
 Run it (the API defaults to `http://localhost:8080`, i.e. `apps/server` running locally):
 
 ```bash
-AEDST_API_BASE_URL=http://localhost:8080 ./build/debug/App/aedst-desktop
+AEDST_API_BASE_URL=http://localhost:8080 ./build/gcc-debug/App/aedst-desktop
 ```
 
 On Windows, put `%QT_ROOT_DIR%\bin` on `PATH` (or run `windeployqt`) before
-launching from the build tree or running `ctest`.
+launching from the build tree or running `ctest`. Startup phases are logged as
+`startup +N ms: ...` in `<AppData>/logs/aedst.log`.
 
 ## Qt Creator
 
 File → Open File or Project → `apps/desktop/CMakeLists.txt`. Qt Creator reads
-`CMakePresets.json` and offers the `debug` / `release` presets as kits — run the
-matching `conan install` first so the toolchain file exists. Set the kit's Qt
-version to your 6.8 install. There are no `.pro`/qmake files.
+`CMakePresets.json` and offers the presets as kits; set `VCPKG_ROOT` and
+`QT_ROOT_DIR` in the environment Creator starts from (vcpkg installs during the
+CMake configure step — no separate command). Set the kit's Qt version to the one
+in `qt-version.txt` and leave "QML debugging" **off** for Release kits (configure
+refuses `QT_QML_DEBUG` in Release). There are no `.pro`/qmake files.
 
 ## Tests
 
-- **GoogleTest / gMock** — Domain use cases, repositories, DTO decoding,
-  SQLite/crypto (`Modules/**/tests/*_test.cpp`, CTest label `unit`).
+- **GoogleTest / gMock** — Domain use cases, repositories, error model, Connect
+  envelope/retry/error vectors, Protobuf golden bytes and the method-table drift
+  guard (`Modules/**/tests/*_test.cpp`, CTest label `unit`). `ConnectClient` is
+  tested end to end against a loopback `FakeHttpServer` (real
+  `QNetworkAccessManager`, real generated messages).
 - **Qt Test** — QObject ViewModels with `QSignalSpy`
   (`Modules/Features/Auth/tests/login_view_model_test.cpp`, label `qttest`), run
-  with `QT_QPA_PLATFORM=offscreen`.
+  with `QT_QPA_PLATFORM=offscreen`; `QBENCHMARK` benchmarks (label `bench`, only
+  in the `bench` preset).
 - Convenience targets: `cmake --build --preset debug --target check-unit` /
   `check-qttest` / `check`.
+
+Adding an RPC on the server: the desktop build regenerates the messages
+automatically; add its entry to `Modules/Core/Contract/include/aedst/contract/methods.hpp`
+(the lint script `scripts/check-proto-freshness.sh` and `methods_test.cpp` fail
+until you do).
 
 ## Static analysis
 
@@ -113,8 +129,8 @@ version to your 6.8 install. There are no `.pro`/qmake files.
 find Modules App -name '*.hpp' -o -name '*.cpp' | xargs clang-format -i
 
 # clang-tidy against the configured preset's compile_commands.json
-run-clang-tidy -p build/debug -quiet 'Modules/|App/'
-# or build with it inline: cmake --preset debug -DAEDST_ENABLE_CLANG_TIDY=ON
+run-clang-tidy -p build/gcc-debug -quiet 'Modules/|App/'
+# or build with it inline: cmake --preset gcc-debug -DAEDST_ENABLE_CLANG_TIDY=ON
 ```
 
 **PVS-Studio** needs a license (free for open source / students, trial
@@ -123,7 +139,7 @@ compilation database:
 
 ```bash
 pvs-studio-analyzer credentials <name> <key>                     # once
-pvs-studio-analyzer analyze -f build/debug/compile_commands.json \
+pvs-studio-analyzer analyze -f build/gcc-debug/compile_commands.json \
     -e build/ -j8 -o build/pvs.log
 plog-converter -a GA:1,2 -t fullhtml build/pvs.log -o build/pvs-report
 ```
@@ -133,21 +149,25 @@ plog-converter -a GA:1,2 -t fullhtml build/pvs.log -o build/pvs-report
 
 ## Documentation
 
+- [ADR-0001 API contract client](docs/adr/0001-api-contract-client.md) - Connect over Qt Network + generated Protobuf, why not gRPC C++
+- [ADR-0002 dependency management](docs/adr/0002-dependency-management.md) - vcpkg, Qt pin, CI migration
+- [Performance baseline](docs/performance.md) - build/runtime switches, measuring, what was deliberately not done
+
 ```bash
 doxygen Doxyfile        # -> docs/generated/html/index.html (gitignored)
 ```
 
 ## Packaging
 
-From a configured **release** tree:
+From a configured **release** tree (`<release-preset>` = `msvc-release`, `gcc-release`, ...):
 
 | Target / command | Output | Notes |
 |---|---|---|
-| `cpack --config build/release/CPackConfig.cmake` | NSIS `.exe` + `.zip` (Windows), `.deb` + `.tar.gz` (Linux) | CI path |
-| `cmake --build --preset release --target package_nsis` | NSIS from `packaging/windows/installer.nsi.in` | needs `makensis` |
-| `cmake --build --preset release --target package_msix` | unsigned `.msix` | needs Windows SDK `makeappx`/`makepri`; signing is a scope cut |
-| `cmake --build --preset release --target package_appimage` | `.AppImage` | configure with `-DAEDST_DEPLOY_QT=OFF`; needs `linuxdeploy` + Qt plugin and a real icon |
-| `cmake --build --preset release --target package_flatpak` | `.flatpak` bundle | needs `flatpak-builder`; builds against `org.kde.Platform` 6.8 |
+| `cpack --config build/<release-preset>/CPackConfig.cmake` | NSIS `.exe` + `.zip` (Windows), `.deb` + `.tar.gz` (Linux) | CI path |
+| `cmake --build --preset <release-preset> --target package_nsis` | NSIS from `packaging/windows/installer.nsi.in` | needs `makensis` |
+| `cmake --build --preset <release-preset> --target package_msix` | unsigned `.msix` | needs Windows SDK `makeappx`/`makepri`; signing is a scope cut |
+| `cmake --build --preset <release-preset> --target package_appimage` | `.AppImage` | configure with `-DAEDST_DEPLOY_QT=OFF`; needs `linuxdeploy` + Qt plugin and a real icon |
+| `cmake --build --preset <release-preset> --target package_flatpak` | `.flatpak` bundle | needs `flatpak-builder`; builds against `org.kde.Platform` 6.8 |
 
 Artifacts land in `build/<preset>/packages/`. Icons are placeholders — see
 `App/resources/icons/README.md`.

@@ -1,19 +1,17 @@
 #pragma once
 
 #include "aedst/network/api_error.hpp"
-#include "aedst/network/dto/login_dto.hpp"
+
+#include <aedst/auth/v1/auth.pb.h>
 
 namespace aedst::feature::auth {
 
-/// The public aedst.auth.v1.AuthService surface (Login / RefreshToken / Logout),
-/// matching apps/server/internal/modules/auth/api.Service's client-reachable
-/// methods.
-///
-/// CreateCredential and IssueSession also exist on the server's api.Service,
-/// but they are in-process only (called by users.RegisterUser) and not exposed
-/// over ConnectRPC — so they have no client counterpart here. A desktop sign-up
-/// flow would call aedst.users.v1.UsersService/RegisterUser, which belongs to
-/// Features/Users.
+namespace authv1 = ::aedst::auth::v1;
+
+/// The client-reachable subset of aedst.auth.v1.AuthService this feature uses
+/// (Login / RefreshToken / Logout), speaking the generated Protobuf messages.
+/// Register and GetCurrentUser exist on the server and in aedst/contract/methods.hpp
+/// but no desktop flow calls them yet.
 class AuthRemoteDataSource {
 public:
     AuthRemoteDataSource() = default;
@@ -23,11 +21,10 @@ public:
     AuthRemoteDataSource& operator=(AuthRemoteDataSource&&) = delete;
     virtual ~AuthRemoteDataSource() = default;
 
-    virtual void login(const network::dto::LoginRequestDto& request,
-                       network::ApiCompletion<network::dto::LoginResponseDto> done) = 0;
-    virtual void refreshToken(const network::dto::RefreshTokenRequestDto& request,
-                              network::ApiCompletion<network::dto::RefreshTokenResponseDto> done) = 0;
-    virtual void logout(const network::dto::LogoutRequestDto& request, network::ApiCompletion<void> done) = 0;
+    virtual void login(const authv1::LoginRequest& request, network::ApiCompletion<authv1::LoginResponse> done) = 0;
+    virtual void refreshToken(const authv1::RefreshTokenRequest& request,
+                              network::ApiCompletion<authv1::RefreshTokenResponse> done) = 0;
+    virtual void logout(const authv1::LogoutRequest& request, network::ApiCompletion<void> done) = 0;
 };
 
 } // namespace aedst::feature::auth

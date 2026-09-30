@@ -5,11 +5,13 @@
 #     build-flatpak packaging/linux/flatpak/com.aedst.Desktop.yml
 # or via the CMake `package_flatpak` target (cmake/packaging/Linux.cmake).
 #
-# Conan is not used inside the sandbox (flatpak-builder has no network during
+# vcpkg is not used inside the sandbox (flatpak-builder has no network during
 # builds). Qt, OpenSSL and SQLite come from the KDE/freedesktop runtime;
-# spdlog/fmt are built as modules below. The CMake project resolves all of them
-# through the same find_package() names CMakeDeps generates, so nothing in
-# Modules/ needs to know which path produced the dependency.
+# spdlog/fmt/abseil/protobuf are built as modules below. The CMake project
+# resolves all of them through the same find_package() names vcpkg provides, so
+# nothing in Modules/ needs to know which path produced the dependency.
+# protobuf must be the version vcpkg.json resolves to (see docs/adr/0002) - the
+# generated C++ is compiled against it at build time.
 #
 # Git sources are pinned by tag only. Before publishing to Flathub, pin each
 # one to its `commit:` as Flathub requires.
@@ -57,6 +59,31 @@ modules:
         url: https://github.com/gabime/spdlog.git
         tag: v1.14.1
 
+  - name: abseil-cpp
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DCMAKE_CXX_STANDARD=17
+      - -DABSL_PROPAGATE_CXX_STD=ON
+      - -DABSL_BUILD_TESTING=OFF
+      - -DBUILD_SHARED_LIBS=ON
+    sources:
+      - type: git
+        url: https://github.com/abseil/abseil-cpp.git
+        tag: "20250814.1"
+
+  - name: protobuf
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -Dprotobuf_BUILD_TESTS=OFF
+      - -Dprotobuf_ABSL_PROVIDER=package
+      - -Dprotobuf_BUILD_SHARED_LIBS=ON
+    sources:
+      - type: git
+        url: https://github.com/protocolbuffers/protobuf.git
+        tag: v33.4
+
   - name: aedst-desktop
     buildsystem: cmake-ninja
     config-opts:
@@ -64,9 +91,14 @@ modules:
       - -DBUILD_TESTING=OFF
       - -DAEDST_ENABLE_ASIO=OFF
       - -DAEDST_DEPLOY_QT=OFF
+      - -DAEDST_PROTO_ROOT=/run/build/aedst-desktop/proto
     sources:
       - type: dir
         path: ../../..
         skip:
           - build
           - packaging/linux/flatpak/.flatpak-builder
+      # The server's proto tree is the contract's single source of truth (outside apps/desktop).
+      - type: dir
+        path: ../../../../server/api/proto
+        dest: proto

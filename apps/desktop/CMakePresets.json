@@ -7,45 +7,115 @@
       "hidden": true,
       "generator": "Ninja",
       "binaryDir": "${sourceDir}/build/${presetName}",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
       "cacheVariables": {
         "CMAKE_EXPORT_COMPILE_COMMANDS": "ON",
         "CMAKE_PREFIX_PATH": "$env{QT_ROOT_DIR}"
       }
     },
     {
-      "name": "debug",
-      "displayName": "Debug (Conan)",
-      "description": "Run `conan install . --output-folder=build --build=missing -s build_type=Debug` first.",
-      "inherits": "base",
-      "toolchainFile": "${sourceDir}/build/debug/generators/conan_toolchain.cmake",
+      "name": "config-debug",
+      "hidden": true,
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Debug",
         "BUILD_TESTING": "ON"
       }
     },
     {
-      "name": "release",
-      "displayName": "Release (Conan)",
-      "description": "Run `conan install . --output-folder=build --build=missing -s build_type=Release` first.",
-      "inherits": "base",
-      "toolchainFile": "${sourceDir}/build/release/generators/conan_toolchain.cmake",
+      "name": "config-release",
+      "hidden": true,
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "Release",
-        "BUILD_TESTING": "OFF"
+        "BUILD_TESTING": "OFF",
+        "VCPKG_MANIFEST_NO_DEFAULT_FEATURES": "ON"
       }
-    }
+    },
+    {
+      "name": "msvc-base",
+      "hidden": true,
+      "inherits": "base",
+      "description": "Windows, MSVC 19.37+ (VS 2022 17.7+). Run from a VS Developer prompt or after vcvars64.bat so Ninja finds cl.exe.",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Windows" },
+      "architecture": { "value": "x64", "strategy": "external" },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "cl",
+        "CMAKE_CXX_COMPILER": "cl",
+        "VCPKG_TARGET_TRIPLET": "x64-windows-static-md"
+      }
+    },
+    {
+      "name": "gcc-base",
+      "hidden": true,
+      "inherits": "base",
+      "description": "Linux, GCC 13+.",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "gcc",
+        "CMAKE_CXX_COMPILER": "g++",
+        "VCPKG_TARGET_TRIPLET": "x64-linux"
+      }
+    },
+    {
+      "name": "clang-base",
+      "hidden": true,
+      "inherits": "base",
+      "description": "Linux, Clang 17+ with libstdc++ 13+ (std::expected).",
+      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Linux" },
+      "cacheVariables": {
+        "CMAKE_C_COMPILER": "clang",
+        "CMAKE_CXX_COMPILER": "clang++",
+        "VCPKG_TARGET_TRIPLET": "x64-linux"
+      }
+    },
+    {
+      "name": "debug",
+      "displayName": "Debug (host default compiler)",
+      "inherits": ["base", "config-debug"]
+    },
+    {
+      "name": "release",
+      "displayName": "Release (host default compiler)",
+      "inherits": ["base", "config-release"]
+    },
+    {
+      "name": "bench",
+      "displayName": "Release + tests + Qt Test benchmarks (host default compiler)",
+      "inherits": ["base", "config-release"],
+      "cacheVariables": {
+        "BUILD_TESTING": "ON",
+        "AEDST_BUILD_BENCHMARKS": "ON",
+        "VCPKG_MANIFEST_NO_DEFAULT_FEATURES": "OFF"
+      }
+    },
+    { "name": "msvc-debug", "displayName": "Debug (MSVC)", "inherits": ["msvc-base", "config-debug"] },
+    { "name": "msvc-release", "displayName": "Release (MSVC)", "inherits": ["msvc-base", "config-release"] },
+    { "name": "gcc-debug", "displayName": "Debug (GCC)", "inherits": ["gcc-base", "config-debug"] },
+    { "name": "gcc-release", "displayName": "Release (GCC)", "inherits": ["gcc-base", "config-release"] },
+    { "name": "clang-debug", "displayName": "Debug (Clang)", "inherits": ["clang-base", "config-debug"] },
+    { "name": "clang-release", "displayName": "Release (Clang)", "inherits": ["clang-base", "config-release"] }
   ],
   "buildPresets": [
     { "name": "debug", "configurePreset": "debug" },
-    { "name": "release", "configurePreset": "release" }
+    { "name": "release", "configurePreset": "release" },
+    { "name": "bench", "configurePreset": "bench" },
+    { "name": "msvc-debug", "configurePreset": "msvc-debug" },
+    { "name": "msvc-release", "configurePreset": "msvc-release" },
+    { "name": "gcc-debug", "configurePreset": "gcc-debug" },
+    { "name": "gcc-release", "configurePreset": "gcc-release" },
+    { "name": "clang-debug", "configurePreset": "clang-debug" },
+    { "name": "clang-release", "configurePreset": "clang-release" }
   ],
   "testPresets": [
     {
-      "name": "debug",
-      "configurePreset": "debug",
+      "name": "test-base",
+      "hidden": true,
       "output": { "outputOnFailure": true },
       "environment": { "QT_QPA_PLATFORM": "offscreen" }
     },
+    { "name": "debug", "inherits": "test-base", "configurePreset": "debug" },
+    { "name": "msvc-debug", "inherits": "test-base", "configurePreset": "msvc-debug" },
+    { "name": "gcc-debug", "inherits": "test-base", "configurePreset": "gcc-debug" },
+    { "name": "clang-debug", "inherits": "test-base", "configurePreset": "clang-debug" },
     {
       "name": "debug-unit",
       "inherits": "debug",
@@ -55,6 +125,13 @@
       "name": "debug-qttest",
       "inherits": "debug",
       "filter": { "include": { "label": "qttest" } }
+    },
+    {
+      "name": "bench",
+      "inherits": "test-base",
+      "configurePreset": "bench",
+      "filter": { "include": { "label": "bench" } },
+      "output": { "outputOnFailure": true, "verbosity": "verbose" }
     }
   ]
 }

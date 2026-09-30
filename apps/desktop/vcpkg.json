@@ -1,0 +1,31 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "aedst-desktop",
+  "version-string": "0.1.0",
+  "description": "Third-party C++ dependencies for apps/desktop. Qt is NOT listed: it comes from the official binaries (see qt-version.txt).",
+  "builtin-baseline": "9e593bb18ea69cc5095e012465dcd675a822ed0d",
+  "dependencies": [
+    "fmt",
+    "openssl",
+    "protobuf",
+    "spdlog",
+    "sqlite3"
+  ],
+  "default-features": [
+    "tests"
+  ],
+  "features": {
+    "tests": {
+      "description": "GoogleTest / gMock for the unit suites (BUILD_TESTING=ON).",
+      "dependencies": [
+        "gtest"
+      ]
+    },
+    "asio": {
+      "description": "Boost.Asio, only for AEDST_ENABLE_ASIO=ON (see asio_support.hpp).",
+      "dependencies": [
+        "boost-asio"
+      ]
+    }
+  }
+}

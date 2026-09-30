@@ -3,9 +3,12 @@ name: desktop-ci
 on:
   push:
     branches: [main]
-    paths: ["apps/desktop/**", "apps/server/api/proto/**", ".github/workflows/desktop-ci.yml"]
+    paths: ["apps/desktop/**", "apps/server/api/proto/**", "apps/server/buf.lock", ".github/workflows/desktop-ci.yml"]
   pull_request:
-    paths: ["apps/desktop/**", "apps/server/api/proto/**", ".github/workflows/desktop-ci.yml"]
+    paths: ["apps/desktop/**", "apps/server/api/proto/**", "apps/server/buf.lock", ".github/workflows/desktop-ci.yml"]
+
+permissions:
+  contents: read
 
 concurrency:
   group: desktop-ci-${{ github.workflow }}-${{ github.ref }}
@@ -14,25 +17,25 @@ concurrency:
 defaults:
   run:
     working-directory: apps/desktop
+    shell: bash
 
 env:
   CMAKE_VERSION: "3.30.5"
-  CONAN_VERSION: "2.8.1"
-  # Qt comes from the Qt installer (via install-qt-action), not Conan — see
-  # apps/desktop/conanfile.py and docs/architecture-desktop.md.
-  QT_VERSION: "6.8.*"
   CLANG_FORMAT_VERSION: "18"
-  PYTHON_VERSION: "3.12"
+  # Qt comes from official binaries via aqtinstall (install-qt-action), never
+  # from a package manager. The version is read from apps/desktop/qt-version.txt
+  # (single source of truth, also enforced by cmake/AedstQtVersion.cmake).
+  # C++ libraries come from vcpkg manifest mode (vcpkg.json) with the GitHub
+  # Actions binary cache. See docs/adr/0002-dependency-management.md.
+  VCPKG_BINARY_SOURCES: "clear;x-gha,readwrite"
 
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          # check-proto-freshness.sh diffs against the base/before commit,
-          # which needs real history, not a 1-commit shallow clone.
-          fetch-depth: 0
+
+      - uses: bufbuild/buf-setup-action@v1
 
       - name: Install clang-format
         run: sudo apt-get update && sudo apt-get install -y clang-format-${{ env.CLANG_FORMAT_VERSION }}
@@ -45,94 +48,27 @@ jobs:
       - name: Feature target boundaries
         run: ./scripts/check-feature-boundaries.sh
 
-      # apps/desktop has no buf/protoc codegen step (see
-      # docs/content/architecture-desktop.md, "Networking: Connect over Qt
-      # Network, no codegen") — DTOs/procedure paths under
-      # Modules/Core/Network are hand-mirrored from apps/server/api/proto
-      # instead of generated. This is the desktop equivalent of apps/web's
-      # `pnpm connect:generate && git diff --exit-code`: it can't regenerate
-      # anything, but it catches the same failure mode — a proto change that
-      # ships without the matching client-side update.
-      - name: Proto freshness for hand-mirrored DTOs
-        run: |
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            range="${{ github.event.pull_request.base.sha }}...${{ github.event.pull_request.head.sha }}"
-          else
-            range="${{ github.event.before }}...${{ github.event.after }}"
-          fi
-          ./scripts/check-proto-freshness.sh "$range"
+      # The message types are generated from the protos at build time; the
+      # hand-written procedure table (Contract/methods.hpp) must list exactly
+      # the RPCs declared in apps/server/api/proto.
+      - name: Proto freshness (procedure table vs protos)
+        run: ./scripts/check-proto-freshness.sh
 
-      # clang-tidy needs compile_commands.json from a configured build (Qt +
-      # Conan deps resolved), so it runs in the `test` job right after the
-      # debug configure/build instead of here.
+      # third_party/protovalidate must match the commit pinned in
+      # apps/server/buf.lock (needs buf + network).
+      - name: Protovalidate pin
+        run: ./scripts/check-protovalidate-pin.sh
 
   test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: lukka/get-cmake@latest
-        with:
-          cmakeVersion: ${{ env.CMAKE_VERSION }}
-
-      - name: Install system GL/xkb headers Qt needs
-        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libegl1
-
-      - uses: jurplel/install-qt-action@v4
-        with:
-          version: ${{ env.QT_VERSION }}
-          cache: true
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Install Conan
-        run: |
-          pip install "conan==${{ env.CONAN_VERSION }}"
-          conan profile detect --force
-
-      - uses: actions/cache@v4
-        with:
-          path: ~/.conan2/p
-          key: conan-${{ runner.os }}-debug-${{ hashFiles('apps/desktop/conanfile.py') }}
-
-      - name: Conan install (Debug)
-        run: conan install . --output-folder=build --build=missing -s build_type=Debug
-
-      - name: Configure
-        run: cmake --preset debug
-
-      - name: Build
-        run: cmake --build --preset debug
-
-      # Non-fatal until the tree has had a real clang-tidy pass — see
-      # apps/desktop/CLANG_TIDY_BASELINE.md for the exact flip condition and
-      # who owns it. The log is uploaded so the remaining warning count is
-      # visible on every run instead of silently rotting.
-      - name: clang-tidy
-        continue-on-error: true
-        run: |
-          sudo apt-get install -y clang-tidy
-          run-clang-tidy -p build/debug -quiet 'Modules/|App/' 2>&1 | tee clang-tidy.log
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: clang-tidy-log
-          path: apps/desktop/clang-tidy.log
-          if-no-files-found: warn
-
-      - name: Test
-        run: ctest --preset debug
-        env:
-          QT_QPA_PLATFORM: offscreen
-
-  build:
-    needs: [lint, test]
+    needs: [lint]
+    name: test (${{ matrix.preset }})
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest]
+        include:
+          - { preset: msvc-debug, os: windows-latest }
+          - { preset: gcc-debug, os: ubuntu-latest }
+          - { preset: clang-debug, os: ubuntu-latest }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -149,57 +85,113 @@ jobs:
       - uses: ilammy/msvc-dev-cmd@v1
         if: runner.os == 'Windows'
 
+      - name: Read pinned Qt version
+        run: echo "QT_VERSION=$(tr -d '[:space:]' < qt-version.txt)" >> "$GITHUB_ENV"
+
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
           cache: true
 
-      - uses: actions/setup-python@v5
+      - name: Set up vcpkg binary caching
+        uses: actions/github-script@v7
         with:
-          python-version: ${{ env.PYTHON_VERSION }}
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Install Conan
-        run: |
-          pip install "conan==${{ env.CONAN_VERSION }}"
-          conan profile detect --force
+      - name: Point VCPKG_ROOT at the runner's vcpkg
+        run: echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
 
-      - uses: actions/cache@v4
-        with:
-          path: ~/.conan2/p
-          key: conan-${{ runner.os }}-release-${{ hashFiles('apps/desktop/conanfile.py') }}
-
-      - name: Conan install (Release)
-        run: conan install . --output-folder=build --build=missing -s build_type=Release
-
-      - name: Configure
-        run: cmake --preset release
+      - name: Configure (vcpkg manifest install runs here)
+        run: cmake --preset ${{ matrix.preset }}
 
       - name: Build
-        run: cmake --build --preset release
+        run: cmake --build --preset ${{ matrix.preset }}
 
-      - name: Package (Windows, NSIS + ZIP)
-        if: runner.os == 'Windows'
-        working-directory: apps/desktop/build/release
-        run: cpack -G "NSIS;ZIP"
+      # Non-fatal until the tree has had a real clang-tidy pass — see
+      # apps/desktop/CLANG_TIDY_BASELINE.md for the flip condition and owner.
+      - name: clang-tidy
+        if: matrix.preset == 'gcc-debug'
+        continue-on-error: true
+        run: |
+          sudo apt-get install -y clang-tidy
+          run-clang-tidy -p build/${{ matrix.preset }} -quiet 'Modules/|App/' 2>&1 | tee clang-tidy.log
 
-      - name: Package (Linux, DEB + TGZ)
+      - uses: actions/upload-artifact@v4
+        if: matrix.preset == 'gcc-debug'
+        with:
+          name: clang-tidy-log
+          path: apps/desktop/clang-tidy.log
+          if-no-files-found: warn
+
+      - name: Test
+        run: ctest --preset ${{ matrix.preset }}
+        env:
+          QT_QPA_PLATFORM: offscreen
+
+  build:
+    needs: [lint, test]
+    name: build (${{ matrix.preset }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { preset: msvc-release, os: windows-latest, cpack: "NSIS;ZIP" }
+          - { preset: gcc-release, os: ubuntu-latest, cpack: "DEB;TGZ" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+
+      - name: Install system GL/xkb headers Qt needs
         if: runner.os == 'Linux'
-        working-directory: apps/desktop/build/release
-        run: cpack -G "DEB;TGZ"
+        run: sudo apt-get update && sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libegl1
+
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: runner.os == 'Windows'
+
+      - name: Read pinned Qt version
+        run: echo "QT_VERSION=$(tr -d '[:space:]' < qt-version.txt)" >> "$GITHUB_ENV"
+
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          cache: true
+
+      - name: Set up vcpkg binary caching
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Point VCPKG_ROOT at the runner's vcpkg
+        run: echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
+
+      - name: Configure
+        run: cmake --preset ${{ matrix.preset }}
+
+      - name: Build
+        run: cmake --build --preset ${{ matrix.preset }}
+
+      - name: Package (cpack)
+        working-directory: apps/desktop/build/${{ matrix.preset }}
+        run: cpack -G "${{ matrix.cpack }}"
 
       - uses: actions/upload-artifact@v4
         with:
           name: aedst-desktop-${{ runner.os }}
-          path: apps/desktop/build/release/packages/*
+          path: apps/desktop/build/${{ matrix.preset }}/packages/*
           if-no-files-found: error
 
   # Explicit scope cuts, not wired here yet:
-  # - Code signing: Authenticode for the NSIS installer and MSIX signing both
-  #   need a real certificate (secret) whose subject matches the MSIX Publisher;
-  #   `package_msix` produces an unsigned package and isn't run in CI.
-  # - Flatpak / AppImage: `package_flatpak` needs flatpak-builder + the KDE
-  #   runtime, `package_appimage` needs linuxdeploy and real icon assets (see
-  #   apps/desktop/App/resources/icons/README.md). Publishing to a Flatpak
-  #   repo/Flathub is a separate follow-up.
+  # - Code signing: Authenticode for the NSIS installer and MSIX signing need a
+  #   real certificate (secret); `package_msix` is unsigned and not run in CI.
+  # - Flatpak / AppImage: need flatpak-builder + KDE runtime / linuxdeploy and
+  #   real icon assets (see apps/desktop/App/resources/icons/README.md).
   # - macOS: builds in principle (MACOSX_BUNDLE), but no runner, packaging, or
   #   notarization is set up.

@@ -1,6 +1,6 @@
 include(AedstCompilerWarnings)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Quick)
+find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Core Quick)
 
 # BOUNDARY RULE: a feature links Core targets only — never Aedst::Feature::*.
 # Cross-feature navigation goes through Aedst::Navigation's route names
@@ -36,13 +36,15 @@ target_include_directories(AedstFeatureAuth PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # PUBLIC only where this feature's headers expose the type: Core (Outcome/Error
 # in every Domain signature), Network (LocalTokenStoreAdapter implements
-# network::TokenProvider; data sources speak network DTOs), Navigation
+# network::TokenProvider), Contract (data sources speak the generated Protobuf
+# messages), Navigation
 # (AuthRoute builds a navigation::Route). Everything else is an implementation
 # detail and stays PRIVATE.
 target_link_libraries(AedstFeatureAuth
     PUBLIC
         Aedst::Core
         Aedst::Network
+        Aedst::Contract
         Aedst::Navigation
         Qt6::Core
     PRIVATE

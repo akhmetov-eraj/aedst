@@ -1,6 +1,6 @@
 include(AedstCompilerWarnings)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core)
+find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Core)
 
 # The desktop equivalent of Android's core/navigation (AedstNavGraph/AedstRoutes)
 # and Apple's AedstNavigation (AedstRoute/Router): the only way one feature

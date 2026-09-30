@@ -24,7 +24,7 @@ public:
     [[nodiscard]] std::optional<Session> currentSession() const override;
 
 private:
-    [[nodiscard]] Session toSession(std::string userId, const network::dto::TokenPairDto& tokens) const;
+    [[nodiscard]] Session toSession(std::string userId, const authv1::TokenPair& tokens) const;
     void persistAndComplete(Session session, const core::Completion<Session>& done);
 
     std::shared_ptr<AuthRemoteDataSource> remote_;

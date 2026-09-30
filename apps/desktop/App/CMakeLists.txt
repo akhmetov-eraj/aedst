@@ -1,11 +1,12 @@
 include(AedstCompilerWarnings)
 
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
+find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2)
 
 qt_add_executable(aedst-desktop WIN32 MACOSX_BUNDLE
     src/main.cpp
     src/app_dependencies.hpp
     src/app_dependencies.cpp
+    src/startup_trace.hpp
 )
 
 qt_add_qml_module(aedst-desktop
@@ -18,7 +19,7 @@ target_compile_definitions(aedst-desktop PRIVATE AEDST_VERSION="${PROJECT_VERSIO
 
 # COMPOSITION ROOT: the only target in the tree that links every feature.
 # It also links Core targets directly because AppDependencies constructs the
-# shared infrastructure (ApiClient, SQLite, TokenStore, Router, theme) that
+# shared infrastructure (ConnectClient, SQLite, TokenStore, Router, theme) that
 # features receive by injection.
 target_link_libraries(aedst-desktop PRIVATE
     Aedst::Feature::Auth

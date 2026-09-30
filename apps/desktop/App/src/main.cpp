@@ -1,11 +1,14 @@
 #include "app_dependencies.hpp"
+#include "startup_trace.hpp"
 #include "aedst/core/logger.hpp"
 
 #include <QCoreApplication>
 #include <QGuiApplication>
 #include <QJSEngine>
+#include <QNetworkProxyFactory>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
+#include <QQuickWindow>
 #include <QSettings>
 #include <QStandardPaths>
 #include <QString>
@@ -44,7 +47,10 @@ void registerViewModel(const char* uri, const char* name, T& instance) {
 } // namespace
 
 int main(int argc, char* argv[]) {
+    const aedst::app::StartupTrace startup;
     QGuiApplication app(argc, argv);
+    // Honour the OS proxy configuration (corporate/PAC proxies) for all Qt Network traffic.
+    QNetworkProxyFactory::setUseSystemConfiguration(true);
     QGuiApplication::setOrganizationName(QStringLiteral("AEDST"));
     QGuiApplication::setOrganizationDomain(QStringLiteral("aedst.com"));
     QGuiApplication::setApplicationName(QStringLiteral("AEDST"));
@@ -64,6 +70,7 @@ int main(int argc, char* argv[]) {
     logConfig.logFile = dataDirectory / "logs" / "aedst.log";
     AedstLogger::init(logConfig);
     AedstLogger::info("AEDST desktop {} starting", AEDST_VERSION);
+    startup.mark("logger ready");
 
     const aedst::app::AppConfig config{
         .apiBaseUrl = QUrl(qEnvironmentVariable("AEDST_API_BASE_URL", QStringLiteral("http://localhost:8080"))),
@@ -79,6 +86,7 @@ int main(int argc, char* argv[]) {
     }
     // Declared before the engine so it outlives every QML object that references it.
     aedst::app::AppDependencies& deps = **dependencies;
+    startup.mark("dependencies ready");
 
     aedst::designsystem::registerThemeController(&deps.theme());
     qmlRegisterSingletonInstance("Aedst.Navigation", 1, 0, "AppRouter", &deps.router());
@@ -96,7 +104,16 @@ int main(int argc, char* argv[]) {
     engine.setInitialProperties(
         {{QStringLiteral("initialRoute"), QString::fromStdString(deps.initialRoute().name)}});
     engine.loadFromModule("Aedst.App", "Main");
+    startup.mark("QML loaded");
 
+    // The render thread emits frameSwapped; the single-shot connection is delivered on the GUI thread.
+    if (auto* window = qobject_cast<QQuickWindow*>(engine.rootObjects().value(0))) {
+        QObject::connect(
+            window, &QQuickWindow::frameSwapped, &app, [&startup]() { startup.mark("first frame"); },
+            Qt::SingleShotConnection);
+    }
+
+    deps.prewarmNetwork();
     deps.refreshSessionIfNeeded();
 
     const int exitCode = QGuiApplication::exec();

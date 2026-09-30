@@ -5,30 +5,30 @@ the web app's shadcn/ui component library (`apps/web/src/shared/ui/`). Built
 on top of the pre-existing architecture in this module — do not introduce a
 second, parallel component set:
 
-- **Tokens**: `include/aedst/designsystem/theme_controller.hpp` /
-  `src/theme_controller.cpp` — native `QObject` singleton exposing the
-  semantic color/radius/spacing scale, registered as `Aedst.Theme`'s
-  `ThemeController` singleton (`registerThemeController`, called once at
-  startup, currently from `App/src/app_dependencies.cpp`'s theme wiring).
+- **Tokens**: `qml/AedstDesignSystem/AedstTokens.qml` — GENERATED singleton of constants
+  (light/dark palettes, spacing, radius, elevation, typography, motion) from
+  `packages/design-tokens/tokens` (single source for all platforms; edit the JSON and run
+  `pnpm --dir packages/design-tokens build`, never the .qml). The only runtime state is
+  `ThemeController` (`include/aedst/designsystem/theme_controller.hpp`): a native `QObject`
+  singleton exposing `dark`/`followsSystem`, registered as `Aedst.Theme`'s
+  `ThemeController` (`registerThemeController`, called once at startup from
+  `App/src/main.cpp`).
 - **`Theme.qml`** (`pragma Singleton`) — the façade every component binds
-  to. It re-exposes `ThemeController`'s tokens under names that mirror the
+  to. It re-exposes the `AedstTokens` values (picking light or dark from `ThemeController.dark`) under names that mirror the
   CSS custom properties in `apps/web/src/app/styles/globals.css` (shadcn's
   "neutral" palette): `background`/`foreground`, `card`, `popover`,
   `primary`, `secondary`, `muted`, `accent`, `destructive`,
   `border`/`input`/`ring`, a 5-color `chart` palette, a radius scale
   (`radiusSm`..`radius2xl`) and a spacing scale (`spacingXs`..`spacing2xl`),
   plus typography (`titleFont`, `headingFont`, `bodyFont`, `smallFont`,
-  `captionFont`, `monoFont`) and motion durations. The oklch() values on web
-  were converted to sRGB hex by hand (no oklch parser in Qt); see
-  `theme_controller.cpp` for the mapping and adjust there if the web palette
-  changes. **Back-compat aliases** (`surface`, `onPrimary`, `onSurface`,
+  `captionFont`, `monoFont`) and motion durations. The web oklch() values are converted to sRGB by
+  Style Dictionary at build time. **Back-compat aliases** (`surface`, `onPrimary`, `onSurface`,
   `error`, `outline`, `spacing`, `radius`) are kept so the two pre-existing
   consumers (`App/qml/Main.qml`, `Modules/Features/Auth/Presentation/LoginView.qml`)
   keep working unchanged.
-- **Components**: `qml/AedstDesignSystem/*.qml`, one per file, registered in
-  `qml/AedstDesignSystem/qmldir` and listed in `CMakeLists.txt`'s
-  `qt_add_resources` call (both must be updated together when adding a
-  component). Every component reads color/spacing/radius/font values only
+- **Components**: `qml/AedstDesignSystem/*.qml`, one per file, listed in `CMakeLists.txt`'s
+  `AEDST_DESIGNSYSTEM_QML_FILES` (`qt_add_qml_module`: the qmldir is generated and
+  `qmlcachegen` compiles each file ahead of time; add new components only there). Every component reads color/spacing/radius/font values only
   from `Theme`, so light/dark follows `ThemeController.dark`
   (OS-driven by default, `Theme.setDark()`/`followSystem()` to override)
   with no hardcoded colors.

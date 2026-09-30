@@ -11,8 +11,8 @@
 #include "aedst/navigation/nav_graph.hpp"
 #include "aedst/navigation/route.hpp"
 #include "aedst/navigation/router.hpp"
-#include "aedst/network/api_client.hpp"
 #include "aedst/network/auth_interceptor.hpp"
+#include "aedst/network/connect_client.hpp"
 #include "aedst/persistence/secure_storage.hpp"
 #include "aedst/persistence/sqlite_connection.hpp"
 #include "aedst/persistence/token_store.hpp"
@@ -52,6 +52,10 @@ public:
     [[nodiscard]] designsystem::ThemeController& theme() noexcept;
     [[nodiscard]] feature::auth::LoginViewModel& loginViewModel() noexcept;
 
+    /// Opens the API connection (TCP + TLS + HTTP/2 negotiation) ahead of the first
+    /// request. Call once the first screen is on its way; best-effort.
+    void prewarmNetwork();
+
     /// Login when no session is stored; auth's own landing state otherwise
     /// until a real post-login destination exists (Users/Profile are gone and
     /// their replacement, a future "tasks" module, isn't built on desktop yet).
@@ -77,7 +81,7 @@ private:
     // Auth
     std::shared_ptr<feature::auth::LocalTokenStoreAdapter> tokenAdapter_;
     std::shared_ptr<network::AuthInterceptor> authInterceptor_;
-    std::shared_ptr<network::ApiClient> apiClient_;
+    std::shared_ptr<network::ConnectClient> connectClient_;
     std::shared_ptr<feature::auth::AuthRepositoryImpl> authRepository_;
     std::shared_ptr<feature::auth::RefreshTokenUseCase> refreshToken_;
 

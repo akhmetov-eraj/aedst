@@ -53,11 +53,12 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
     // --- Network ---------------------------------------------------------------
     deps->tokenAdapter_ = std::make_shared<auth::LocalTokenStoreAdapter>(deps->tokenStore_);
     deps->authInterceptor_ = std::make_shared<network::AuthInterceptor>(deps->tokenAdapter_);
-    deps->apiClient_ = std::make_shared<network::ApiClient>(config.apiBaseUrl, deps->authInterceptor_);
+    deps->connectClient_ = std::make_shared<network::ConnectClient>(
+        network::ClientConfig{.baseUrl = config.apiBaseUrl}, deps->authInterceptor_);
 
     // --- Auth ------------------------------------------------------------------
     deps->authRepository_ = std::make_shared<auth::AuthRepositoryImpl>(
-        std::make_shared<auth::ConnectAuthRemoteDataSource>(deps->apiClient_), deps->tokenAdapter_, deps->clock_,
+        std::make_shared<auth::ConnectAuthRemoteDataSource>(deps->connectClient_), deps->tokenAdapter_, deps->clock_,
         config.deviceId);
     deps->refreshToken_ = std::make_shared<auth::RefreshTokenUseCase>(deps->authRepository_, deps->clock_);
     deps->loginViewModel_ = std::make_unique<auth::LoginViewModel>(
@@ -79,6 +80,10 @@ designsystem::ThemeController& AppDependencies::theme() noexcept {
 
 feature::auth::LoginViewModel& AppDependencies::loginViewModel() noexcept {
     return *loginViewModel_;
+}
+
+void AppDependencies::prewarmNetwork() {
+    connectClient_->prewarm();
 }
 
 navigation::Route AppDependencies::initialRoute() const {

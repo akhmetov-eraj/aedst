@@ -31,6 +31,10 @@ struct ApiError {
     ApiErrorKind kind{ApiErrorKind::Unknown};
     int httpStatus{0};
     std::string message;
+    /// The Connect error code exactly as received ("unavailable", "not_found", ...);
+    /// empty for client-side failures (transport, timeout, decoding) and for
+    /// responses that carried no Connect error body.
+    std::string connectCode{};
 
     [[nodiscard]] static constexpr ApiErrorKind kindFromConnectCode(std::string_view code) noexcept {
         if (code == "canceled") {
@@ -64,20 +68,20 @@ struct ApiError {
     }
 
     /// Fallback for responses that carry no Connect error body (proxies, LB errors).
+    /// This is the HTTP-to-code table from the Connect protocol spec
+    /// (https://connectrpc.com/docs/protocol#http-to-error-code) - note 400 maps to
+    /// `internal` and 404 to `unimplemented`, not to invalid_argument/not_found:
+    /// a bodiless 4xx came from infrastructure, not from the handler.
     [[nodiscard]] static constexpr ApiErrorKind kindFromHttpStatus(int status) noexcept {
         switch (status) {
         case 400:
-            return ApiErrorKind::InvalidArgument;
+            return ApiErrorKind::Internal;
         case 401:
             return ApiErrorKind::Unauthenticated;
         case 403:
             return ApiErrorKind::PermissionDenied;
         case 404:
-            return ApiErrorKind::NotFound;
-        case 408:
-            return ApiErrorKind::Timeout;
-        case 409:
-            return ApiErrorKind::AlreadyExists;
+            return ApiErrorKind::Internal; // unimplemented
         case 429:
         case 502:
         case 503:
@@ -86,14 +90,17 @@ struct ApiError {
         default:
             break;
         }
-        return status >= 500 ? ApiErrorKind::Internal : ApiErrorKind::Unknown;
+        return ApiErrorKind::Unknown;
     }
 
     [[nodiscard]] static ApiError fromConnectResponse(int httpStatus, std::string_view connectCode,
                                                       std::string message) {
         const ApiErrorKind kind =
             connectCode.empty() ? kindFromHttpStatus(httpStatus) : kindFromConnectCode(connectCode);
-        return {kind, httpStatus, std::move(message)};
+        return {.kind = kind,
+                .httpStatus = httpStatus,
+                .message = std::move(message),
+                .connectCode = std::string(connectCode)};
     }
 
     /// Only failures where the same request might succeed later. The offline

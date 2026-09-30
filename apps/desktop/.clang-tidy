@@ -22,8 +22,14 @@ Checks: >
   -cppcoreguidelines-avoid-magic-numbers,
   -cppcoreguidelines-pro-bounds-array-to-pointer-decay,
   -cppcoreguidelines-pro-type-reinterpret-cast,
+  -cppcoreguidelines-avoid-const-or-ref-data-members,
+  -cppcoreguidelines-macro-usage,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-pro-type-vararg,
   -modernize-use-trailing-return-type,
-  -modernize-use-designated-initializers
+  -modernize-use-designated-initializers,
+  -modernize-avoid-c-arrays,
+  -performance-enum-size
 
 # Why the disabled checks:
 # - cppcoreguidelines-owning-memory: Qt's ownership model is parent/child
@@ -36,6 +42,19 @@ Checks: >
 # - bugprone-easily-swappable-parameters: noisy for DTO-shaped constructors.
 # - cppcoreguidelines-avoid-magic-numbers: theme tokens and HTTP status codes.
 # - modernize-use-trailing-return-type: style preference, not a defect.
+# - cppcoreguidelines-non-private-member-variables-in-classes: aggregates/DTOs
+#   (ApiError, Frame, CallOptions) are plain structs by design.
+# - cppcoreguidelines-avoid-const-or-ref-data-members: fires on the deliberate
+#   const/reference members in test fixtures and Qt slot closures.
+# - cppcoreguidelines-macro-usage: Qt (Q_OBJECT, QTEST_*) and the gtest main macro.
+# - cppcoreguidelines-pro-type-vararg: fires inside qDebug()/gtest/QTest macros.
+# - modernize-avoid-c-arrays: test tables and Qt Test data rows use small C arrays.
+# - performance-enum-size: narrowing enum underlying types buys nothing here.
+#
+# Generated code (protoc output under build/**/generated, moc/rcc autogen) and
+# third_party/ are never linted: HeaderFilterRegex only admits Modules/ and App/
+# headers, run-clang-tidy is filtered to Modules/|App/, and the AedstContractProto
+# target clears CXX_CLANG_TIDY for AEDST_ENABLE_CLANG_TIDY=ON builds.
 WarningsAsErrors: ''
 HeaderFilterRegex: '.*/(Modules|App)/.*\.hpp$'
 FormatStyle: file

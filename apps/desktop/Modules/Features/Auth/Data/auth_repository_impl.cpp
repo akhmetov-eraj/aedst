@@ -8,7 +8,6 @@
 namespace aedst::feature::auth {
 
 using core::AedstLogger;
-namespace dto = network::dto;
 
 AuthRepositoryImpl::AuthRepositoryImpl(std::shared_ptr<AuthRemoteDataSource> remote,
                                        std::shared_ptr<LocalTokenStoreAdapter> local,
@@ -17,13 +16,12 @@ AuthRepositoryImpl::AuthRepositoryImpl(std::shared_ptr<AuthRemoteDataSource> rem
       deviceId_(std::move(deviceId)) {}
 
 void AuthRepositoryImpl::login(const Credentials& credentials, core::Completion<Session> done) {
-    const dto::LoginRequestDto request{
-        .email = credentials.email,
-        .password = credentials.password,
-        .deviceId = deviceId_,
-    };
+    authv1::LoginRequest request;
+    request.set_email(credentials.email);
+    request.set_password(credentials.password);
+    request.set_device_id(deviceId_);
     remote_->login(request, [weak = weak_from_this(), done = std::move(done)](
-                                 network::ApiResult<dto::LoginResponseDto> result) {
+                                 network::ApiResult<authv1::LoginResponse> result) {
         const auto self = weak.lock();
         if (!self) {
             return;
@@ -32,7 +30,7 @@ void AuthRepositoryImpl::login(const Credentials& credentials, core::Completion<
             done(core::fail(result.error().toCoreError()));
             return;
         }
-        self->persistAndComplete(self->toSession(std::move(result->userId), result->tokens), done);
+        self->persistAndComplete(self->toSession(result->user_id(), result->tokens()), done);
     });
 }
 
@@ -47,9 +45,10 @@ void AuthRepositoryImpl::refreshToken(core::Completion<Session> done) {
         return;
     }
 
-    const dto::RefreshTokenRequestDto request{.refreshToken = (*current)->refreshToken};
+    authv1::RefreshTokenRequest request;
+    request.set_refresh_token((*current)->refreshToken);
     remote_->refreshToken(request, [weak = weak_from_this(), userId = (*current)->userId, done = std::move(done)](
-                                        network::ApiResult<dto::RefreshTokenResponseDto> result) {
+                                        network::ApiResult<authv1::RefreshTokenResponse> result) {
         const auto self = weak.lock();
         if (!self) {
             return;
@@ -64,7 +63,7 @@ void AuthRepositoryImpl::refreshToken(core::Completion<Session> done) {
             done(core::fail(result.error().toCoreError()));
             return;
         }
-        self->persistAndComplete(self->toSession(userId, result->tokens), done);
+        self->persistAndComplete(self->toSession(userId, result->tokens()), done);
     });
 }
 
@@ -76,7 +75,8 @@ void AuthRepositoryImpl::logout(core::Completion<void> done) {
         return;
     }
 
-    const dto::LogoutRequestDto request{.refreshToken = (*current)->refreshToken};
+    authv1::LogoutRequest request;
+    request.set_refresh_token((*current)->refreshToken);
     remote_->logout(request, [weak = weak_from_this(), done = std::move(done)](network::ApiResult<void> result) {
         const auto self = weak.lock();
         if (!self) {
@@ -102,12 +102,12 @@ std::optional<Session> AuthRepositoryImpl::currentSession() const {
     return *session;
 }
 
-Session AuthRepositoryImpl::toSession(std::string userId, const dto::TokenPairDto& tokens) const {
+Session AuthRepositoryImpl::toSession(std::string userId, const authv1::TokenPair& tokens) const {
     return {
         .userId = std::move(userId),
-        .accessToken = tokens.accessToken,
-        .refreshToken = tokens.refreshToken,
-        .accessTokenExpiresAt = clock_->now() + std::chrono::seconds{tokens.accessTokenExpiresInSeconds},
+        .accessToken = tokens.access_token(),
+        .refreshToken = tokens.refresh_token(),
+        .accessTokenExpiresAt = clock_->now() + std::chrono::seconds{tokens.access_token_expires_in_seconds()},
     };
 }
 

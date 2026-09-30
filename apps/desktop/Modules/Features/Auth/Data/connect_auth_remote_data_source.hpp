@@ -5,25 +5,24 @@
 #include <memory>
 
 namespace aedst::network {
-class ApiClient;
+class ConnectClient;
 } // namespace aedst::network
 
 namespace aedst::feature::auth {
 
-/// AuthRemoteDataSource over AedstNetwork's Connect-JSON ApiClient. The only
-/// file in this feature that knows procedure paths and wire DTO decoding.
+/// AuthRemoteDataSource over AedstNetwork's ConnectClient and the method table in
+/// Aedst::Contract. The only file in this feature that knows procedure entries.
 class ConnectAuthRemoteDataSource final : public AuthRemoteDataSource {
 public:
-    explicit ConnectAuthRemoteDataSource(std::shared_ptr<network::ApiClient> client);
+    explicit ConnectAuthRemoteDataSource(std::shared_ptr<network::ConnectClient> client);
 
-    void login(const network::dto::LoginRequestDto& request,
-               network::ApiCompletion<network::dto::LoginResponseDto> done) override;
-    void refreshToken(const network::dto::RefreshTokenRequestDto& request,
-                      network::ApiCompletion<network::dto::RefreshTokenResponseDto> done) override;
-    void logout(const network::dto::LogoutRequestDto& request, network::ApiCompletion<void> done) override;
+    void login(const authv1::LoginRequest& request, network::ApiCompletion<authv1::LoginResponse> done) override;
+    void refreshToken(const authv1::RefreshTokenRequest& request,
+                      network::ApiCompletion<authv1::RefreshTokenResponse> done) override;
+    void logout(const authv1::LogoutRequest& request, network::ApiCompletion<void> done) override;
 
 private:
-    std::shared_ptr<network::ApiClient> client_;
+    std::shared_ptr<network::ConnectClient> client_;
 };
 
 } // namespace aedst::feature::auth

@@ -1,5 +1,5 @@
 find_package(GTest REQUIRED)
-find_package(Qt6 6.8 REQUIRED COMPONENTS Core)
+find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Core Network)
 
 # Shared test doubles (Apple's AedstTesting equivalent). Only added when
 # BUILD_TESTING is ON, and only test targets may link it.
@@ -11,6 +11,7 @@ target_sources(AedstTesting INTERFACE
     BASE_DIRS include
     FILES
         include/aedst/testing/fake_clock.hpp
+        include/aedst/testing/fake_http_server.hpp
         include/aedst/testing/stub_token_provider.hpp
         include/aedst/testing/test_main.hpp
 )
@@ -19,5 +20,6 @@ target_link_libraries(AedstTesting INTERFACE
     Aedst::Core
     Aedst::Network
     Qt6::Core
+    Qt6::Network
     GTest::gtest
 )

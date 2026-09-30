@@ -1,9 +1,10 @@
 #pragma once
 
+#include "aedst/network/method.hpp"
+
 #include <memory>
 #include <optional>
 #include <string>
-#include <string_view>
 
 class QNetworkRequest;
 
@@ -24,20 +25,19 @@ public:
     [[nodiscard]] virtual std::optional<std::string> accessToken() const = 0;
 };
 
-/// Adds `Authorization: Bearer <token>` to every non-public procedure.
+/// Adds `Authorization: Bearer <token>` to every request whose method is
+/// AuthRequirement::Required. ConnectClient calls it once per attempt, so a
+/// retry after a token rotation picks up the new token.
 ///
-/// Scope cut: no automatic refresh-and-retry on 401 yet. The app refreshes once
-/// at startup (AppDependencies::refreshSessionIfNeeded) and routes to login on
-/// Unauthenticated; a retrying interceptor is the follow-up once sessions are
-/// long-lived enough for mid-session expiry to matter.
+/// Scope cut: no automatic refresh-and-retry on Unauthenticated yet. The app
+/// refreshes once at startup (AppDependencies::refreshSessionIfNeeded) and
+/// routes to login on Unauthenticated; a refreshing interceptor is the
+/// follow-up once sessions are long-lived enough for mid-session expiry to matter.
 class AuthInterceptor final {
 public:
     explicit AuthInterceptor(std::shared_ptr<const TokenProvider> tokenProvider);
 
-    void apply(QNetworkRequest& request, std::string_view procedurePath) const;
-
-    /// Procedures callable without a session (see the server's public edge).
-    [[nodiscard]] static bool isPublicProcedure(std::string_view procedurePath) noexcept;
+    void apply(QNetworkRequest& request, AuthRequirement requirement) const;
 
 private:
     std::shared_ptr<const TokenProvider> tokenProvider_;

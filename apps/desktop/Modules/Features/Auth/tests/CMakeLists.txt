@@ -1,5 +1,5 @@
 find_package(GTest REQUIRED)
-find_package(Qt6 6.8 REQUIRED COMPONENTS Test)
+find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Test)
 include(GoogleTest)
 
 # Pure C++ (Domain) — GoogleTest + gMock.
@@ -20,4 +20,14 @@ aedst_set_warnings(AedstFeatureAuthQtTests)
 add_test(NAME AedstFeatureAuth.LoginViewModelTest COMMAND AedstFeatureAuthQtTests)
 set_tests_properties(AedstFeatureAuth.LoginViewModelTest PROPERTIES
     LABELS "qttest"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# Data layer against a loopback fake server (real ConnectClient + Protobuf).
+add_executable(AedstFeatureAuthDataTests connect_auth_remote_data_source_test.cpp)
+target_link_libraries(AedstFeatureAuthDataTests PRIVATE Aedst::Feature::Auth Aedst::Testing)
+aedst_set_warnings(AedstFeatureAuthDataTests)
+
+add_test(NAME AedstFeatureAuth.ConnectAuthRemoteDataSourceTest COMMAND AedstFeatureAuthDataTests)
+set_tests_properties(AedstFeatureAuth.ConnectAuthRemoteDataSourceTest PROPERTIES
+    LABELS "unit"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
