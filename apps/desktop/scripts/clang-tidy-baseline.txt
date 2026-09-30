@@ -1,0 +1,7 @@
+# clang-tidy baseline: known findings that do not fail CI. One path:check per line
+# (path relative to apps/desktop; check name or `*`). See CLANG_TIDY_BASELINE.md.
+#
+# This tree has never had a clang-tidy run, so the true starting set is UNKNOWN. On
+# the first CI/local run against a clang preset, generate it with
+#   ./scripts/run-clang-tidy.sh --update-baseline build/clang-debug
+# review it in the PR, and from then on this file may only shrink.

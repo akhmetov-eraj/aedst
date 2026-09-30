@@ -1,3 +1,4 @@
+#include "aedst/core/correlation.hpp"
 #include "aedst/contract/methods.hpp"
 #include "aedst/network/auth_interceptor.hpp"
 #include "aedst/network/connect_client.hpp"
@@ -7,6 +8,9 @@
 #include "aedst/testing/test_main.hpp"
 
 #include <QByteArray>
+#include <QSslSocket>
+#include <QString>
+#include <QUrl>
 #include <gtest/gtest.h>
 
 #include <chrono>
@@ -64,7 +68,11 @@ protected:
     void SetUp() override {
         ASSERT_TRUE(server_.isListening());
         client_ = std::make_unique<ConnectClient>(
-            ClientConfig{.baseUrl = server_.baseUrl(), .defaultTimeout = 2s, .retry = fastRetry()}, interceptor_);
+            ClientConfig{.baseUrl = server_.baseUrl(),
+                         .defaultTimeout = 2s,
+                         .retry = fastRetry(),
+                         .allowInsecureLoopback = true}, // the fake server is plain http on loopback
+            interceptor_);
     }
 
     template <typename Res>
@@ -336,12 +344,151 @@ TEST_F(ConnectClientTest, ServerStreamHttpErrorUsesTheUnaryErrorBody) {
     StreamOutcome out;
 
     client_->serverStream(
-        kStreamMethod, loginRequest(), [&out](authv1::LoginResponse) {},
+        kStreamMethod, loginRequest(), [](authv1::LoginResponse) {},
         [&out](ApiResult<void> result) { out.done = std::move(result); });
     ASSERT_TRUE(waitUntil([&] { return out.done.has_value(); }));
 
     ASSERT_FALSE(out.done->has_value());
     EXPECT_EQ(out.done->error().kind, ApiErrorKind::PermissionDenied);
+}
+
+TEST_F(ConnectClientTest, EveryCallCarriesAValidCorrelationIdAndItDiffersPerCall) {
+    server_.enqueue(FakeResponse::proto(loginResponseBytes()));
+    server_.enqueue(FakeResponse::proto(loginResponseBytes()));
+    Outcome<authv1::LoginResponse> first;
+    Outcome<authv1::LoginResponse> second;
+
+    call(contract::kAuthLogin, loginRequest(), first);
+    ASSERT_TRUE(waitUntil([&] { return first.done(); }));
+    call(contract::kAuthLogin, loginRequest(), second);
+    ASSERT_TRUE(waitUntil([&] { return second.done(); }));
+
+    ASSERT_EQ(server_.requests().size(), 2U);
+    const QByteArray id1 = server_.requests()[0].headers.value("x-correlation-id");
+    const QByteArray id2 = server_.requests()[1].headers.value("x-correlation-id");
+    EXPECT_EQ(id1.size(), 16);
+    EXPECT_TRUE(core::isValidCorrelationId(id1.toStdString()));
+    EXPECT_TRUE(core::isValidCorrelationId(id2.toStdString()));
+    EXPECT_NE(id1, id2);
+}
+
+TEST_F(ConnectClientTest, ARetriedCallKeepsItsCorrelationId) {
+    server_.enqueue(FakeResponse::connectError(503, "unavailable", "try later"));
+    server_.enqueue(FakeResponse::proto(currentUserResponseBytes()));
+    Outcome<authv1::GetCurrentUserResponse> out;
+
+    call(contract::kAuthGetCurrentUser, authv1::GetCurrentUserRequest{}, out);
+    ASSERT_TRUE(waitUntil([&] { return out.done(); }));
+
+    ASSERT_EQ(server_.requests().size(), 2U);
+    const QByteArray first = server_.requests()[0].headers.value("x-correlation-id");
+    EXPECT_FALSE(first.isEmpty());
+    EXPECT_EQ(server_.requests()[1].headers.value("x-correlation-id"), first);
+}
+
+TEST_F(ConnectClientTest, ACallerCorrelationScopeIsPropagatedToTheServer) {
+    server_.enqueue(FakeResponse::proto(loginResponseBytes()));
+    Outcome<authv1::LoginResponse> out;
+
+    {
+        const core::CorrelationScope scope("flow-123");
+        call(contract::kAuthLogin, loginRequest(), out);
+    }
+    ASSERT_TRUE(waitUntil([&] { return out.done(); }));
+
+    ASSERT_EQ(server_.requests().size(), 1U);
+    EXPECT_EQ(server_.requests().front().headers.value("x-correlation-id"), QByteArray("flow-123"));
+}
+
+// --- Transport policy: a client with an unacceptable endpoint sends nothing ------
+
+struct RejectedEndpoint {
+    const char* name;
+    QUrl url;
+    bool allowInsecureLoopback;
+};
+
+class InsecureEndpointClientTest : public ::testing::TestWithParam<RejectedEndpoint> {
+protected:
+    ClientConfig config() const {
+        return ClientConfig{.baseUrl = GetParam().url,
+                            .defaultTimeout = 2s,
+                            .retry = fastRetry(),
+                            .allowInsecureLoopback = GetParam().allowInsecureLoopback};
+    }
+    std::shared_ptr<testing::StubTokenProvider> tokens_ = std::make_shared<testing::StubTokenProvider>("tok");
+    std::shared_ptr<AuthInterceptor> interceptor_ = std::make_shared<AuthInterceptor>(tokens_);
+};
+
+TEST_P(InsecureEndpointClientTest, ValidateClientConfigRejectsIt) {
+    const auto result = validateClientConfig(config());
+
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().kind, ApiErrorKind::InvalidArgument);
+}
+
+TEST_P(InsecureEndpointClientTest, EveryUnaryCallFailsAsynchronouslyWithTheConfigError) {
+    ConnectClient client(config(), interceptor_);
+    ASSERT_TRUE(client.configError().has_value());
+    std::optional<ApiResult<authv1::LoginResponse>> result;
+    int completions = 0;
+
+    for (int i = 0; i < 2; ++i) {
+        result.reset();
+        client.unary(
+            contract::kAuthLogin, loginRequest(),
+            [&](ApiResult<authv1::LoginResponse> value) {
+                result = std::move(value);
+                ++completions;
+            });
+        EXPECT_FALSE(result.has_value()) << "completion must be asynchronous";
+        ASSERT_TRUE(waitUntil([&] { return result.has_value(); }));
+        ASSERT_FALSE(result->has_value());
+        EXPECT_EQ(result->error(), *client.configError());
+        EXPECT_FALSE(result->error().isRetryable());
+    }
+    EXPECT_EQ(completions, 2);
+}
+
+TEST_P(InsecureEndpointClientTest, ServerStreamsFailWithTheConfigErrorToo) {
+    ConnectClient client(config(), interceptor_);
+    StreamOutcome out;
+
+    client.serverStream(
+        kStreamMethod, loginRequest(), [](authv1::LoginResponse) {},
+        [&out](ApiResult<void> result) { out.done = std::move(result); });
+    ASSERT_TRUE(waitUntil([&] { return out.done.has_value(); }));
+
+    ASSERT_FALSE(out.done->has_value());
+    EXPECT_EQ(out.done->error(), *client.configError());
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    Endpoints, InsecureEndpointClientTest,
+    ::testing::Values(
+        RejectedEndpoint{"PlainHttpRemoteEvenWithOptIn", QUrl(QStringLiteral("http://api.example.com")), true},
+        RejectedEndpoint{"PlainHttpRemoteInRelease", QUrl(QStringLiteral("http://api.example.com")), false},
+        RejectedEndpoint{"PlainHttpLoopbackWithoutOptIn", QUrl(QStringLiteral("http://127.0.0.1:8080")), false},
+        RejectedEndpoint{"CredentialsInUrl", QUrl(QStringLiteral("https://u:p@api.example.com")), true},
+        RejectedEndpoint{"UnsupportedScheme", QUrl(QStringLiteral("ftp://api.example.com")), true}),
+    [](const ::testing::TestParamInfo<RejectedEndpoint>& info) { return std::string(info.param.name); });
+
+TEST(ClientConfigValidationTest, RejectsMalformedPinsAndBadExtraCaButAcceptsAWellFormedHttpsConfig) {
+    if (!QSslSocket::supportsSsl()) {
+        GTEST_SKIP() << "Qt build has no TLS backend";
+    }
+    ClientConfig config{.baseUrl = QUrl(QStringLiteral("https://api.example.com"))};
+    EXPECT_TRUE(validateClientConfig(config).has_value());
+
+    config.pinnedSpkiSha256 = {"not base64!"};
+    EXPECT_FALSE(validateClientConfig(config).has_value());
+    config.pinnedSpkiSha256 = {"AAAA"}; // valid base64, but 3 bytes, not a SHA-256 digest
+    EXPECT_FALSE(validateClientConfig(config).has_value());
+    config.pinnedSpkiSha256 = {QByteArray(32, 'x').toBase64().toStdString()};
+    EXPECT_TRUE(validateClientConfig(config).has_value());
+
+    config.extraCaCertificatesPem = "-----BEGIN CERTIFICATE-----\nnot a certificate\n-----END CERTIFICATE-----\n";
+    EXPECT_FALSE(validateClientConfig(config).has_value());
 }
 
 } // namespace

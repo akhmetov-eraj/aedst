@@ -23,5 +23,25 @@
         <source>Sign in</source>
         <translation>Kirish</translation>
     </message>
+    <message>
+        <source>Loading</source>
+        <translation>Yuklanmoqda</translation>
+    </message>
+    <message>
+        <source>Sign in form</source>
+        <translation>Kirish shakli</translation>
+    </message>
+    <message>
+        <source>Enter your email address</source>
+        <translation>Elektron pochta manzilingizni kiriting</translation>
+    </message>
+    <message>
+        <source>Enter your password</source>
+        <translation>Parolingizni kiriting</translation>
+    </message>
+    <message>
+        <source>Unavailable while offline</source>
+        <translation>Oflayn rejimda mavjud emas</translation>
+    </message>
 </context>
 </TS>

@@ -9,13 +9,18 @@ T.CheckBox {
     tristate: true
     font: Theme.bodyFont
     hoverEnabled: true
-    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
     spacing: Theme.spacingSm
 
     Accessible.role: Accessible.CheckBox
     Accessible.name: text
     Accessible.checkable: true
     Accessible.checked: checkState === Qt.Checked
+    Accessible.disabled: !enabled
+    Accessible.onToggleAction: control.toggle()
+    Accessible.onPressAction: control.toggle()
+
+    Keys.onReturnPressed: { control.toggle(); control.toggled() }
+    Keys.onEnterPressed: { control.toggle(); control.toggled() }
 
     indicator: Rectangle {
         implicitWidth: 18
@@ -26,7 +31,9 @@ T.CheckBox {
         color: control.checkState === Qt.Unchecked ? Theme.background : Theme.primary
         opacity: control.enabled ? 1.0 : 0.5
         border.width: control.checkState === Qt.Unchecked ? 1 : 0
-        border.color: control.activeFocus ? Theme.ring : Theme.input
+        border.color: control.visualFocus ? Theme.ring : Theme.input
+
+        HoverHandler { cursorShape: control.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
 
         Text {
             anchors.centerIn: parent

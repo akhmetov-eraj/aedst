@@ -1,5 +1,7 @@
 #pragma once
 
+#include "aedst/core/secure_memory.hpp"
+
 #include <QObject>
 #include <QString>
 
@@ -30,7 +32,10 @@ class LogoutUseCase;
 class LoginViewModel final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString email READ email WRITE setEmail NOTIFY emailChanged)
-    Q_PROPERTY(QString password READ password WRITE setPassword NOTIFY passwordChanged)
+    // Write-only from QML: READ always returns an empty string so the secret is never
+    // bound back into the UI; QML observes `hasPassword` instead.
+    Q_PROPERTY(QString password READ password WRITE setPassword)
+    Q_PROPERTY(bool hasPassword READ hasPassword NOTIFY hasPasswordChanged)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
     Q_PROPERTY(bool canSubmit READ canSubmit NOTIFY canSubmitChanged)
@@ -42,18 +47,23 @@ public:
 
     [[nodiscard]] QString email() const;
     void setEmail(const QString& email);
-    [[nodiscard]] QString password() const;
+    /// Always empty (write-only property, see above).
+    [[nodiscard]] static QString password();
+    /// Stores the secret in a wiping std::string (core::SecretString), not in a QString member.
     void setPassword(const QString& password);
+    [[nodiscard]] bool hasPassword() const noexcept;
     [[nodiscard]] bool isLoading() const noexcept;
     [[nodiscard]] QString errorMessage() const;
     [[nodiscard]] bool canSubmit() const;
 
     Q_INVOKABLE void login();
+    /// Wipes the held password (also done on success, logout and destruction).
+    Q_INVOKABLE void clearPassword();
     Q_INVOKABLE void logout();
 
 signals:
     void emailChanged();
-    void passwordChanged();
+    void hasPasswordChanged();
     void isLoadingChanged();
     void errorMessageChanged();
     void canSubmitChanged();
@@ -72,7 +82,7 @@ private:
     navigation::Router* router_;
 
     QString email_;
-    QString password_;
+    core::SecretString password_;
     QString errorMessage_;
     bool isLoading_{false};
 };

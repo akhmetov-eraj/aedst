@@ -2,12 +2,13 @@ import QtQuick
 
 // Minimal bar/line chart -- QML port of shadcn/ui's <ChartContainer>
 // primitives, deliberately simple (Canvas-drawn, no external charting
-// dependency) per this module's scope. `data` is an array of numbers;
+// dependency) per this module's scope. `values` is an array of numbers;
 // `kind` selects "bar" or "line".
 Item {
     id: root
 
-    property var data: []
+    // Not named `data`: that would shadow Item's default `data` property and break child declarations.
+    property var values: []
     property string kind: "bar"
     property color seriesColor: Theme.chart[0]
 
@@ -24,10 +25,10 @@ Item {
         onPaint: {
             const ctx = getContext("2d")
             ctx.reset()
-            if (root.data.length === 0) return
+            if (root.values.length === 0) return
 
-            const max = Math.max(...root.data, 1)
-            const min = Math.min(Math.min(...root.data), 0)
+            const max = Math.max(...root.values, 1)
+            const min = Math.min(Math.min(...root.values), 0)
             const range = Math.max(max - min, 1)
             const w = width
             const h = height
@@ -43,17 +44,17 @@ Item {
                 ctx.strokeStyle = root.seriesColor
                 ctx.lineWidth = 2
                 ctx.beginPath()
-                root.data.forEach((value, i) => {
-                    const x = (i / Math.max(root.data.length - 1, 1)) * w
+                root.values.forEach((value, i) => {
+                    const x = (i / Math.max(root.values.length - 1, 1)) * w
                     const y = h - ((value - min) / range) * h
                     if (i === 0) ctx.moveTo(x, y)
                     else ctx.lineTo(x, y)
                 })
                 ctx.stroke()
             } else {
-                const barWidth = w / root.data.length
+                const barWidth = w / root.values.length
                 ctx.fillStyle = root.seriesColor
-                root.data.forEach((value, i) => {
+                root.values.forEach((value, i) => {
                     const barHeight = ((value - min) / range) * h
                     ctx.fillRect(i * barWidth + barWidth * 0.15, h - barHeight, barWidth * 0.7, barHeight)
                 })
@@ -61,7 +62,7 @@ Item {
         }
     }
 
-    onDataChanged: canvas.requestPaint()
+    onValuesChanged: canvas.requestPaint()
     onKindChanged: canvas.requestPaint()
     Component.onCompleted: canvas.requestPaint()
 }

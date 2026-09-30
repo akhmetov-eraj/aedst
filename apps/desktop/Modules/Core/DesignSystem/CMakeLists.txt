@@ -40,6 +40,8 @@ set(AEDST_DESIGNSYSTEM_QML_FILES
     qml/AedstDesignSystem/AedstSkeleton.qml
     qml/AedstDesignSystem/AedstBadge.qml
     qml/AedstDesignSystem/AedstToolTip.qml
+    qml/AedstDesignSystem/AedstOfflineBanner.qml
+    qml/AedstDesignSystem/AedstStateView.qml
     # Overlay / navigation
     qml/AedstDesignSystem/AedstDialog.qml
     qml/AedstDesignSystem/AedstDrawer.qml
@@ -90,6 +92,9 @@ qt_add_qml_module(AedstDesignSystem
     SOURCES
         include/aedst/designsystem/theme_controller.hpp
         src/theme_controller.cpp
+        include/aedst/designsystem/language_resolver.hpp
+        include/aedst/designsystem/translation_loader.hpp
+        src/translation_loader.cpp
     QML_FILES ${AEDST_DESIGNSYSTEM_QML_FILES}
 )
 add_library(Aedst::DesignSystem ALIAS AedstDesignSystem)
@@ -111,4 +116,23 @@ target_link_libraries(AedstDesignSystem
 # The plugin already links the backing library; CMake allows cycles between static libraries.
 target_link_libraries(AedstDesignSystem INTERFACE AedstDesignSystemplugin)
 
+# Per-module Qt Linguist catalog (design-system component strings). qt_add_translations
+# embeds the .qm files under :/i18n (its default RESOURCE_PREFIX), which is where
+# TranslationLoader looks. Custom target names keep them unique across modules
+# (Auth and App also call qt_add_translations).
+qt_add_translations(AedstDesignSystem
+    TS_FILES
+        i18n/designsystem_en.ts
+        i18n/designsystem_ru.ts
+        i18n/designsystem_ar.ts
+        i18n/designsystem_tg.ts
+        i18n/designsystem_uz.ts
+    LUPDATE_TARGET update_designsystem_translations
+    LRELEASE_TARGET release_designsystem_translations
+)
+
 aedst_set_warnings(AedstDesignSystem)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

@@ -24,7 +24,7 @@ T.Popup {
     implicitWidth: 420
     closePolicy: T.Popup.CloseOnEscape
 
-    Accessible.role: Accessible.AlertDialog
+    Accessible.role: Accessible.Dialog
     Accessible.name: title
     Accessible.description: description
 

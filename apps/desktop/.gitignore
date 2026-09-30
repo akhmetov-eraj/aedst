@@ -22,3 +22,15 @@ packaging/**/build/
 *.appimage
 *.AppImage
 *.flatpak
+
+# Coverage / symbols / sanitizer outputs
+coverage/
+*.gcda
+*.gcno
+*.gcov
+coverage.xml
+clang-tidy.log
+*.pdb
+*.debug
+*.dSYM/
+symbols/

@@ -1,6 +1,7 @@
 #include "aedst/contract/methods.hpp"
 
 #include <google/protobuf/descriptor.h>
+#include <google/protobuf/descriptor.pb.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>

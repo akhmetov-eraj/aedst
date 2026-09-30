@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <optional>
+#include <utility>
 
 namespace aedst::feature::auth {
 namespace {

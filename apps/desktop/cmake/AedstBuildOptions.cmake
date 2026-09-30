@@ -53,3 +53,82 @@ if(CMAKE_BUILD_TYPE MATCHES "^(Release|MinSizeRel)$" AND
     message(FATAL_ERROR "QT_QML_DEBUG must not be defined in ${CMAKE_BUILD_TYPE} builds "
                         "(set the Qt Creator kit's 'QML debugging' to Disable).")
 endif()
+
+# --- Dead-code elimination (Apple ld64) ----------------------------------------
+# ld64 has no --gc-sections; -dead_strip is the equivalent. mold does not exist for
+# macOS, and Apple's linker is the default one (the mold/lld block above is Linux-only).
+if(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    add_link_options("$<$<CONFIG:Release>:-Wl,-dead_strip>")
+endif()
+
+# --- Release debug symbols (shipped stripped, symbols kept as a CI artifact) ------
+# Crash dumps from the field are useless without symbols that match the shipped
+# binary. Release builds therefore carry debug info that is SPLIT OFF after linking:
+#   MSVC        /Z7 (info embedded in objects; keeps sccache working) + link /DEBUG
+#               /OPT:REF /OPT:ICF -> aedst-desktop.pdb, copied to <build>/symbols
+#   GCC/Clang   -g1 (line tables + inlines, small) ; objcopy --only-keep-debug ->
+#               <build>/symbols/aedst-desktop.debug (matched by --build-id)
+#   AppleClang  -g ; dsymutil -> <build>/symbols/aedst-desktop.dSYM
+# The split target is created by aedst_split_debug_symbols() (called from App/).
+option(AEDST_RELEASE_DEBUG_SYMBOLS "Emit and split off debug symbols for Release builds" ON)
+
+if(AEDST_RELEASE_DEBUG_SYMBOLS)
+    if(MSVC)
+        add_compile_options("$<$<CONFIG:Release>:/Z7>")
+        # /DEBUG turns off /OPT:REF and /OPT:ICF unless they are restated.
+        # /PDBALTPATH keeps the build machine's directory layout out of the shipped exe.
+        add_link_options("$<$<CONFIG:Release>:/DEBUG>" "$<$<CONFIG:Release>:/OPT:REF>"
+                         "$<$<CONFIG:Release>:/OPT:ICF>" "$<$<CONFIG:Release>:/PDBALTPATH:%_PDB%>")
+    elseif(APPLE AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+        add_compile_options("$<$<CONFIG:Release>:-g>")
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        add_compile_options("$<$<CONFIG:Release>:-g1>")
+        add_link_options("$<$<CONFIG:Release>:-Wl,--build-id=sha1>")
+    endif()
+endif()
+
+# aedst_split_debug_symbols(<target>)
+#
+# Adds an ALL target `aedst_split_debug_symbols` that copies/splits the symbols of
+# <target> into ${CMAKE_BINARY_DIR}/symbols. No-op outside Release/RelWithDebInfo
+# single-config builds or when AEDST_RELEASE_DEBUG_SYMBOLS is OFF. The split runs
+# on the build-tree binary; CPack's strip (CPACK_STRIP_FILES) happens later on the
+# installed copy, and --build-id / PDB GUID / dSYM UUID still match.
+function(aedst_split_debug_symbols target)
+    if(NOT AEDST_RELEASE_DEBUG_SYMBOLS OR NOT CMAKE_BUILD_TYPE MATCHES "^(Release|RelWithDebInfo)$")
+        return()
+    endif()
+    set(sym_dir "${CMAKE_BINARY_DIR}/symbols")
+    if(MSVC)
+        add_custom_target(aedst_split_debug_symbols ALL
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${sym_dir}"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different "$<TARGET_PDB_FILE:${target}>" "${sym_dir}"
+            DEPENDS ${target}
+            COMMENT "Collecting PDB for ${target}"
+            VERBATIM)
+    elseif(APPLE)
+        find_program(AEDST_DSYMUTIL dsymutil)
+        if(NOT AEDST_DSYMUTIL)
+            message(WARNING "AEDST: dsymutil not found; no .dSYM will be produced")
+            return()
+        endif()
+        add_custom_target(aedst_split_debug_symbols ALL
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${sym_dir}"
+            COMMAND "${AEDST_DSYMUTIL}" "$<TARGET_FILE:${target}>" -o "${sym_dir}/$<TARGET_FILE_NAME:${target}>.dSYM"
+            DEPENDS ${target}
+            COMMENT "Generating dSYM for ${target}"
+            VERBATIM)
+    else()
+        find_program(AEDST_OBJCOPY objcopy)
+        if(NOT AEDST_OBJCOPY)
+            message(WARNING "AEDST: objcopy not found; debug symbols will not be split")
+            return()
+        endif()
+        add_custom_target(aedst_split_debug_symbols ALL
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${sym_dir}"
+            COMMAND "${AEDST_OBJCOPY}" --only-keep-debug "$<TARGET_FILE:${target}>" "${sym_dir}/$<TARGET_FILE_NAME:${target}>.debug"
+            DEPENDS ${target}
+            COMMENT "Splitting debug symbols of ${target}"
+            VERBATIM)
+    endif()
+endfunction()

@@ -13,7 +13,7 @@ RowLayout {
 
     spacing: Theme.spacingXs
 
-    Accessible.role: Accessible.PathObject
+    Accessible.role: Accessible.Grouping
 
     Repeater {
         model: root.model
@@ -28,11 +28,17 @@ RowLayout {
             Text {
                 text: crumbRow.modelData.text
                 font: Theme.smallFont
-                font.underline: !crumbRow.isLast && crumbArea.containsMouse
+                font.underline: !crumbRow.isLast && (crumbArea.containsMouse || activeFocus)
                 color: crumbRow.isLast ? Theme.foreground : Theme.mutedForeground
 
                 Accessible.role: Accessible.Link
                 Accessible.name: crumbRow.modelData.text
+                Accessible.onPressAction: if (!crumbRow.isLast) root.activated(crumbRow.modelData.value)
+
+                activeFocusOnTab: !crumbRow.isLast
+                Keys.onReturnPressed: if (!crumbRow.isLast) root.activated(crumbRow.modelData.value)
+                Keys.onEnterPressed: if (!crumbRow.isLast) root.activated(crumbRow.modelData.value)
+                Keys.onSpacePressed: if (!crumbRow.isLast) root.activated(crumbRow.modelData.value)
 
                 MouseArea {
                     id: crumbArea

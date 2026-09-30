@@ -7,13 +7,18 @@ T.Switch {
 
     font: Theme.bodyFont
     hoverEnabled: true
-    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
     spacing: Theme.spacingSm
 
-    Accessible.role: Accessible.Button
+    Accessible.role: Accessible.CheckBox
     Accessible.name: text
     Accessible.checkable: true
     Accessible.checked: checked
+    Accessible.disabled: !enabled
+    Accessible.onToggleAction: control.toggle()
+    Accessible.onPressAction: control.toggle()
+
+    Keys.onReturnPressed: { control.toggle(); control.toggled() }
+    Keys.onEnterPressed: { control.toggle(); control.toggled() }
 
     indicator: Rectangle {
         implicitWidth: 36
@@ -26,13 +31,26 @@ T.Switch {
 
         Behavior on color { ColorAnimation { duration: Theme.durationFast } }
 
+        HoverHandler { cursorShape: control.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
+        // Keyboard focus indicator (Theme.ring)
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -2
+            radius: parent.radius + 2
+            color: "transparent"
+            border.width: 2
+            border.color: Theme.ring
+            visible: control.visualFocus
+        }
+
         Rectangle {
             width: 16
             height: 16
             radius: 8
             color: Theme.background
             anchors.verticalCenter: parent.verticalCenter
-            x: control.checked ? parent.width - width - 2 : 2
+            // `mirrored` flips the knob travel under LayoutMirroring (RTL locales).
+            x: (control.checked !== control.mirrored) ? parent.width - width - 2 : 2
             Behavior on x { NumberAnimation { duration: Theme.durationFast; easing.type: Easing.InOutQuad } }
         }
     }

@@ -1,0 +1,17 @@
+# LeakSanitizer suppressions (LSAN_OPTIONS=suppressions=<this file>).
+# Format: one `leak:<substring of a frame's function / module / file>` per line.
+#
+# Rules for adding an entry:
+#   * Third-party or platform noise only. A leak in first-party code is a bug: fix it.
+#   * One line of justification above each entry (what leaks, why we can't fix it,
+#     upstream issue link if any) so entries can be pruned when the dependency moves on.
+#
+# Known-benign, deliberately empty until the first real sanitizer run produces a
+# report that is proven to originate in a dependency.
+#
+# Typical candidates (NOT enabled; uncomment only with a matching report in hand):
+#   Fontconfig singletons living for the process lifetime:
+#   leak:libfontconfig
+#   Mesa / driver state created by the offscreen QPA GL probe:
+#   leak:libGLX_mesa
+#   leak:libEGL_mesa

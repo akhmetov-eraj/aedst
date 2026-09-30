@@ -4,6 +4,9 @@ include(GoogleTest)
 add_executable(AedstCoreTests
     outcome_test.cpp
     logger_test.cpp
+    redaction_test.cpp
+    correlation_test.cpp
+    json_format_test.cpp
 )
 target_link_libraries(AedstCoreTests PRIVATE Aedst::Core GTest::gtest_main)
 aedst_set_warnings(AedstCoreTests)

@@ -7,6 +7,7 @@
 #include "Navigation/auth_route.hpp"
 #include "aedst/analytics/no_op_analytics_tracker.hpp"
 #include "aedst/core/logger.hpp"
+#include "aedst/persistence/master_key_provider.hpp"
 
 #include <optional>
 #include <system_error>
@@ -34,7 +35,11 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
         return core::fail(database.error());
     }
     deps->database_ = std::make_shared<persistence::SqliteConnection>(std::move(*database));
-    deps->secureStorage_ = std::make_shared<persistence::SecureStorage>(config.dataDirectory / "secure.key");
+    // Master key lives in the OS credential store (DPAPI-wrapped file on Windows,
+    // Keychain on macOS, Secret Service on Linux) with a 0600 key file only as fallback.
+    std::shared_ptr<persistence::MasterKeyProvider> keyProvider(
+        persistence::createPlatformMasterKeyProvider(config.dataDirectory));
+    deps->secureStorage_ = std::make_shared<persistence::SecureStorage>(std::move(keyProvider));
     deps->tokenStore_ = std::make_shared<persistence::TokenStore>(deps->database_, deps->secureStorage_);
     if (auto migrated = deps->tokenStore_->migrate(); !migrated) {
         return core::fail(migrated.error());

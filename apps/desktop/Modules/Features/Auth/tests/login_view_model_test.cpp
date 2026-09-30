@@ -117,7 +117,7 @@ private slots:
         QCOMPARE(succeeded.count(), 1);
         QCOMPARE(succeeded.takeFirst().at(0).toString(), QStringLiteral("user-1"));
         QCOMPARE(failed.count(), 0);
-        QVERIFY(viewModel_->password().isEmpty());
+        QVERIFY(!viewModel_->hasPassword());
         QVERIFY(viewModel_->errorMessage().isEmpty());
     }
 
@@ -131,8 +131,53 @@ private slots:
 
         QCOMPARE(failed.count(), 1);
         QCOMPARE(viewModel_->errorMessage(), QStringLiteral("invalid credentials"));
-        QCOMPARE(viewModel_->password(), QStringLiteral("wrong"));
+        // Kept so the user can retry without retyping.
+        QVERIFY(viewModel_->hasPassword());
         QVERIFY(!viewModel_->isLoading());
+
+        viewModel_->login();
+        QCOMPARE(repository_->loginCalls, 2);
+        QVERIFY(repository_->lastCredentials.password.reveal() == "wrong");
+    }
+
+    void passwordPropertyIsWriteOnly() {
+        QSignalSpy hasPasswordSpy(viewModel_.get(), &LoginViewModel::hasPasswordChanged);
+
+        viewModel_->setPassword(QStringLiteral("secret"));
+
+        QVERIFY(viewModel_->hasPassword());
+        QVERIFY(LoginViewModel::password().isEmpty());
+        QVERIFY(viewModel_->property("password").toString().isEmpty());
+        QCOMPARE(hasPasswordSpy.count(), 1);
+
+        viewModel_->setPassword(QStringLiteral("secret2")); // still has a password: no flip
+        QCOMPARE(hasPasswordSpy.count(), 1);
+
+        viewModel_->setPassword(QString());
+        QVERIFY(!viewModel_->hasPassword());
+        QCOMPARE(hasPasswordSpy.count(), 2);
+    }
+
+    void logoutClearsPassword() {
+        viewModel_->setEmail(QStringLiteral("user@aedst.dev"));
+        viewModel_->setPassword(QStringLiteral("secret"));
+        QVERIFY(viewModel_->canSubmit());
+
+        viewModel_->logout();
+
+        QVERIFY(!viewModel_->hasPassword());
+        QVERIFY(!viewModel_->canSubmit());
+    }
+
+    void clearPasswordIsIdempotent() {
+        QSignalSpy hasPasswordSpy(viewModel_.get(), &LoginViewModel::hasPasswordChanged);
+        viewModel_->clearPassword();
+        QCOMPARE(hasPasswordSpy.count(), 0);
+
+        viewModel_->setPassword(QStringLiteral("secret"));
+        viewModel_->clearPassword();
+        QVERIFY(!viewModel_->hasPassword());
+        QCOMPARE(hasPasswordSpy.count(), 2);
     }
 
     void logoutEmitsLoggedOut() {

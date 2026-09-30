@@ -1,10 +1,13 @@
 #include "aedst/persistence/token_store.hpp"
 
+#include "aedst/core/secure_memory.hpp"
+#include "aedst/persistence/migrator.hpp"
 #include "aedst/persistence/secure_storage.hpp"
 #include "aedst/persistence/sqlite_connection.hpp"
 
 #include <cstdint>
 #include <span>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -12,23 +15,15 @@
 namespace aedst::persistence {
 namespace {
 
-constexpr std::string_view kSchema = R"sql(
-CREATE TABLE IF NOT EXISTS auth_session (
-    id                  INTEGER PRIMARY KEY CHECK (id = 1),
-    user_id             TEXT    NOT NULL,
-    access_token        BLOB    NOT NULL,
-    refresh_token       BLOB    NOT NULL,
-    access_expires_at   INTEGER NOT NULL,
-    refresh_fingerprint TEXT    NOT NULL
-);
-)sql";
-
 std::span<const std::uint8_t> bytesOf(std::string_view text) {
     return {reinterpret_cast<const std::uint8_t*>(text.data()), text.size()};
 }
 
-std::string stringOf(const std::vector<std::uint8_t>& bytes) {
-    return {bytes.begin(), bytes.end()};
+/// Copies decrypted bytes into a string and wipes the source buffer.
+std::string takeString(std::vector<std::uint8_t>& bytes) {
+    std::string text(bytes.begin(), bytes.end());
+    core::secureWipe(bytes);
+    return text;
 }
 
 } // namespace
@@ -37,7 +32,12 @@ TokenStore::TokenStore(std::shared_ptr<SqliteConnection> connection, std::shared
     : connection_(std::move(connection)), secureStorage_(std::move(secureStorage)) {}
 
 core::VoidOutcome TokenStore::migrate() {
-    return connection_->execute(kSchema);
+    const Migrator migrator(appMigrations());
+    auto version = migrator.migrate(*connection_);
+    if (!version) {
+        return core::fail(version.error());
+    }
+    return core::ok();
 }
 
 core::VoidOutcome TokenStore::save(const StoredTokens& tokens) {
@@ -95,19 +95,25 @@ core::Outcome<std::optional<StoredTokens>> TokenStore::load() const {
     }
     auto refresh = secureStorage_->unprotect(statement->columnBlob(2));
     if (!refresh) {
+        core::secureWipe(*access);
         return core::fail(refresh.error());
     }
 
     return std::optional<StoredTokens>{StoredTokens{
         .userId = statement->columnText(0),
-        .accessToken = stringOf(*access),
-        .refreshToken = stringOf(*refresh),
+        .accessToken = takeString(*access),
+        .refreshToken = takeString(*refresh),
         .accessTokenExpiresAtEpochSeconds = statement->columnInt64(3),
     }};
 }
 
 core::VoidOutcome TokenStore::clear() {
-    return connection_->execute("DELETE FROM auth_session");
+    if (auto deleted = connection_->execute("DELETE FROM auth_session"); !deleted) {
+        return deleted;
+    }
+    // Deleted pages are zero-filled (secure_delete) but the previous row image may
+    // still sit in the WAL until it is checkpointed away.
+    return connection_->truncateWal();
 }
 
 } // namespace aedst::persistence

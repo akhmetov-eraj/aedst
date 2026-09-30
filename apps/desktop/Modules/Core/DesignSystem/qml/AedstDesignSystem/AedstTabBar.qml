@@ -13,6 +13,7 @@ T.TabBar {
     implicitHeight: 40
 
     Accessible.role: Accessible.PageTabList
+    Accessible.name: qsTr("Tabs")
 
     background: Rectangle {
         radius: Theme.radiusLg
@@ -31,6 +32,10 @@ T.TabBar {
             Accessible.role: Accessible.PageTab
             Accessible.name: text
             Accessible.selected: root.currentIndex === index
+            Accessible.onPressAction: root.currentIndex = index
+
+            Keys.onReturnPressed: root.currentIndex = index
+            Keys.onEnterPressed: root.currentIndex = index
 
             contentItem: Text {
                 text: tabButton.text
@@ -48,6 +53,17 @@ T.TabBar {
                 border.color: Theme.border
 
                 Behavior on color { ColorAnimation { duration: Theme.durationFast } }
+
+                HoverHandler { cursorShape: Qt.PointingHandCursor }
+                // Keyboard focus indicator (Theme.ring)
+                Rectangle {
+                    anchors.fill: parent
+                    radius: parent.radius
+                    color: "transparent"
+                    border.width: 2
+                    border.color: Theme.ring
+                    visible: tabButton.visualFocus
+                }
             }
         }
     }

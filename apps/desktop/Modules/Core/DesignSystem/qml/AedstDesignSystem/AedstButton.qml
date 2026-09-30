@@ -47,7 +47,6 @@ T.Button {
         : Math.max(label.implicitWidth + Theme.spacingLg * 2, 64)
     font: Theme.bodyFont
     hoverEnabled: true
-    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
 
     Accessible.role: Accessible.Button
     Accessible.name: text
@@ -91,6 +90,18 @@ T.Button {
         border.width: control.variant === AedstButton.Variant.Outline ? 1 : 0
         border.color: Theme.border
 
+        HoverHandler { cursorShape: control.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
+        // Keyboard focus indicator (Theme.ring)
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -2
+            radius: parent.radius + 2
+            color: "transparent"
+            border.width: 2
+            border.color: Theme.ring
+            visible: control.visualFocus
+        }
+
         // Ghost/link hover affordance, since their base color is transparent.
         Rectangle {
             anchors.fill: parent
@@ -101,12 +112,11 @@ T.Button {
 
         Rectangle {
             visible: control.variant === AedstButton.Variant.Link && (control.hovered || control.activeFocus)
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.bottom: label.bottom
-            anchors.bottomMargin: -2
-            anchors.leftMargin: (parent.width - label.width) / 2
-            anchors.rightMargin: (parent.width - label.width) / 2
+            // `label` lives in contentItem (not a sibling of this background), so it cannot be
+            // an anchor target; position the underline from its geometry instead.
+            x: (parent.width - label.width) / 2
+            y: (parent.height + label.height) / 2 + 2
+            width: label.width
             height: 1
             color: control.fgColor
         }

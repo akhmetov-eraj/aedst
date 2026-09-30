@@ -23,5 +23,25 @@
         <source>Sign in</source>
         <translation>Ворид шудан</translation>
     </message>
+    <message>
+        <source>Loading</source>
+        <translation>Боркунӣ</translation>
+    </message>
+    <message>
+        <source>Sign in form</source>
+        <translation>Шакли ворид шудан</translation>
+    </message>
+    <message>
+        <source>Enter your email address</source>
+        <translation>Суроғаи почтаи электронии худро ворид кунед</translation>
+    </message>
+    <message>
+        <source>Enter your password</source>
+        <translation>Паролро ворид кунед</translation>
+    </message>
+    <message>
+        <source>Unavailable while offline</source>
+        <translation>Бе пайвастшавӣ дастнорас аст</translation>
+    </message>
 </context>
 </TS>

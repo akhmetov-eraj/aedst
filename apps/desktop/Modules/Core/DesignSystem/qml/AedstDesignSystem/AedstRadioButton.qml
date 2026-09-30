@@ -8,13 +8,17 @@ T.RadioButton {
 
     font: Theme.bodyFont
     hoverEnabled: true
-    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
     spacing: Theme.spacingSm
 
     Accessible.role: Accessible.RadioButton
     Accessible.name: text
     Accessible.checkable: true
     Accessible.checked: checked
+    Accessible.disabled: !enabled
+    Accessible.onPressAction: control.toggle()
+
+    Keys.onReturnPressed: { control.toggle(); control.toggled() }
+    Keys.onEnterPressed: { control.toggle(); control.toggled() }
 
     indicator: Rectangle {
         implicitWidth: 18
@@ -25,7 +29,9 @@ T.RadioButton {
         color: Theme.background
         opacity: control.enabled ? 1.0 : 0.5
         border.width: control.activeFocus ? 2 : 1
-        border.color: control.checked ? Theme.primary : Theme.input
+        border.color: control.visualFocus ? Theme.ring : control.checked ? Theme.primary : Theme.input
+
+        HoverHandler { cursorShape: control.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
 
         Rectangle {
             anchors.centerIn: parent

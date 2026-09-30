@@ -3,6 +3,10 @@
 #include <sqlite3.h>
 
 namespace aedst::persistence {
+namespace {
+// SQLITE_TRANSIENT is a C-style cast macro (-Wold-style-cast); spell it once here.
+const sqlite3_destructor_type kTransient = reinterpret_cast<sqlite3_destructor_type>(-1);
+} // namespace
 
 void SqliteStatement::Finalizer::operator()(sqlite3_stmt* statement) const noexcept {
     sqlite3_finalize(statement);
@@ -11,8 +15,8 @@ void SqliteStatement::Finalizer::operator()(sqlite3_stmt* statement) const noexc
 SqliteStatement::SqliteStatement(sqlite3_stmt* statement) noexcept : statement_(statement) {}
 
 core::VoidOutcome SqliteStatement::bind(int index, std::string_view value) {
-    return check(sqlite3_bind_text(statement_.get(), index, value.data(), static_cast<int>(value.size()),
-                                   SQLITE_TRANSIENT));
+    return check(sqlite3_bind_text(statement_.get(), index, value.empty() ? "" : value.data(), static_cast<int>(value.size()),
+                                   kTransient));
 }
 
 core::VoidOutcome SqliteStatement::bind(int index, std::int64_t value) {
@@ -25,7 +29,7 @@ core::VoidOutcome SqliteStatement::bind(int index, std::span<const std::uint8_t>
         return check(sqlite3_bind_zeroblob(statement_.get(), index, 0));
     }
     return check(
-        sqlite3_bind_blob(statement_.get(), index, blob.data(), static_cast<int>(blob.size()), SQLITE_TRANSIENT));
+        sqlite3_bind_blob(statement_.get(), index, blob.data(), static_cast<int>(blob.size()), kTransient));
 }
 
 core::VoidOutcome SqliteStatement::bindNull(int index) {

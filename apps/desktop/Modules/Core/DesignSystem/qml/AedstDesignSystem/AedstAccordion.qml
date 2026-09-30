@@ -24,18 +24,23 @@ ColumnLayout {
             spacing: 0
 
             AedstCollapsible {
+                id: collapsible
                 Layout.fillWidth: true
                 label: section.modelData.title
-                expanded: root.single ? root.expandedIndex === section.index : section._expanded
-                property bool _expanded: false
+
+                // A Binding (not an `expanded:` expression) so the header click, which assigns
+                // `expanded` imperatively, does not permanently break the single-open rule.
+                Binding {
+                    target: collapsible
+                    property: "expanded"
+                    value: root.expandedIndex === section.index
+                    when: root.single
+                }
 
                 onExpandedChanged: {
-                    if (root.single) {
-                        if (expanded) root.expandedIndex = section.index
-                        else if (root.expandedIndex === section.index) root.expandedIndex = -1
-                    } else {
-                        section._expanded = expanded
-                    }
+                    if (!root.single) return
+                    if (expanded) root.expandedIndex = section.index
+                    else if (root.expandedIndex === section.index) root.expandedIndex = -1
                 }
 
                 Text {

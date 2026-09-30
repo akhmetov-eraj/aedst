@@ -10,12 +10,17 @@ T.Button {
     implicitWidth: Math.max(label.implicitWidth + Theme.spacingLg * 2, 36)
     font: Theme.bodyFont
     hoverEnabled: true
-    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
 
     Accessible.role: Accessible.Button
     Accessible.name: text
     Accessible.checkable: true
     Accessible.checked: checked
+    Accessible.disabled: !enabled
+    Accessible.onToggleAction: control.toggle()
+    Accessible.onPressAction: control.toggle()
+
+    Keys.onReturnPressed: { control.toggle(); control.toggled() }
+    Keys.onEnterPressed: { control.toggle(); control.toggled() }
 
     contentItem: Text {
         id: label
@@ -32,5 +37,17 @@ T.Button {
              : control.hovered ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6)
              : "transparent"
         opacity: control.enabled ? 1.0 : 0.5
+
+        HoverHandler { cursorShape: control.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
+        // Keyboard focus indicator (Theme.ring)
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -2
+            radius: parent.radius + 2
+            color: "transparent"
+            border.width: 2
+            border.color: Theme.ring
+            visible: control.visualFocus
+        }
     }
 }

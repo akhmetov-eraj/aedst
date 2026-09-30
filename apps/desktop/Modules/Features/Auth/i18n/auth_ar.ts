@@ -23,5 +23,25 @@
         <source>Sign in</source>
         <translation>تسجيل الدخول</translation>
     </message>
+    <message>
+        <source>Loading</source>
+        <translation>جارٍ التحميل</translation>
+    </message>
+    <message>
+        <source>Sign in form</source>
+        <translation>نموذج تسجيل الدخول</translation>
+    </message>
+    <message>
+        <source>Enter your email address</source>
+        <translation>أدخل عنوان بريدك الإلكتروني</translation>
+    </message>
+    <message>
+        <source>Enter your password</source>
+        <translation>أدخل كلمة المرور</translation>
+    </message>
+    <message>
+        <source>Unavailable while offline</source>
+        <translation>غير متاح دون اتصال بالإنترنت</translation>
+    </message>
 </context>
 </TS>

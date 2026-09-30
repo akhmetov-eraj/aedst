@@ -78,6 +78,8 @@ Qt Quick Controls) where the underlying control supports it.
 |---|---|---|
 | AedstAlert | `AedstAlert.qml` | `Alert` (Info/Success/Warning/Destructive) |
 | AedstAlertDialog | `AedstAlertDialog.qml` | `AlertDialog` |
+| AedstStateView | `AedstStateView.qml` | Loading / Empty / Error / Offline / Success states (`viewState` enum), accessible by default |
+| AedstOfflineBanner | `AedstOfflineBanner.qml` | connectivity banner driven by `Connectivity.isOffline` |
 | AedstToast | `AedstToast.qml` | `Toast`/sonner (per-instance; no global overlay manager yet, see Skipped) |
 | AedstProgressBar | `AedstProgressBar.qml` | `Progress` (+ indeterminate) |
 | AedstCircularProgress | `AedstCircularProgress.qml` | spinner (`Loader2`/`animate-spin`) |
@@ -180,3 +182,11 @@ This is a solid substitute for a compiler in this sandbox, but it is not a
 compiler: the next session with a working Qt 6.8 toolchain should run
 `cmake --build --target AedstDesignSystem` (and ideally `qmllint` over
 `qml/AedstDesignSystem/*.qml`) before this is considered fully verified.
+
+
+## Conventions
+
+- Every interactive component sets `Accessible.role`/`name`, shows a `Theme.ring` focus ring and activates on Enter/Space.
+- Do not set `cursorShape` on `T.Button`/`AbstractButton` types (no such property): use a `HoverHandler` inside the background.
+- Shell shortcuts: Back = Alt+Left / Esc, Sign out = Ctrl+Shift+Q, Quit = `StandardKey.Quit`, Retry = F5.
+- User text goes through `qsTr` and must exist in all five catalogs (`i18n/designsystem_{en,ru,ar,tg,uz}.ts`).

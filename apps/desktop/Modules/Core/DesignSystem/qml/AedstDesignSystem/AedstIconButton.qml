@@ -32,23 +32,39 @@ T.AbstractButton {
     implicitWidth: 36
     implicitHeight: 36
     hoverEnabled: true
-    cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor
 
     Accessible.role: Accessible.Button
     Accessible.name: control.tooltipText.length > 0 ? control.tooltipText : control.iconText
+    Accessible.disabled: !enabled
+    Accessible.onPressAction: control.clicked()
 
-    T.ToolTip.visible: control.tooltipText.length > 0 && control.hovered
+    Keys.onReturnPressed: control.clicked()
+    Keys.onEnterPressed: control.clicked()
+
+    T.ToolTip.visible: control.tooltipText.length > 0 && (control.hovered || control.visualFocus)
     T.ToolTip.text: control.tooltipText
     T.ToolTip.delay: 500
 
     background: Rectangle {
         radius: Theme.radiusMd
-        color: control.down ? Qt.darker(control.bgColor === "transparent" ? Theme.accent : control.bgColor, 1.1)
-             : control.hovered ? (control.bgColor === "transparent" ? Theme.accent : Qt.lighter(control.bgColor, 1.08))
+        color: control.down ? Qt.darker(control.variant === AedstIconButton.Variant.Ghost ? Theme.accent : control.bgColor, 1.1)
+             : control.hovered ? (control.variant === AedstIconButton.Variant.Ghost ? Theme.accent : Qt.lighter(control.bgColor, 1.08))
              : control.bgColor
         opacity: control.enabled ? 1.0 : 0.5
         border.width: control.variant === AedstIconButton.Variant.Outline ? 1 : 0
         border.color: Theme.border
+
+        HoverHandler { cursorShape: control.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
+        // Keyboard focus indicator (Theme.ring)
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: -2
+            radius: parent.radius + 2
+            color: "transparent"
+            border.width: 2
+            border.color: Theme.ring
+            visible: control.visualFocus
+        }
     }
 
     contentItem: Item {

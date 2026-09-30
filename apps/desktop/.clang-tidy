@@ -1,8 +1,8 @@
 ---
-# Run against compile_commands.json from a configured preset, e.g.
-#   run-clang-tidy -p build/debug -quiet 'Modules/|App/'
-# moc/rcc output lives under build/**/*_autogen and is excluded by HeaderFilterRegex
-# plus the path filter above.
+# Run via scripts/run-clang-tidy.sh (blocking CI gate + checked-in baseline, see
+# CLANG_TIDY_BASELINE.md) against a clang preset, e.g.
+#   ./scripts/run-clang-tidy.sh build/clang-debug
+# moc/rcc/proto output lives under build/** and is excluded by the source-root path filter.
 Checks: >
   -*,
   bugprone-*,

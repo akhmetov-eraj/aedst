@@ -15,6 +15,8 @@ RowLayout {
 
     spacing: 2
 
+    Accessible.role: Accessible.Grouping
+
     T.ButtonGroup {
         id: group
         exclusive: root.single

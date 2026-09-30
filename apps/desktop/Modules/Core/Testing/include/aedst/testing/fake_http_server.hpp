@@ -86,7 +86,7 @@ public:
                 accept(socket);
             }
         });
-        server_.listen(QHostAddress::LocalHost, 0);
+        static_cast<void>(server_.listen(QHostAddress::LocalHost, 0)); // isListening() reports failure
     }
 
     [[nodiscard]] bool isListening() const { return server_.isListening(); }
@@ -157,9 +157,10 @@ private:
         return true;
     }
 
-    static void respond(QTcpSocket* rawSocket, FakeResponse response) {
+    static void respond(QTcpSocket* rawSocket, FakeResponse queued) {
         QPointer<QTcpSocket> socket(rawSocket);
-        QTimer::singleShot(response.delay, rawSocket, [socket, response = std::move(response)]() {
+        const auto delay = queued.delay;
+        QTimer::singleShot(delay, rawSocket, [socket, response = std::move(queued)]() {
             if (!socket) {
                 return;
             }

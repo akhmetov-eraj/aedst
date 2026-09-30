@@ -23,5 +23,25 @@
         <source>Sign in</source>
         <translation>Вход</translation>
     </message>
+    <message>
+        <source>Loading</source>
+        <translation>Загрузка</translation>
+    </message>
+    <message>
+        <source>Sign in form</source>
+        <translation>Форма входа</translation>
+    </message>
+    <message>
+        <source>Enter your email address</source>
+        <translation>Введите адрес электронной почты</translation>
+    </message>
+    <message>
+        <source>Enter your password</source>
+        <translation>Введите пароль</translation>
+    </message>
+    <message>
+        <source>Unavailable while offline</source>
+        <translation>Недоступно без подключения к сети</translation>
+    </message>
 </context>
 </TS>

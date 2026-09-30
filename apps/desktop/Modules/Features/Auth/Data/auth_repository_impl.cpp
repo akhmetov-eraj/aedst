@@ -18,7 +18,7 @@ AuthRepositoryImpl::AuthRepositoryImpl(std::shared_ptr<AuthRemoteDataSource> rem
 void AuthRepositoryImpl::login(const Credentials& credentials, core::Completion<Session> done) {
     authv1::LoginRequest request;
     request.set_email(credentials.email);
-    request.set_password(credentials.password);
+    request.set_password(credentials.password.reveal());
     request.set_device_id(deviceId_);
     remote_->login(request, [weak = weak_from_this(), done = std::move(done)](
                                  network::ApiResult<authv1::LoginResponse> result) {

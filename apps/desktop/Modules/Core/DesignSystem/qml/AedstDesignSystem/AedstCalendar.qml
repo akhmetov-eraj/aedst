@@ -89,9 +89,26 @@ Rectangle {
             Repeater {
                 model: root.cells
                 Item {
+                    id: dayCell
                     required property var modelData
                     Layout.preferredWidth: 32
                     Layout.preferredHeight: 32
+                    activeFocusOnTab: modelData !== null
+
+                    function selectDay() {
+                        if (modelData === null) return
+                        const d = new Date(root.displayedMonth.getFullYear(), root.displayedMonth.getMonth(), modelData)
+                        root.selectedDate = d
+                        root.dateSelected(d)
+                    }
+
+                    Accessible.role: Accessible.Button
+                    Accessible.name: modelData === null ? "" : modelData.toString()
+                    Accessible.ignored: modelData === null
+                    Accessible.onPressAction: dayCell.selectDay()
+                    Keys.onReturnPressed: dayCell.selectDay()
+                    Keys.onEnterPressed: dayCell.selectDay()
+                    Keys.onSpacePressed: dayCell.selectDay()
 
                     readonly property bool isSelected: modelData !== null
                         && modelData === root.selectedDate.getDate()
@@ -103,6 +120,8 @@ Rectangle {
                         visible: parent.modelData !== null
                         radius: width / 2
                         color: parent.isSelected ? Theme.primary : "transparent"
+                        border.width: dayCell.activeFocus ? 2 : 0
+                        border.color: Theme.ring
 
                         Text {
                             anchors.centerIn: parent
@@ -114,11 +133,7 @@ Rectangle {
                         MouseArea {
                             anchors.fill: parent
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                const d = new Date(root.displayedMonth.getFullYear(), root.displayedMonth.getMonth(), parent.parent.modelData)
-                                root.selectedDate = d
-                                root.dateSelected(d)
-                            }
+                            onClicked: dayCell.selectDay()
                         }
                     }
                 }

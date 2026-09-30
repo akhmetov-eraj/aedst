@@ -20,11 +20,27 @@ ColumnLayout {
         implicitHeight: 36
         height: implicitHeight
         cursorShape: Qt.PointingHandCursor
-        onClicked: root.expanded = !root.expanded
+        activeFocusOnTab: enabled
+        onClicked: { root.expanded = !root.expanded; header.forceActiveFocus() }
 
         Accessible.role: Accessible.Button
         Accessible.name: root.label
+        Accessible.description: root.expanded ? qsTr("Expanded") : qsTr("Collapsed")
+        Accessible.disabled: !enabled
+        Accessible.onPressAction: root.expanded = !root.expanded
         Keys.onSpacePressed: root.expanded = !root.expanded
+        Keys.onReturnPressed: root.expanded = !root.expanded
+        Keys.onEnterPressed: root.expanded = !root.expanded
+
+        // Keyboard focus indicator (Theme.ring)
+        Rectangle {
+            anchors.fill: parent
+            radius: Theme.radiusMd
+            color: "transparent"
+            border.width: 2
+            border.color: Theme.ring
+            visible: header.activeFocus
+        }
 
         RowLayout {
             anchors.fill: parent

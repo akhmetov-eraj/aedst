@@ -32,16 +32,36 @@ void LoginViewModel::setEmail(const QString& email) {
     emit canSubmitChanged();
 }
 
-QString LoginViewModel::password() const {
-    return password_;
+QString LoginViewModel::password() {
+    return {};
 }
 
 void LoginViewModel::setPassword(const QString& password) {
-    if (password == password_) {
+    // toStdString() makes the only long-lived copy, inside a SecretString that
+    // wipes itself; QString/JS copies made by QML are transient and cannot be wiped.
+    std::string next = password.toStdString();
+    if (next == password_.reveal()) {
+        core::secureWipe(next);
         return;
     }
-    password_ = password;
-    emit passwordChanged();
+    const bool hadPassword = !password_.empty();
+    password_ = core::SecretString(std::move(next));
+    if (hadPassword != !password_.empty()) {
+        emit hasPasswordChanged();
+    }
+    emit canSubmitChanged();
+}
+
+bool LoginViewModel::hasPassword() const noexcept {
+    return !password_.empty();
+}
+
+void LoginViewModel::clearPassword() {
+    if (password_.empty()) {
+        return;
+    }
+    password_.clear();
+    emit hasPasswordChanged();
     emit canSubmitChanged();
 }
 
@@ -54,7 +74,7 @@ QString LoginViewModel::errorMessage() const {
 }
 
 bool LoginViewModel::canSubmit() const {
-    return !isLoading_ && !email_.trimmed().isEmpty() && !password_.isEmpty();
+    return !isLoading_ && !email_.trimmed().isEmpty() && !password_.empty();
 }
 
 void LoginViewModel::login() {
@@ -67,7 +87,7 @@ void LoginViewModel::login() {
     // Completions run later on the event loop; the guard makes a destroyed
     // ViewModel (window closed mid-request) a no-op instead of a dangling `this`.
     QPointer<LoginViewModel> guard(this);
-    login_->execute(Credentials{.email = email_.trimmed().toStdString(), .password = password_.toStdString()},
+    login_->execute(Credentials{.email = email_.trimmed().toStdString(), .password = password_},
                      [guard](core::Outcome<Session> result) {
                          if (!guard) {
                              return;
@@ -86,9 +106,7 @@ void LoginViewModel::login() {
                              return;
                          }
 
-                         guard->password_.clear();
-                         emit guard->passwordChanged();
-                         emit guard->canSubmitChanged();
+                         guard->clearPassword();
                          if (guard->analytics_) {
                              guard->analytics_->identify(result->userId);
                              guard->analytics_->track(analytics::events::kLoginSucceeded, {});
@@ -102,6 +120,7 @@ void LoginViewModel::login() {
 }
 
 void LoginViewModel::logout() {
+    clearPassword();
     setLoading(true);
     QPointer<LoginViewModel> guard(this);
     logout_->execute(core::NoInput{}, [guard](core::VoidOutcome result) {

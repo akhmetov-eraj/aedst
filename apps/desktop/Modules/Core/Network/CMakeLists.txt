@@ -16,10 +16,12 @@ add_library(AedstNetwork STATIC
     include/aedst/network/connect_envelope.hpp
     include/aedst/network/connect_error.hpp
     include/aedst/network/method.hpp
+    include/aedst/network/transport_policy.hpp
     src/auth_interceptor.cpp
     src/connect_client.cpp
     src/connect_envelope.cpp
     src/connect_error.cpp
+    src/transport_policy.cpp
 )
 add_library(Aedst::Network ALIAS AedstNetwork)
 

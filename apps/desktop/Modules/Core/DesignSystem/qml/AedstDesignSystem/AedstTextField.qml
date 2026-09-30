@@ -17,6 +17,12 @@ ColumnLayout {
     property alias echoMode: field.echoMode
     property alias validator: field.validator
     property alias inputMethodHints: field.inputMethodHints
+    /// True while the inner input owns keyboard focus.
+    readonly property bool inputFocused: field.activeFocus
+    /// The inner text input (for KeyNavigation targets and tests).
+    readonly property Item inputItem: field
+    /// Screen-reader hint (used when there is no error text to read instead).
+    property string accessibleDescription
 
     signal edited(string value)
     signal accepted()
@@ -48,7 +54,7 @@ ColumnLayout {
 
         Accessible.role: Accessible.EditableText
         Accessible.name: root.label.length > 0 ? root.label : root.placeholderText
-        Accessible.description: root.errorText
+        Accessible.description: root.errorText.length > 0 ? root.errorText : root.accessibleDescription
         Accessible.disabled: !enabled
 
         background: Rectangle {

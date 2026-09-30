@@ -43,23 +43,23 @@ struct Error {
     ErrorCode code{ErrorCode::Unknown};
     std::string message;
 
-    [[nodiscard]] static Error invalidArgument(std::string message) {
-        return {ErrorCode::InvalidArgument, std::move(message)};
+    [[nodiscard]] static Error invalidArgument(std::string text) {
+        return {ErrorCode::InvalidArgument, std::move(text)};
     }
 
-    [[nodiscard]] static Error unauthenticated(std::string message) {
-        return {ErrorCode::Unauthenticated, std::move(message)};
+    [[nodiscard]] static Error unauthenticated(std::string text) {
+        return {ErrorCode::Unauthenticated, std::move(text)};
     }
 
-    [[nodiscard]] static Error notFound(std::string message) { return {ErrorCode::NotFound, std::move(message)}; }
+    [[nodiscard]] static Error notFound(std::string text) { return {ErrorCode::NotFound, std::move(text)}; }
 
-    [[nodiscard]] static Error network(std::string message) { return {ErrorCode::Network, std::move(message)}; }
+    [[nodiscard]] static Error network(std::string text) { return {ErrorCode::Network, std::move(text)}; }
 
-    [[nodiscard]] static Error storage(std::string message) { return {ErrorCode::Storage, std::move(message)}; }
+    [[nodiscard]] static Error storage(std::string text) { return {ErrorCode::Storage, std::move(text)}; }
 
-    [[nodiscard]] static Error cancelled(std::string message) { return {ErrorCode::Cancelled, std::move(message)}; }
+    [[nodiscard]] static Error cancelled(std::string text) { return {ErrorCode::Cancelled, std::move(text)}; }
 
-    [[nodiscard]] static Error unknown(std::string message) { return {ErrorCode::Unknown, std::move(message)}; }
+    [[nodiscard]] static Error unknown(std::string text) { return {ErrorCode::Unknown, std::move(text)}; }
 
     friend bool operator==(const Error&, const Error&) = default;
 };

@@ -1,18 +1,47 @@
-# clang-tidy baseline
+# clang-tidy gate and baseline
 
-`clang-tidy` runs in `.github/workflows/desktop-ci.yml`'s `test` job with
-`continue-on-error: true` because the tree has never had a real clang-tidy
-pass — the check exists so warnings are visible (see the uploaded
-`clang-tidy-log` artifact on each run), but a pre-existing warning doesn't
-fail CI yet.
+clang-tidy is a **blocking** CI check (`desktop-ci.yml`, `lint`-adjacent step in the
+`test (clang-debug)` job). It runs `scripts/run-clang-tidy.sh`, which calls
+`run-clang-tidy --warnings-as-errors='*'` over `Modules/` and `App/` using the
+`clang-debug` preset's `compile_commands.json` (a Clang database, so GCC-only warning
+flags cannot produce unknown-option noise) and the checks configured in `.clang-tidy`.
 
-## Flip condition
+## The baseline
 
-Set `continue-on-error: false` once `run-clang-tidy -p build/debug -quiet
-'Modules/|App/'` exits 0 against `main` — i.e. the current warning backlog
-(check the latest `clang-tidy-log` artifact) is cleared or explicitly
-suppressed via `.clang-tidy`'s `Checks:`/`--line-filter`, not just ignored.
+The tree has never had a clang-tidy run, so some findings will pre-exist. Instead of
+running non-blocking forever, known findings are listed in
+`scripts/clang-tidy-baseline.txt` as `relative/path:check` pairs (check may be `*`).
 
-Until then, a PR that adds new clang-tidy warnings on top of the existing
-backlog won't be blocked by CI — reviewers should still treat new warnings
-in the diff as a review comment.
+- A finding whose `path:check` is in the baseline is ignored.
+- Any other finding **fails the job**. New code must be clean; do not add to the baseline.
+- A baseline entry that no longer fires is reported as **stale** (a CI warning; set
+  `AEDST_TIDY_STRICT_BASELINE=1` to make it fail). Delete stale entries.
+
+## First run (one-time, needs a clang toolchain)
+
+The baseline file is committed **empty**: its true starting contents are unknown until
+clang-tidy has run once. Generate it on the first real run and review it in that PR:
+
+```bash
+cmake --preset clang-debug && cmake --build --preset clang-debug
+./scripts/run-clang-tidy.sh --update-baseline build/clang-debug
+```
+
+Until that PR lands, expect the first CI run to fail with the current findings; that
+is the honest state, not a regression.
+
+## Shrinking it
+
+Fix a check in one file, delete its line, done. `--update-baseline` is only for the
+initial generation and for reviewed, deliberate re-generation after a clang-tidy or
+`.clang-tidy` change; a PR that grows the baseline needs an explicit justification.
+Goal: the file contains only the header comment.
+
+## Local use
+
+```bash
+./scripts/run-clang-tidy.sh build/clang-debug      # same as CI
+AEDST_TIDY_LOG=/tmp/tidy.log ./scripts/run-clang-tidy.sh
+```
+
+The full raw output is written to `clang-tidy.log` (uploaded as a CI artifact).

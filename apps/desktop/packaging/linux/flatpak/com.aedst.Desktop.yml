@@ -27,6 +27,13 @@ finish-args:
   - --socket=wayland
   - --socket=fallback-x11
   - --device=dri
+  # Secret storage (AedstPlatform -> libsecret): the Secret Service API on the session bus.
+  - --talk-name=org.freedesktop.secrets
+  # Desktop notifications (org.freedesktop.Notifications via QDBus / QSystemTrayIcon).
+  - --talk-name=org.freedesktop.Notifications
+  # Autostart: the Background portal (org.freedesktop.portal.Background) is reached through
+  # the portal bus name; no host filesystem access to ~/.config/autostart is needed.
+  - --talk-name=org.freedesktop.portal.Desktop
 
 cleanup:
   - /include

@@ -7,13 +7,22 @@ T.Slider {
 
     implicitWidth: 200
     implicitHeight: 20
+    // Accessible name (e.g. "Volume"); falls back to the current value.
+    property string label
+
     hoverEnabled: true
 
     Accessible.role: Accessible.Slider
-    Accessible.name: control.value.toString()
+    Accessible.name: control.label.length > 0 ? control.label : control.value.toString()
+    Accessible.description: control.label.length > 0 ? control.value.toString() : ""
+    Accessible.disabled: !enabled
+    Accessible.onIncreaseAction: control.increase()
+    Accessible.onDecreaseAction: control.decrease()
 
     Keys.onLeftPressed: control.decrease()
     Keys.onRightPressed: control.increase()
+    Keys.onUpPressed: control.increase()
+    Keys.onDownPressed: control.decrease()
 
     background: Rectangle {
         x: control.leftPadding
@@ -40,8 +49,8 @@ T.Slider {
         implicitHeight: 16
         radius: 8
         color: Theme.background
-        border.width: 2
-        border.color: Theme.primary
+        border.width: control.visualFocus ? 3 : 2
+        border.color: control.visualFocus ? Theme.ring : Theme.primary
         scale: control.pressed ? 1.15 : 1.0
 
         Behavior on scale { NumberAnimation { duration: Theme.durationFast } }

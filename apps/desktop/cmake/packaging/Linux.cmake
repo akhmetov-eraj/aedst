@@ -1,14 +1,34 @@
 include_guard(GLOBAL)
 
-# --- CPack (TGZ + DEB) ------------------------------------------------------------
-set(CPACK_GENERATOR "TGZ;DEB")
+# --- CPack (TGZ + DEB + RPM) ------------------------------------------------------
+set(CPACK_GENERATOR "TGZ;DEB;RPM")
+# Explicit prefix: the .desktop file, metainfo and binary must land in /usr/{share,bin}
+# for the desktop environment, and scripts/verify-install-linux.sh relies on it.
+set(CPACK_PACKAGING_INSTALL_PREFIX "/usr")
+
 set(CPACK_DEBIAN_PACKAGE_NAME "aedst-desktop")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "AEDST <dev@aedst.com>")
 set(CPACK_DEBIAN_PACKAGE_SECTION "net")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
+# libsecret is dlopen()/optional in AedstPlatform (falls back to an encrypted file store
+# when no secret-service is running), so it is a Recommends, not a hard Depends.
+set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "libsecret-1-0, gnome-keyring | kwalletmanager")
 
-# Desktop integration files are shared by the DEB, the AppImage and Flatpak.
+set(CPACK_RPM_PACKAGE_NAME "aedst-desktop")
+set(CPACK_RPM_PACKAGE_LICENSE "Proprietary")
+set(CPACK_RPM_PACKAGE_GROUP "Applications/Internet")
+set(CPACK_RPM_PACKAGE_URL "${PROJECT_HOMEPAGE_URL}")
+set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
+set(CPACK_RPM_PACKAGE_RELEASE 1)
+# Do not claim ownership of system directories (/usr, /usr/bin, ...): avoids file
+# conflicts with the filesystem package on Fedora/openSUSE.
+set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
+    "/usr/share/applications;/usr/share/metainfo;/usr/bin;/usr/lib;/usr/share")
+# Soft dependency, see the DEB note above (Suggests is RPM's Recommends analogue on rpm >= 4.12).
+set(CPACK_RPM_PACKAGE_SUGGESTS "libsecret")
+
+# Desktop integration files are shared by the DEB, the RPM, the AppImage and Flatpak.
 install(FILES "${AEDST_PACKAGING_DIR}/linux/flatpak/${AEDST_APP_ID}.desktop"
     DESTINATION "${CMAKE_INSTALL_DATADIR}/applications")
 install(FILES "${AEDST_PACKAGING_DIR}/linux/flatpak/${AEDST_APP_ID}.metainfo.xml"

@@ -31,3 +31,23 @@ add_test(NAME AedstFeatureAuth.ConnectAuthRemoteDataSourceTest COMMAND AedstFeat
 set_tests_properties(AedstFeatureAuth.ConnectAuthRemoteDataSourceTest PROPERTIES
     LABELS "unit"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# QtQuickTest UI tests: LoginView.qml (loaded from its qrc path) against fake
+# LoginViewModel / Connectivity singletons. Runs headless via the offscreen platform.
+find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Qml Quick QuickTest)
+
+qt_add_executable(AedstFeatureAuthQmlTests qml_test_main.cpp)
+target_link_libraries(AedstFeatureAuthQmlTests PRIVATE
+    Aedst::Feature::Auth
+    Aedst::DesignSystem
+    Qt6::Qml
+    Qt6::Quick
+    Qt6::QuickTest)
+target_compile_definitions(AedstFeatureAuthQmlTests PRIVATE
+    QUICK_TEST_SOURCE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/qml")
+aedst_set_warnings(AedstFeatureAuthQmlTests)
+
+add_test(NAME AedstFeatureAuth.LoginViewQmlTest COMMAND AedstFeatureAuthQmlTests)
+set_tests_properties(AedstFeatureAuth.LoginViewQmlTest PROPERTIES
+    LABELS "qmltest"
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")

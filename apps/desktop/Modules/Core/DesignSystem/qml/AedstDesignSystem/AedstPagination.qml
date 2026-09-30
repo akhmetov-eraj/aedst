@@ -44,9 +44,15 @@ RowLayout {
         model: root.pages
 
         Item {
+            id: pageItem
             required property var modelData
             implicitWidth: 32
             implicitHeight: 32
+            activeFocusOnTab: modelData !== "ellipsis"
+
+            Keys.onReturnPressed: if (modelData !== "ellipsis") root.pageRequested(modelData)
+            Keys.onEnterPressed: if (modelData !== "ellipsis") root.pageRequested(modelData)
+            Keys.onSpacePressed: if (modelData !== "ellipsis") root.pageRequested(modelData)
 
             Text {
                 anchors.centerIn: parent
@@ -60,8 +66,8 @@ RowLayout {
                 visible: parent.modelData !== "ellipsis"
                 radius: Theme.radiusMd
                 color: parent.modelData === root.currentPage ? Theme.primary : "transparent"
-                border.width: parent.modelData === root.currentPage ? 0 : 1
-                border.color: Theme.border
+                border.width: pageItem.activeFocus ? 2 : parent.modelData === root.currentPage ? 0 : 1
+                border.color: pageItem.activeFocus ? Theme.ring : Theme.border
 
                 Text {
                     anchors.centerIn: parent
@@ -80,6 +86,7 @@ RowLayout {
             Accessible.role: Accessible.PageTab
             Accessible.name: (modelData === "ellipsis") ? qsTr("More pages") : (modelData + 1).toString()
             Accessible.selected: modelData === root.currentPage
+            Accessible.onPressAction: if (modelData !== "ellipsis") root.pageRequested(modelData)
         }
     }
 

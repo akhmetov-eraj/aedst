@@ -14,6 +14,7 @@ T.Drawer {
     property bool showCloseButton: true
 
     edge: Qt.RightEdge
+    padding: Theme.spacingLg
     modal: true
     dim: true
     implicitWidth: edge === Qt.LeftEdge || edge === Qt.RightEdge ? 360 : (parent ? parent.width : 360)
@@ -33,8 +34,6 @@ T.Drawer {
     }
 
     contentItem: ColumnLayout {
-        anchors.fill: parent
-        anchors.margins: Theme.spacingLg
         spacing: Theme.spacingLg
 
         RowLayout {

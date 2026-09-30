@@ -1,0 +1,16 @@
+# ThreadSanitizer suppressions (TSAN_OPTIONS=suppressions=<this file>).
+# Format: `race:<function or module substring>`, `mutex:`, `deadlock:`, `called_from_lib:<lib>`.
+#
+# Rules: dependency noise only, one justification line per entry; a race in
+# first-party code is a bug to fix, never to suppress.
+#
+# Qt's own libraries are NOT built with TSan, so their internal synchronisation
+# (lock-free QAtomic/QSharedData paths, QThreadStorage) is invisible to the tool
+# and can produce false positives. If the first real TSan run shows them, prefer
+# the narrowest suppression, e.g.:
+#   Qt event dispatcher wakeup (glib) races reported without Qt's memory model:
+#   called_from_lib:libQt6Core.so
+# (called_from_lib silences EVERY report whose top frames are in that library;
+#  use it only after confirming the reports are all false positives.)
+#
+# Empty until a real run proves otherwise.

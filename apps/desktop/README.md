@@ -1,7 +1,6 @@
 # AEDST Desktop
 
-Qt 6 / QML desktop client for Windows and Linux (macOS builds, packaging is a
-scope cut). Same "monolith first, boundaries first" module architecture as
+Qt 6 / QML desktop client for Windows, macOS and Linux. Same "monolith first, boundaries first" module architecture as
 `apps/android` and `apps/apple` — see
 [`docs/content/architecture-desktop.md`](../../docs/content/architecture-desktop.md) for how
 the server's modules map onto CMake targets and why features never link each
@@ -20,26 +19,28 @@ other.
 | Language | C++23 (`std::expected`, designated initializers) |
 | UI | Qt 6.8+ Qt Quick / QML, Qt Quick Controls (Basic style) |
 | Architecture | Module Architecture (Core libraries + Feature libraries + App composition root); MVVM + Clean Architecture (Domain / Data / Presentation / Navigation) per feature |
-| Build | CMake ≥ 3.25 with `CMakePresets.json` (`msvc-*`, `gcc-*`, `clang-*`, plus host-default `debug`/`release`/`bench`), Ninja; LTO, sccache/ccache, mold/lld auto-enabled — [performance.md](docs/performance.md) |
+| Build | CMake ≥ 3.25 with `CMakePresets.json` (`msvc-*`, `gcc-*`, `clang-*`, `macos-*`, sanitizer presets `*-asan`/`clang-tsan`, `coverage`, plus host-default `debug`/`release`/`bench`), Ninja; LTO, sccache/ccache, mold/lld auto-enabled — [performance.md](docs/performance.md) |
 | Packages | vcpkg manifest mode (`vcpkg.json`) for everything except Qt — [ADR-0002](docs/adr/0002-dependency-management.md) |
 | Qt itself | Official binaries (Qt installer / [aqtinstall](https://github.com/miurahr/aqtinstall)) at the version in `qt-version.txt` (single source of truth; CMake enforces it); found via `$QT_ROOT_DIR` |
 | API contract | Generated Protobuf C++ messages (protoc at build time from `apps/server/api/proto`) + a thin Connect-protocol client on Qt Network (unary + server streaming, retries, deadlines, cancellation) — [ADR-0001](docs/adr/0001-api-contract-client.md); Boost.Asio optional for future low-level I/O |
 | Database | SQLite (vcpkg `sqlite3`) behind a thin RAII wrapper (`AedstPersistence`) |
-| Crypto / secrets | Windows DPAPI; OpenSSL 3 AES-256-GCM elsewhere; OpenSSL SHA-256 for token fingerprints |
+| Crypto / secrets | AES-256-GCM (OpenSSL) envelope; master key in DPAPI (Windows) / Keychain (macOS) / Secret Service via libsecret (Linux), `0600` key file only as fallback — [ADR-0003](docs/adr/0003-secret-storage.md) |
+| Transport security | https required, TLS ≥ 1.2, optional SPKI pinning — [ADR-0004](docs/adr/0004-transport-policy.md) |
+| Platform services | single instance, deep links, autostart, notifications, crash capture, signed-update verification, connectivity — [ADR-0006](docs/adr/0006-platform-services-and-updates.md) |
 | Logging | spdlog (`AedstLogger`: console + rotating file) for app code; Qt `QLoggingCategory` reserved for Qt/QML framework messages |
-| Tests | GoogleTest/gMock (pure C++) + Qt Test (QObject/ViewModels), all via CTest |
-| Static analysis | clang-tidy (`.clang-tidy`), clang-format (`.clang-format`), PVS-Studio (local, licensed) |
+| Tests | GoogleTest/gMock (pure C++, label `unit`) + Qt Test (`qttest`) + Qt Quick Test (`qmltest`), all via CTest; sanitizers and coverage in CI — [TESTING.md](TESTING.md) |
+| Static analysis | clang-tidy (blocking in CI with a baseline), clang-format, qmllint, warnings-as-errors in CI, ASan/UBSan/TSan; PVS-Studio (local, licensed) |
 | Docs | Doxygen (`Doxyfile` → `docs/generated/`) |
 | IDE | Qt Creator (opens `CMakeLists.txt` / `CMakePresets.json` directly — no `.pro` files) |
-| Packaging | Windows: NSIS (CPack) + MSIX (unsigned); Linux: Flatpak, AppImage, DEB/TGZ (CPack) |
+| Packaging | Windows: NSIS/ZIP (CPack) + MSIX; macOS: DMG + PKG; Linux: DEB/RPM/TGZ (CPack), Flatpak, AppImage — signing when CI secrets exist — [packaging/README.md](packaging/README.md) |
 
 ## Layout
 
 ```
-Modules/Core/{Common,Network,Contract,Persistence,Navigation,Analytics,DesignSystem,Testing}
+Modules/Core/{Common,Network,Contract,Persistence,Navigation,Connectivity,Platform,CrashReporting,Update,Analytics,DesignSystem,Testing}
                                   -> Aedst::Core, Aedst::Network, Aedst::Contract, ... (never depend on a feature)
-Modules/Features/{Auth,Users,Profile}
-                                  -> Aedst::Feature::Auth, ... (depend on Core only)
+Modules/Features/Auth
+                                  -> Aedst::Feature::Auth (depends on Core only; features never link each other)
 App/                              -> aedst-desktop (the only target linking every feature)
 Tests/                            -> label-scoped `check*` targets; tests live beside each module
 cmake/, packaging/                -> warnings, CPack, NSIS/MSIX/Flatpak/AppImage
@@ -47,8 +48,8 @@ cmake/, packaging/                -> warnings, CPack, NSIS/MSIX/Flatpak/AppImage
 
 ## Getting started
 
-Prerequisites: a C++23 compiler (MSVC 19.37+ / VS 2022 17.7, GCC 13+, Clang 17+
-with libstdc++ 13+), CMake ≥ 3.25, Ninja, git, [vcpkg](https://github.com/microsoft/vcpkg),
+Full instructions per OS: [BUILDING.md](BUILDING.md). Prerequisites: a C++23 compiler (MSVC 19.37+ / VS 2022 17.7, GCC 13+, Clang 17+
+with libstdc++ 13+, AppleClang), CMake ≥ 3.25, Ninja, git, [vcpkg](https://github.com/microsoft/vcpkg),
 and Qt at the version pinned in `qt-version.txt`. Configure fails early, with a
 message, if the compiler or Qt version is wrong.
 
@@ -84,7 +85,7 @@ The generated Protobuf C++ comes from `../server/api/proto` (override with
 `-DAEDST_PROTO_ROOT=...`). Add `-DVCPKG_MANIFEST_FEATURES=asio -DAEDST_ENABLE_ASIO=ON`
 to make Boost.Asio available (see `Modules/Core/Network/include/aedst/network/asio_support.hpp`).
 
-Run it (the API defaults to `http://localhost:8080`, i.e. `apps/server` running locally):
+Run it (Debug builds default to `http://localhost:8080`, i.e. `apps/server` running locally; Release builds **require** `AEDST_API_BASE_URL` to be an `https://` URL):
 
 ```bash
 AEDST_API_BASE_URL=http://localhost:8080 ./build/gcc-debug/App/aedst-desktop
@@ -128,8 +129,10 @@ until you do).
 # formatting (CI runs this with --dry-run --Werror)
 find Modules App -name '*.hpp' -o -name '*.cpp' | xargs clang-format -i
 
-# clang-tidy against the configured preset's compile_commands.json
-run-clang-tidy -p build/gcc-debug -quiet 'Modules/|App/'
+# clang-tidy (blocking in CI; baseline in scripts/clang-tidy-baseline.txt)
+./scripts/run-clang-tidy.sh build/clang-debug
+# QML lint
+./scripts/check-qml-lint.sh
 # or build with it inline: cmake --preset gcc-debug -DAEDST_ENABLE_CLANG_TIDY=ON
 ```
 
@@ -149,8 +152,10 @@ plog-converter -a GA:1,2 -t fullhtml build/pvs.log -o build/pvs-report
 
 ## Documentation
 
+- [ARCHITECTURE.md](ARCHITECTURE.md) · [CODING_STANDARDS.md](CODING_STANDARDS.md) · [BUILDING.md](BUILDING.md) · [TESTING.md](TESTING.md) · [SECURITY.md](SECURITY.md) · [CONTRIBUTING.md](CONTRIBUTING.md) · [PLATFORM_SUPPORT.md](PLATFORM_SUPPORT.md)
 - [ADR-0001 API contract client](docs/adr/0001-api-contract-client.md) - Connect over Qt Network + generated Protobuf, why not gRPC C++
 - [ADR-0002 dependency management](docs/adr/0002-dependency-management.md) - vcpkg, Qt pin, CI migration
+- [ADR-0003 secret storage](docs/adr/0003-secret-storage.md), [0004 transport policy](docs/adr/0004-transport-policy.md), [0005 database & threading](docs/adr/0005-local-database-and-threading.md), [0006 platform services & updates](docs/adr/0006-platform-services-and-updates.md)
 - [Performance baseline](docs/performance.md) - build/runtime switches, measuring, what was deliberately not done
 
 ```bash

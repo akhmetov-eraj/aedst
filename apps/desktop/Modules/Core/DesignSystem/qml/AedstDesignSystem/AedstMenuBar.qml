@@ -11,6 +11,9 @@ T.MenuBar {
 
     property var model: []
 
+    Accessible.role: Accessible.MenuBar
+    Accessible.name: qsTr("Menu")
+
     signal triggered(var menuIndex, var value)
 
     background: Rectangle {
@@ -36,10 +39,12 @@ T.MenuBar {
         }
     }
 
-    Repeater {
+    Instantiator {
         model: root.model
+        onObjectAdded: (index, object) => root.insertMenu(index, object)
+        onObjectRemoved: (index, object) => root.removeMenu(object)
 
-        T.Menu {
+        delegate: T.Menu {
             id: topMenu
             required property var modelData
             required property int index

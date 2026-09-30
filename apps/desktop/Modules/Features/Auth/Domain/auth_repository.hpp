@@ -2,6 +2,7 @@
 
 #include "Domain/session.hpp"
 #include "aedst/core/outcome.hpp"
+#include "aedst/core/secure_memory.hpp"
 
 #include <optional>
 #include <string>
@@ -10,7 +11,7 @@ namespace aedst::feature::auth {
 
 struct Credentials {
     std::string email;
-    std::string password;
+    core::SecretString password;
 };
 
 /// Domain-owned port; Data/AuthRepositoryImpl implements it. Presentation only

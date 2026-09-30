@@ -3,6 +3,7 @@
 #include <spdlog/sinks/ostream_sink.h>
 #include <gtest/gtest.h>
 
+#include <memory>
 #include <sstream>
 #include <string>
 

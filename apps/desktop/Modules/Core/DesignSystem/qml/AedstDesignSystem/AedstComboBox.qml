@@ -2,14 +2,11 @@ import QtQuick
 import QtQuick.Controls.Basic as T
 
 // Single-select dropdown -- QML port of shadcn/ui's <Select>. `model` may be
-// a plain string list or an array of {text, value}; `currentValue` mirrors
-// the selected item's `value` (or its text when the model has no `value`).
+// a plain string list or an array of {text, value}; ComboBox's own
+// `currentValue` yields the selected item's `value` (textRole/valueRole below are
+// derived from the model shape; redeclaring `currentValue` would override a FINAL property).
 T.ComboBox {
     id: control
-
-    property var currentValue: currentIndex >= 0 && model && model.length > 0 && model[currentIndex] && model[currentIndex].value !== undefined
-        ? model[currentIndex].value
-        : currentText
 
     textRole: model && model.length > 0 && model[0] && model[0].text !== undefined ? "text" : ""
     valueRole: model && model.length > 0 && model[0] && model[0].value !== undefined ? "value" : ""

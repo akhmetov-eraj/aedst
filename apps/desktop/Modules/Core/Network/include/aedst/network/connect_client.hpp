@@ -3,10 +3,13 @@
 #include "aedst/network/api_error.hpp"
 #include "aedst/network/call_options.hpp"
 #include "aedst/network/method.hpp"
+#include "aedst/network/transport_policy.hpp"
 
 #include <QByteArray>
+#include <QList>
 #include <QNetworkAccessManager>
 #include <QObject>
+#include <QSslConfiguration>
 #include <QUrl>
 
 #include <google/protobuf/message_lite.h>
@@ -16,8 +19,10 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <string>
 #include <type_traits>
 #include <utility>
+#include <vector>
 
 class QNetworkReply;
 
@@ -61,7 +66,31 @@ struct ClientConfig {
     /// Per-attempt deadline unless CallOptions::timeout overrides it.
     std::chrono::milliseconds defaultTimeout{std::chrono::seconds{15}};
     RetryPolicy retry{};
+
+    /// Permit plain http to a loopback host (see validateEndpoint). Defaults to
+    /// insecureLoopbackAllowedByDefault(): Debug builds, or the runtime opt-in
+    /// AEDST_ALLOW_INSECURE_LOCALHOST=1. Non-loopback http is never permitted.
+    bool allowInsecureLoopback{insecureLoopbackAllowedByDefault()};
+
+    /// Additional trusted CA certificates, PEM (one or more concatenated), added
+    /// to the system store - for a corporate TLS-inspecting CA or a test CA. It
+    /// extends trust; it never disables verification. Empty = system store only.
+    QByteArray extraCaCertificatesPem{};
+
+    /// Optional SPKI pinning: base64 of the SHA-256 of a certificate's
+    /// SubjectPublicKeyInfo DER (the HPKP / `openssl ... | base64` format). When
+    /// non-empty, a TLS connection is accepted only if at least one certificate in
+    /// the peer's chain (leaf or intermediate/root as presented) matches. Pin at
+    /// least one backup key. Empty = pinning disabled. Malformed entries make the
+    /// whole config invalid (fail closed).
+    std::vector<std::string> pinnedSpkiSha256{};
 };
+
+/// Checks everything the client will enforce at construction: the endpoint policy
+/// (validateEndpoint), the extra CA PEM, the pin format and TLS availability.
+/// Call it at startup to fail fast with a readable error instead of discovering
+/// the problem on the first request; ConnectClient runs the same check itself.
+[[nodiscard]] ApiResult<void> validateClientConfig(const ClientConfig& config);
 
 /// Connect-protocol client over Qt Network with Protobuf messages.
 ///
@@ -75,7 +104,15 @@ struct ClientConfig {
 /// decoded transparently by Qt).
 ///
 /// TLS, HTTP/2 (ALPN), proxies and the OS certificate store are Qt Network's
-/// job - nothing here reimplements them. Everything runs on the owner thread's
+/// job - nothing here reimplements them. What this class adds is policy: the
+/// endpoint must pass validateEndpoint (https; http only to loopback in dev), every
+/// request carries a QSslConfiguration with TLS >= 1.2 and VerifyPeer, certificate
+/// errors are never ignored (the call fails with ApiErrorKind::Transport), and
+/// optional SPKI pins are enforced. If the config is invalid the client is in a
+/// failed state: every call completes asynchronously with that error and nothing
+/// is sent. Each call carries an `X-Correlation-Id` header (16 hex chars, or the
+/// caller's active CorrelationScope id) that also tags this class's log lines.
+/// Everything runs on the owner thread's
 /// event loop; completions are always delivered asynchronously, exactly once.
 /// See docs/adr/0001-api-contract-client.md for why this is not gRPC C++.
 class ConnectClient final : public QObject {
@@ -111,6 +148,9 @@ public:
 
     [[nodiscard]] const QUrl& baseUrl() const noexcept;
 
+    /// The reason the client refuses to send anything, if the config was rejected.
+    [[nodiscard]] const std::optional<ApiError>& configError() const noexcept { return configError_; }
+
 private:
     void runUnaryAttempt(const std::shared_ptr<detail::CallState>& state, const std::shared_ptr<detail::UnaryCall>& call,
                          int attempt);
@@ -120,6 +160,9 @@ private:
     QNetworkAccessManager network_;
     ClientConfig config_;
     std::shared_ptr<const AuthInterceptor> interceptor_;
+    std::optional<ApiError> configError_;
+    QSslConfiguration sslConfig_;
+    QList<QByteArray> pinnedSpki_; // raw SHA-256 digests
 };
 
 namespace detail {

@@ -23,5 +23,25 @@
         <source>Sign in</source>
         <translation>Sign in</translation>
     </message>
+    <message>
+        <source>Loading</source>
+        <translation>Loading</translation>
+    </message>
+    <message>
+        <source>Sign in form</source>
+        <translation>Sign in form</translation>
+    </message>
+    <message>
+        <source>Enter your email address</source>
+        <translation>Enter your email address</translation>
+    </message>
+    <message>
+        <source>Enter your password</source>
+        <translation>Enter your password</translation>
+    </message>
+    <message>
+        <source>Unavailable while offline</source>
+        <translation>Unavailable while offline</translation>
+    </message>
 </context>
 </TS>

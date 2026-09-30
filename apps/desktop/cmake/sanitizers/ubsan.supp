@@ -1,0 +1,16 @@
+# UndefinedBehaviorSanitizer suppressions (UBSAN_OPTIONS=suppressions=<this file>).
+# Format: `<check>:<file or function substring>`, e.g. `vptr:libQt6Core`,
+# `function:libprotobuf`, `alignment:sqlite3`.
+#
+# Rules: dependency noise only, one justification line per entry, never suppress a
+# finding in Modules/ or App/ - fix it.
+#
+# Known repeat offenders in Qt/protobuf-heavy trees (NOT enabled; enable only
+# with a matching report):
+#   Qt moc-generated meta-call casts on type-erased QObject pointers under -fsanitize=vptr:
+#   vptr:libQt6Core
+#   Indirect calls through Qt's function-pointer tables built by a different toolchain
+#   (-fsanitize=function, Clang only):
+#   function:libQt6Qml
+#
+# Empty until a real run proves otherwise.

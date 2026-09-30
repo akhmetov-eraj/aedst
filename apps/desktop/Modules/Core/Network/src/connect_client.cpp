@@ -1,19 +1,26 @@
 #include "aedst/network/connect_client.hpp"
 
+#include "aedst/core/correlation.hpp"
 #include "aedst/core/logger.hpp"
 #include "aedst/network/auth_interceptor.hpp"
 #include "aedst/network/connect_envelope.hpp"
 #include "aedst/network/connect_error.hpp"
 
+#include <QCryptographicHash>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QPointer>
 #include <QRandomGenerator>
+#include <QSslCertificate>
+#include <QSslError>
+#include <QSslKey>
+#include <QSslSocket>
 #include <QString>
 #include <QTimer>
 
 #include <limits>
 #include <string>
+#include <string_view>
 #include <utility>
 
 namespace aedst::network {
@@ -40,6 +47,7 @@ struct UnaryCall {
     AuthRequirement auth{AuthRequirement::Required};
     RetryPolicy retry{RetryPolicy::none()};
     std::chrono::milliseconds timeout{0};
+    std::string correlationId;
     RawCompletion done;
 };
 
@@ -67,9 +75,144 @@ std::optional<QByteArray> serialize(const google::protobuf::MessageLite& message
 namespace {
 
 constexpr const char* kTimedOutProperty = "aedstTimedOut";
+constexpr const char* kPinFailedProperty = "aedstPinFailed";
+constexpr int kSha256Bytes = 32;
 
 [[nodiscard]] ApiError cancelledError() {
     return {.kind = ApiErrorKind::Cancelled, .httpStatus = 0, .message = "Call cancelled"};
+}
+
+[[nodiscard]] ApiError pinError() {
+    return {.kind = ApiErrorKind::Transport,
+            .httpStatus = 0,
+            .message = "TLS certificate pinning failed: the server's public key matches none of the pinned hashes"};
+}
+
+/// Server-controlled or Qt-produced text, made safe for one log line: bounded,
+/// no control characters (no forged records). Secrets are masked by the logger.
+[[nodiscard]] std::string loggable(std::string_view text) {
+    constexpr std::size_t kMaxLoggedChars = 256;
+    std::string out(text.substr(0, kMaxLoggedChars));
+    for (char& c : out) {
+        if (static_cast<unsigned char>(c) < 0x20 || c == 0x7F) {
+            c = ' ';
+        }
+    }
+    if (text.size() > kMaxLoggedChars) {
+        out += "...";
+    }
+    return out;
+}
+
+/// One id per call: the caller's active CorrelationScope if it has one (so a use
+/// case can tie several calls together), otherwise a fresh random id.
+[[nodiscard]] std::string callCorrelationId() {
+    const std::string_view active = core::currentCorrelationId();
+    if (core::isValidCorrelationId(active)) {
+        return std::string(active);
+    }
+    return core::newCorrelationId();
+}
+
+struct TlsSetup {
+    QSslConfiguration ssl;
+    QList<QByteArray> pins; // raw SHA-256 digests of SubjectPublicKeyInfo DER
+};
+
+[[nodiscard]] std::unexpected<ApiError> invalidConfig(std::string message) {
+    return std::unexpected(ApiError{.kind = ApiErrorKind::InvalidArgument, .httpStatus = 0, .message = std::move(message)});
+}
+
+/// Everything TLS-related the client enforces, or the reason the config is unusable.
+[[nodiscard]] ApiResult<TlsSetup> buildTlsSetup(const ClientConfig& config) {
+    if (auto endpoint = validateEndpoint(config.baseUrl, config.allowInsecureLoopback); !endpoint) {
+        return std::unexpected(std::move(endpoint.error()));
+    }
+
+    TlsSetup setup;
+    setup.ssl = QSslConfiguration::defaultConfiguration();
+    // TlsV1_2OrLater: TLS 1.3 wherever the backend supports it, never below 1.2.
+    setup.ssl.setProtocol(QSsl::TlsV1_2OrLater);
+    setup.ssl.setPeerVerifyMode(QSslSocket::VerifyPeer);
+
+    if (config.baseUrl.scheme() == QLatin1String("https") && !QSslSocket::supportsSsl()) {
+        return invalidConfig("TLS is not available in this Qt build: cannot reach an https endpoint");
+    }
+
+    if (!config.extraCaCertificatesPem.isEmpty()) {
+        const QList<QSslCertificate> extra = QSslCertificate::fromData(config.extraCaCertificatesPem, QSsl::Pem);
+        if (extra.isEmpty()) {
+            return invalidConfig("extraCaCertificatesPem contains no valid PEM certificate");
+        }
+        QList<QSslCertificate> trusted = setup.ssl.caCertificates();
+        if (trusted.isEmpty()) {
+            trusted = QSslConfiguration::systemCaCertificates();
+        }
+        trusted.append(extra);
+        setup.ssl.setCaCertificates(trusted);
+    }
+
+    for (const std::string& pin : config.pinnedSpkiSha256) {
+        const QByteArray digest = QByteArray::fromBase64(
+            QByteArray::fromStdString(pin), QByteArray::Base64Encoding | QByteArray::AbortOnBase64DecodingErrors);
+        if (digest.size() != kSha256Bytes) {
+            return invalidConfig("pinnedSpkiSha256 entries must be base64 of a 32-byte SHA-256 digest");
+        }
+        setup.pins.append(digest);
+    }
+    return setup;
+}
+
+[[nodiscard]] QByteArray spkiSha256(const QSslCertificate& certificate) {
+    return QCryptographicHash::hash(certificate.publicKey().toDer(), QCryptographicHash::Sha256);
+}
+
+/// True (and the reply is marked, and aborted if still running) when pinning is
+/// on for this https reply and the peer chain contains none of the pinned keys.
+/// Fails closed: a successful reply that exposes no peer chain counts as a violation.
+/// Safe to call repeatedly (encrypted, readyRead, finished).
+bool pinViolation(QNetworkReply& reply, const QList<QByteArray>& pins) {
+    if (pins.isEmpty() || reply.url().scheme() != QLatin1String("https")) {
+        return false;
+    }
+    if (reply.property(kPinFailedProperty).toBool()) {
+        return true;
+    }
+    const QList<QSslCertificate> chain = reply.sslConfiguration().peerCertificateChain();
+    bool violated = true;
+    if (chain.isEmpty()) {
+        // No handshake happened (refused, DNS failure...): that is the transport
+        // error's business. Only a *successful* reply without a chain is suspect.
+        violated = reply.error() == QNetworkReply::NoError;
+    } else {
+        for (const QSslCertificate& certificate : chain) {
+            if (!certificate.publicKey().isNull() && pins.contains(spkiSha256(certificate))) {
+                violated = false;
+                break;
+            }
+        }
+    }
+    if (violated) {
+        reply.setProperty(kPinFailedProperty, true);
+        if (reply.isRunning()) {
+            reply.abort();
+        }
+    }
+    return violated;
+}
+
+/// Pins are checked as soon as the handshake completes (before the response is
+/// read), and again on readyRead/finished as defence in depth.
+void watchHandshake(QNetworkReply* reply, const QList<QByteArray>& pins) {
+    if (pins.isEmpty()) {
+        return;
+    }
+    QObject::connect(reply, &QNetworkReply::encrypted, reply, [reply, pins]() { pinViolation(*reply, pins); });
+}
+
+void hardenRequest(QNetworkRequest& request, const QSslConfiguration& ssl, const std::string& correlationId) {
+    request.setSslConfiguration(ssl);
+    request.setRawHeader("X-Correlation-Id", QByteArray::fromStdString(correlationId));
 }
 
 [[nodiscard]] QUrl endpointUrl(const QUrl& base, std::string_view path) {
@@ -107,11 +250,23 @@ void armDeadline(QNetworkReply* reply, std::chrono::milliseconds timeout) {
 /// the reply carries a real HTTP status to interpret.
 [[nodiscard]] std::optional<ApiError> transportError(const QNetworkReply& reply, int status) {
     const QNetworkReply::NetworkError netError = reply.error();
+    // Before everything else: a pin violation aborts the reply, which Qt reports as
+    // "operation canceled", and it must win over a body that happened to arrive.
+    if (reply.property(kPinFailedProperty).toBool()) {
+        return pinError();
+    }
     if (reply.property(kTimedOutProperty).toBool() || netError == QNetworkReply::TimeoutError) {
         return ApiError{.kind = ApiErrorKind::Timeout, .httpStatus = status, .message = "Request timed out"};
     }
     if (netError == QNetworkReply::OperationCanceledError) {
         return cancelledError();
+    }
+    if (netError == QNetworkReply::SslHandshakeFailedError) {
+        // sslErrors() is never answered with ignoreSslErrors(), so an untrusted,
+        // expired or mismatched certificate ends up here (details are logged).
+        return ApiError{.kind = ApiErrorKind::Transport,
+                        .httpStatus = 0,
+                        .message = "TLS certificate validation failed: " + reply.errorString().toStdString()};
     }
     if (status == 0) {
         return ApiError{.kind = ApiErrorKind::Transport, .httpStatus = 0, .message = reply.errorString().toStdString()};
@@ -233,6 +388,34 @@ ConnectClient::ConnectClient(ClientConfig config, std::shared_ptr<const AuthInte
     // A redirect would replay the POST (and possibly the bearer token) somewhere the
     // caller did not name; surface it as an error instead.
     network_.setRedirectPolicy(QNetworkRequest::ManualRedirectPolicy);
+
+    // Certificate errors are only logged, never answered with ignoreSslErrors():
+    // Qt then fails the request (SslHandshakeFailedError -> ApiErrorKind::Transport).
+    // Only error descriptions and the host are logged, no request data.
+    connect(&network_, &QNetworkAccessManager::sslErrors, this,
+            [](QNetworkReply* reply, const QList<QSslError>& errors) {
+                const std::string host = reply != nullptr ? reply->url().host().toStdString() : std::string{};
+                for (const QSslError& error : errors) {
+                    AedstLogger::error("TLS certificate validation failed for {}: {}", host,
+                                       loggable(error.errorString().toStdString()));
+                }
+            });
+
+    auto setup = buildTlsSetup(config_);
+    if (!setup) {
+        configError_ = std::move(setup.error());
+        AedstLogger::error("API client is disabled, every call will fail: {}", loggable(configError_->message));
+        return;
+    }
+    sslConfig_ = std::move(setup->ssl);
+    pinnedSpki_ = std::move(setup->pins);
+}
+
+ApiResult<void> validateClientConfig(const ClientConfig& config) {
+    if (auto setup = buildTlsSetup(config); !setup) {
+        return std::unexpected(std::move(setup.error()));
+    }
+    return {};
 }
 
 const QUrl& ConnectClient::baseUrl() const noexcept {
@@ -240,10 +423,13 @@ const QUrl& ConnectClient::baseUrl() const noexcept {
 }
 
 void ConnectClient::prewarm() {
+    if (configError_) {
+        return;
+    }
     const bool secure = config_.baseUrl.scheme() == QLatin1String("https");
     const auto port = static_cast<quint16>(config_.baseUrl.port(secure ? 443 : 80));
     if (secure) {
-        network_.connectToHostEncrypted(config_.baseUrl.host(), port);
+        network_.connectToHostEncrypted(config_.baseUrl.host(), port, sslConfig_);
     } else {
         network_.connectToHost(config_.baseUrl.host(), port);
     }
@@ -263,8 +449,12 @@ CallHandle ConnectClient::failAsync(ApiError error, RawCompletion done) {
 
 CallHandle ConnectClient::unaryRaw(const MethodInfo& method, QByteArray body, const CallOptions& options,
                                    RawCompletion done) {
+    if (configError_) {
+        return failAsync(*configError_, std::move(done));
+    }
     auto state = std::make_shared<detail::CallState>();
     auto call = std::make_shared<detail::UnaryCall>();
+    call->correlationId = callCorrelationId();
     call->url = endpointUrl(config_.baseUrl, method.path);
     call->path = std::string(method.path);
     call->body = std::move(body);
@@ -303,10 +493,15 @@ void ConnectClient::runUnaryAttempt(const std::shared_ptr<detail::CallState>& st
     if (interceptor_) {
         interceptor_->apply(request, call->auth); // per attempt: picks up a rotated token
     }
-    AedstLogger::debug("POST {} (attempt {}/{})", call->path, attempt, call->retry.maxAttempts);
+    hardenRequest(request, sslConfig_, call->correlationId);
+    {
+        const core::CorrelationScope scope(call->correlationId);
+        AedstLogger::debug("POST {} (attempt {}/{})", call->path, attempt, call->retry.maxAttempts);
+    }
 
     QNetworkReply* reply = network_.post(request, call->body);
     state->reply = reply;
+    watchHandshake(reply, pinnedSpki_);
     armDeadline(reply, call->timeout);
     connect(reply, &QNetworkReply::finished, this,
             [this, reply, state, call, attempt]() { onUnaryFinished(*reply, state, call, attempt); });
@@ -315,6 +510,7 @@ void ConnectClient::runUnaryAttempt(const std::shared_ptr<detail::CallState>& st
 void ConnectClient::onUnaryFinished(QNetworkReply& reply, const std::shared_ptr<detail::CallState>& state,
                                     const std::shared_ptr<detail::UnaryCall>& call, int attempt) {
     state->reply.clear();
+    pinViolation(reply, pinnedSpki_);
     RawResult result = parseUnaryReply(reply);
 
     if (state->cancelled) {
@@ -322,22 +518,33 @@ void ConnectClient::onUnaryFinished(QNetworkReply& reply, const std::shared_ptr<
         return;
     }
     if (!result) {
+        // A TLS failure is a verdict on the peer, not a blip: never retry it.
+        const bool tlsFailure =
+            reply.property(kPinFailedProperty).toBool() || reply.error() == QNetworkReply::SslHandshakeFailedError;
         const ApiError& error = result.error();
-        if (attempt < call->retry.maxAttempts && error.isRetryable()) {
+        // Logging only: the completion below must not run inside the scope, or
+        // calls it starts would silently inherit this call's id.
+        const core::CorrelationScope scope(call->correlationId);
+        if (!tlsFailure && attempt < call->retry.maxAttempts && error.isRetryable()) {
             const auto delay = call->retry.delayBefore(attempt + 1, QRandomGenerator::global()->generateDouble());
             AedstLogger::warn("{} failed (http={} code={} message={}); retrying in {} ms", call->path,
-                              error.httpStatus, error.connectCode, error.message, delay.count());
+                              error.httpStatus, loggable(error.connectCode), loggable(error.message), delay.count());
             QTimer::singleShot(delay, this, [this, state, call, attempt]() { runUnaryAttempt(state, call, attempt + 1); });
             return;
         }
-        AedstLogger::warn("{} failed: http={} code={} message={}", call->path, error.httpStatus, error.connectCode,
-                          error.message);
+        AedstLogger::warn("{} failed: http={} code={} message={}", call->path, error.httpStatus,
+                          loggable(error.connectCode), loggable(error.message));
     }
     completeUnary(state, *call, std::move(result));
 }
 
 CallHandle ConnectClient::serverStreamRaw(const MethodInfo& method, QByteArray body, const CallOptions& options,
                                           RawMessageHandler onMessage, ApiCompletion<void> onDone) {
+    if (configError_) {
+        return failAsync(*configError_, [onDone = std::move(onDone)](RawResult result) {
+            onDone(std::unexpected(std::move(result.error())));
+        });
+    }
     auto state = std::make_shared<detail::CallState>();
     auto stream = std::make_shared<detail::StreamCall>();
     stream->onMessage = std::move(onMessage);
@@ -363,16 +570,25 @@ CallHandle ConnectClient::serverStreamRaw(const MethodInfo& method, QByteArray b
     if (interceptor_) {
         interceptor_->apply(request, method.auth);
     }
-    AedstLogger::debug("POST {} (server stream)", std::string(method.path));
+    const std::string correlationId = callCorrelationId();
+    hardenRequest(request, sslConfig_, correlationId);
+    {
+        const core::CorrelationScope scope(correlationId);
+        AedstLogger::debug("POST {} (server stream)", std::string(method.path));
+    }
 
     QNetworkReply* reply = network_.post(request, envelope::encode(0, body));
     state->reply = reply;
+    watchHandshake(reply, pinnedSpki_);
     armDeadline(reply, timeout);
 
-    connect(reply, &QNetworkReply::readyRead, this, [reply, state, stream]() {
+    connect(reply, &QNetworkReply::readyRead, this, [reply, state, stream, pins = pinnedSpki_]() {
         if (state->finished) {
             reply->readAll();
             return;
+        }
+        if (pinViolation(*reply, pins)) {
+            return; // the abort inside completes the call through finished()
         }
         // Non-200 bodies are a plain JSON error, not envelopes: wait for finished().
         if (reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt() != 200) {
@@ -392,7 +608,7 @@ CallHandle ConnectClient::serverStreamRaw(const MethodInfo& method, QByteArray b
         consumeStreamBytes(state, *stream, *reply, reply->readAll());
     });
 
-    connect(reply, &QNetworkReply::finished, this, [reply, state, stream]() {
+    connect(reply, &QNetworkReply::finished, this, [reply, state, stream, pins = pinnedSpki_]() {
         state->reply.clear();
         if (state->finished) {
             return;
@@ -401,6 +617,7 @@ CallHandle ConnectClient::serverStreamRaw(const MethodInfo& method, QByteArray b
             completeStream(state, *stream, std::unexpected(cancelledError()));
             return;
         }
+        pinViolation(*reply, pins);
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (auto failure = transportError(*reply, status)) {
             completeStream(state, *stream, std::unexpected(std::move(*failure)));

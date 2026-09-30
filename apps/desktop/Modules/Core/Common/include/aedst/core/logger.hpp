@@ -21,9 +21,23 @@ enum class LogLevel {
     Off,
 };
 
+/// Text: `[time] [level] [logger] [t:thread] [cid:id] message`, one line each.
+/// Json: one JSON object per line (JSON Lines) with ts (UTC, ISO 8601, ms), level,
+///       logger, thread, cid (only inside a CorrelationScope) and msg - for log
+///       shippers; the message is escaped so a newline in it cannot forge a record.
+enum class LogFormat {
+    Text,
+    Json,
+};
+
 struct LoggerConfig {
     std::string name{"aedst"};
     LogLevel level{LogLevel::Info};
+    LogFormat format{LogFormat::Text};
+    /// Mask secrets (passwords, tokens, cookies, Bearer credentials) and e-mail
+    /// addresses in every message before any sink sees it; see redactSecrets().
+    /// Only turn off in a throwaway local debugging session.
+    bool redact{true};
     bool console{true};
     /// Empty disables the rotating file sink.
     std::filesystem::path logFile;
@@ -43,6 +57,9 @@ struct LoggerConfig {
 ///    categories). They are not forwarded here, so turning on a noisy qt.*
 ///    category never floods the product log, and QT_LOGGING_RULES keeps
 ///    working exactly as Qt documents it.
+/// Every record carries the calling thread's correlation id (`[cid:...]`, see
+/// CorrelationScope in correlation.hpp; `-` outside a scope).
+///
 /// AEDST code should never call qDebug(); Qt code paths never call AedstLogger.
 class AedstLogger final {
 public:

@@ -2,6 +2,10 @@ include(AedstCompilerWarnings)
 
 find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Core Quick)
 
+# LoginView.qml imports `Aedst.Connectivity` (Core) and `Aedst.Feature.Auth`; both are
+# registered by App at startup (qmlRegisterSingletonInstance / qmlRegisterSingletonType),
+# so this target needs no C++ link to Aedst::Connectivity.
+
 # BOUNDARY RULE: a feature links Core targets only — never Aedst::Feature::*.
 # Cross-feature navigation goes through Aedst::Navigation's route names
 # (aedst::navigation::routes), and App/ is the only target that links every
@@ -29,6 +33,9 @@ add_library(AedstFeatureAuth STATIC
     Navigation/auth_route.hpp
     Navigation/auth_destinations.hpp
     Navigation/auth_destinations.cpp
+    # Listed so lupdate (qt_add_translations below) scans its qsTr() strings; the file itself is
+    # embedded by qt_add_resources, not compiled.
+    Presentation/LoginView.qml
 )
 add_library(Aedst::Feature::Auth ALIAS AedstFeatureAuth)
 
@@ -71,6 +78,8 @@ qt_add_translations(AedstFeatureAuth
         i18n/auth_ar.ts
         i18n/auth_tg.ts
         i18n/auth_uz.ts
+    LUPDATE_TARGET update_auth_translations
+    LRELEASE_TARGET release_auth_translations
 )
 
 aedst_set_warnings(AedstFeatureAuth)

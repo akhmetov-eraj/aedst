@@ -13,6 +13,8 @@ ColumnLayout {
 
     spacing: Theme.spacingSm
 
+    Accessible.role: Accessible.Grouping
+
     T.ButtonGroup {
         id: group
     }

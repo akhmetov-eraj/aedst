@@ -34,7 +34,7 @@ protected:
     void SetUp() override {
         ASSERT_TRUE(server_.isListening());
         auto interceptor = std::make_shared<network::AuthInterceptor>(std::make_shared<testing::StubTokenProvider>());
-        auto client = std::make_shared<network::ConnectClient>(network::ClientConfig{.baseUrl = server_.baseUrl()},
+        auto client = std::make_shared<network::ConnectClient>(network::ClientConfig{.baseUrl = server_.baseUrl(), .allowInsecureLoopback = true},
                                                                std::move(interceptor));
         dataSource_ = std::make_unique<ConnectAuthRemoteDataSource>(std::move(client));
     }

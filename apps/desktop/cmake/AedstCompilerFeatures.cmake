@@ -22,7 +22,7 @@ check_cxx_source_compiles("
 #include <span>
 #include <string>
 #include <type_traits>
-#if !defined(__cpp_lib_expected) || __cpp_lib_expected < 202211L
+#if !defined(__cpp_lib_expected) || __cpp_lib_expected < 202202L
 #error \"std::expected missing\"
 #endif
 struct Err { std::string message; };

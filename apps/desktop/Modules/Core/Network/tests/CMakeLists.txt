@@ -7,6 +7,7 @@ add_executable(AedstNetworkTests
     call_options_test.cpp
     connect_envelope_test.cpp
     connect_error_test.cpp
+    transport_policy_test.cpp
 )
 target_link_libraries(AedstNetworkTests PRIVATE Aedst::Network Aedst::Testing GTest::gtest_main)
 aedst_set_warnings(AedstNetworkTests)

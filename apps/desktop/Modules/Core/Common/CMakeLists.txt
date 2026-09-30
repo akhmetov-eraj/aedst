@@ -11,8 +11,13 @@ add_library(AedstCore STATIC
     include/aedst/core/use_case.hpp
     include/aedst/core/clock.hpp
     include/aedst/core/logger.hpp
+    include/aedst/core/correlation.hpp
+    include/aedst/core/redaction.hpp
+    include/aedst/core/secure_memory.hpp
     src/clock.cpp
     src/logger.cpp
+    src/correlation.cpp
+    src/redaction.cpp
 )
 add_library(Aedst::Core ALIAS AedstCore)
 

@@ -59,6 +59,14 @@ Section "Uninstall"
 
     RMDir /r "$INSTDIR"
 
+    ; Optional: delete per-user data. Default is NO, also for silent (/S) uninstalls.
+    MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Also delete your AEDST user data (settings, local database, cache)?" /SD IDNO IDNO aedst_keep_user_data
+        SetShellVarContext current
+        RMDir /r "$APPDATA\AEDST"
+        RMDir /r "$LOCALAPPDATA\AEDST"
+        SetShellVarContext all
+    aedst_keep_user_data:
+
     DeleteRegKey HKLM "${UNINSTALL_KEY}"
     DeleteRegKey HKLM "Software\${APP_NAME}"
 SectionEnd
