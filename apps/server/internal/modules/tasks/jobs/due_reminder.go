@@ -1,8 +1,7 @@
 // Package jobs holds tasks' River job kinds (deferred work owned solely by
 // this module, see docs/decisions/0005-river-for-jobs.md). DueReminderWorker
-// is registered with the shared River client in cmd/server and enqueued by
-// application.Service whenever a task's due date is set (see
-// application/service.go's scheduleReminder).
+// is registered with the shared River client in cmd/server and enqueued by the
+// repository inside the transaction that sets a task's due date.
 package jobs
 
 import (
@@ -12,88 +11,76 @@ import (
 
 	"github.com/riverqueue/river"
 
-	"github.com/aedst/server/internal/modules/tasks/domain"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
 )
 
-// TaskFinder is the subset of application.Repository the reminder worker
-// needs — kept minimal so tests can fake it without a real Repository.
-type TaskFinder interface {
-	FindByIDAndUserID(ctx context.Context, id, userID ids.ID) (domain.Task, error)
+// DueSoonMarker publishes tasks.v1.TaskDueSoon at most once per (task, due
+// date), guarded in SQL; it reports whether it published. Satisfied by the
+// postgres repository (on the jobs pool).
+type DueSoonMarker interface {
+	MarkDueSoon(ctx context.Context, id, userID ids.ID, dueDate time.Time) (bool, error)
 }
 
-// DueReminderArgs is the payload for the reminder job enqueued when a task
-// gets a due date (see application.Service.scheduleReminder).
+// DueReminderArgs is the payload of the "due soon" job, enqueued when a task
+// gets a due date.
 type DueReminderArgs struct {
-	TaskID  string `json:"task_id"`
+	TaskID  string `json:"task_id" river:"unique"`
 	UserID  string `json:"user_id"`
-	DueDate int64  `json:"due_date"` // Unix seconds, the due_date this job was scheduled for.
+	DueDate int64  `json:"due_date" river:"unique"` // Unix seconds, the due_date this job was scheduled for.
+	// LeadSeconds is how long before DueDate the job runs
+	// (AEDST_TASKS_DUE_SOON_LEAD_MINUTES at scheduling time).
+	LeadSeconds int64 `json:"lead_seconds,omitempty"`
 }
 
 func (DueReminderArgs) Kind() string { return "tasks.due_reminder" }
 
-// InsertOpts schedules the job to run at the task's due date rather than
-// immediately — River runs it no earlier than ScheduledAt, not necessarily
-// exactly then (subject to worker availability), which is the right
-// trade-off for a reminder.
+// InsertOpts schedules the job LeadSeconds before the due date (immediately
+// when that moment has passed). River runs it no earlier than ScheduledAt.
 func (a DueReminderArgs) InsertOpts() river.InsertOpts {
-	return river.InsertOpts{ScheduledAt: time.Unix(a.DueDate, 0).UTC()}
+	// Unique per (task, due date): saving a task again without moving its due
+	// date must not queue a second identical reminder.
+	return river.InsertOpts{
+		ScheduledAt: time.Unix(a.DueDate-a.LeadSeconds, 0).UTC(),
+		UniqueOpts:  river.UniqueOpts{ByArgs: true},
+	}
 }
 
-// DueReminderWorker sends (today: logs) a reminder for a task whose due date
-// has arrived. Sending a real push/email notification is out of scope for
-// this proof of the River wiring, same as profile's former welcome-email
-// worker this replaces — see ADR-0005.
+// DueReminderWorker publishes TaskDueSoon (the notifications module turns it
+// into an in-app notification and a push). Stale jobs — task deleted, done,
+// or due date moved since scheduling — publish nothing and succeed.
 type DueReminderWorker struct {
 	river.WorkerDefaults[DueReminderArgs]
 
-	Tasks  TaskFinder
+	Tasks  DueSoonMarker
 	Logger *slog.Logger
 }
 
-func NewDueReminderWorker(tasks TaskFinder, logger *slog.Logger) *DueReminderWorker {
+func NewDueReminderWorker(tasks DueSoonMarker, logger *slog.Logger) *DueReminderWorker {
 	return &DueReminderWorker{Tasks: tasks, Logger: logger}
 }
 
 func (w *DueReminderWorker) Work(ctx context.Context, job *river.Job[DueReminderArgs]) error {
 	taskID, err := ids.Parse(job.Args.TaskID)
 	if err != nil {
-		return err
+		return river.JobCancel(err)
 	}
 	userID, err := ids.Parse(job.Args.UserID)
 	if err != nil {
-		return err
+		return river.JobCancel(err)
 	}
 
-	task, err := w.Tasks.FindByIDAndUserID(ctx, taskID, userID)
+	published, err := w.Tasks.MarkDueSoon(ctx, taskID, userID, time.Unix(job.Args.DueDate, 0).UTC())
 	if err != nil {
 		if sharederrors.KindOf(err) == sharederrors.KindNotFound {
-			// Deleted since this job was scheduled — nothing to remind
-			// about. Not an error: see ReminderScheduler's doc comment on
-			// why stale jobs are expected to no-op instead of being
-			// actively cancelled.
 			return nil
 		}
 		return err
 	}
-
-	if task.Status == domain.StatusDone {
-		w.Logger.InfoContext(ctx, "skipping due reminder: task already done", slog.String("task_id", taskID.String()))
+	if !published {
+		w.Logger.DebugContext(ctx, "due reminder: nothing to publish (done, deleted, moved or already sent)", slog.String("task_id", taskID.String()))
 		return nil
 	}
-	if task.DueDate == nil || task.DueDate.Unix() != job.Args.DueDate {
-		// The due date changed after this job was scheduled (e.g. via
-		// UpdateTask, which schedules a fresh job for the new date) — this
-		// is the stale copy; the fresh one will fire at the right time.
-		w.Logger.InfoContext(ctx, "skipping due reminder: due date changed since scheduling", slog.String("task_id", taskID.String()))
-		return nil
-	}
-
-	w.Logger.InfoContext(ctx, "task due reminder",
-		slog.String("task_id", taskID.String()),
-		slog.String("user_id", userID.String()),
-		slog.String("title", task.Title),
-	)
+	w.Logger.InfoContext(ctx, "task due reminder", slog.String("task_id", taskID.String()), slog.String("user_id", userID.String()))
 	return nil
 }

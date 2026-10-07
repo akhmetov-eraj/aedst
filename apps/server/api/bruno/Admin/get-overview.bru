@@ -1,0 +1,30 @@
+meta {
+  name: Get Overview
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/aedst.admin.v1.AdminService/GetOverview
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {}
+}
+
+assert {
+  res.status: eq 200
+}
+
+docs {
+  Every AdminService RPC requires the `admin` role (built-in default policy
+  `/aedst.admin.v1.AdminService/*=admin`). First-party tokens carry `user`
+  only; use a Keycloak user with the `admin` realm role (task up
+  PROFILES="--profile idp") to get 200 instead of PERMISSION_DENIED.
+}

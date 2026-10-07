@@ -1,0 +1,15 @@
+replicaCount: 2
+existingSecret: aedst-server-staging
+config:
+  env: staging
+  trustedProxyHops: 2
+  corsAllowedOrigins: ["https://staging.example.com"]
+database:
+  directDsnSecretKey: database-direct-url
+autoscaling:
+  minReplicas: 2
+  maxReplicas: 4
+alerts:
+  enabled: true
+dashboards:
+  enabled: true

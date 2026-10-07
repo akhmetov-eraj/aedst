@@ -1,9 +1,15 @@
-// Package auth is the platform's central authentication boundary: it issues
-// and verifies access/refresh tokens with jwx, and supports zero-downtime key
-// rotation by verifying against a current and a previous signing key. No
-// individual module implements its own token logic (see project brief
-// section 17) — the auth module's application layer calls this package to
-// issue tokens and the httpserver interceptor calls it to verify them.
+// Package auth is the platform's central authentication boundary. It has two
+// verification back-ends behind one Verifier interface:
+//
+//   - TokenService: the built-in first-party issuer (HS256 access/refresh
+//     tokens, zero-downtime key rotation via a previous verification key).
+//   - OIDCVerifier: an OIDC resource-server verifier for tokens issued by an
+//     external identity provider (JWKS discovery + caching, issuer/audience
+//     validation, no provider-specific code).
+//
+// MultiVerifier routes a token to the right one by its iss claim. No module
+// implements token logic itself — the httpserver interceptor calls Verifier,
+// and the auth module's application layer calls TokenService to issue tokens.
 package auth
 
 import (
@@ -113,6 +119,8 @@ func (s *TokenService) IssuePair(userID ids.ID, sessionID ids.ID, deviceID strin
 func (s *TokenService) build(userID, sessionID ids.ID, deviceID string, roles []string, use string, now time.Time, ttl time.Duration) (string, error) {
 	builder := jwt.NewBuilder().
 		Issuer(s.issuer).
+		JwtID(ids.New().String()).
+		NotBefore(now).
 		Subject(userID.String()).
 		IssuedAt(now).
 		Expiration(now.Add(ttl)).
@@ -136,6 +144,8 @@ func (s *TokenService) build(userID, sessionID ids.ID, deviceID string, roles []
 
 // Claims is the verified, decoded form of a token.
 type Claims struct {
+	Issuer    string
+	Subject   string
 	UserID    ids.ID
 	SessionID ids.ID
 	DeviceID  string
@@ -175,6 +185,7 @@ func (s *TokenService) verify(ctx context.Context, raw string) (Claims, error) {
 			jwt.WithKey(jwa.HS256(), key),
 			jwt.WithValidate(true),
 			jwt.WithIssuer(s.issuer),
+			jwt.WithAcceptableSkew(5*time.Second),
 			jwt.WithContext(ctx),
 		)
 		if err != nil {
@@ -198,7 +209,10 @@ func claimsFromToken(token jwt.Token) (Claims, error) {
 		return Claims{}, fmt.Errorf("auth: invalid session claim: %w", err)
 	}
 
+	issuer, _ := token.Issuer()
 	return Claims{
+		Issuer:    issuer,
+		Subject:   subject,
 		UserID:    userID,
 		SessionID: sessionID,
 		DeviceID:  stringField(token, claimDeviceID),

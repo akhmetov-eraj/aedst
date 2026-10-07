@@ -98,30 +98,10 @@ func (ns NullTasksStatus) Value() (driver.Value, error) {
 	return string(ns.TasksStatus), nil
 }
 
-type TasksIdempotencyKey struct {
-	Key         string             `json:"key"`
-	RequestHash string             `json:"request_hash"`
-	Result      []byte             `json:"result"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-}
-
-type TasksInbox struct {
-	EventID     pgtype.UUID        `json:"event_id"`
-	ProcessedAt pgtype.Timestamptz `json:"processed_at"`
-}
-
-type TasksOutbox struct {
-	EventID      pgtype.UUID        `json:"event_id"`
-	EventType    string             `json:"event_type"`
-	EventVersion int32              `json:"event_version"`
-	OccurredAt   pgtype.Timestamptz `json:"occurred_at"`
-	PartitionKey pgtype.UUID        `json:"partition_key"`
-	Traceparent  string             `json:"traceparent"`
-	Payload      []byte             `json:"payload"`
-	PublishedAt  pgtype.Timestamptz `json:"published_at"`
-	Attempts     int32              `json:"attempts"`
-	NextRetryAt  pgtype.Timestamptz `json:"next_retry_at"`
-	PoisonedAt   pgtype.Timestamptz `json:"poisoned_at"`
+type TasksDueSoonMark struct {
+	TaskID   pgtype.UUID        `json:"task_id"`
+	DueDate  pgtype.Timestamptz `json:"due_date"`
+	MarkedAt pgtype.Timestamptz `json:"marked_at"`
 }
 
 type TasksTask struct {
@@ -135,4 +115,5 @@ type TasksTask struct {
 	CompletedAt pgtype.Timestamptz `json:"completed_at"`
 	CreatedAt   pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+	Version     int32              `json:"version"`
 }

@@ -11,6 +11,17 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countCredentials = `-- name: CountCredentials :one
+SELECT count(*) FROM auth.credentials
+`
+
+func (q *Queries) CountCredentials(ctx context.Context) (int64, error) {
+	row := q.db.QueryRow(ctx, countCredentials)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createCredential = `-- name: CreateCredential :exec
 INSERT INTO auth.credentials (user_id, email, password_hash, created_at)
 VALUES ($1, $2, $3, $4)
@@ -116,10 +127,86 @@ func (q *Queries) FindSessionByID(ctx context.Context, id pgtype.UUID) (AuthSess
 	return i, err
 }
 
+const listCredentialsPage = `-- name: ListCredentialsPage :many
+SELECT user_id, email, created_at
+FROM auth.credentials
+WHERE ($1::text = '' OR email ILIKE '%' || $1::text || '%')
+  AND (created_at, user_id) < ($2::timestamptz, $3::uuid)
+ORDER BY created_at DESC, user_id DESC
+LIMIT $4
+`
+
+type ListCredentialsPageParams struct {
+	Search    string             `json:"search"`
+	CursorKey pgtype.Timestamptz `json:"cursor_key"`
+	CursorID  pgtype.UUID        `json:"cursor_id"`
+	PageLimit int32              `json:"page_limit"`
+}
+
+type ListCredentialsPageRow struct {
+	UserID    pgtype.UUID        `json:"user_id"`
+	Email     string             `json:"email"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+// Operator directory (admin module via auth/api.Directory). Keyset page,
+// newest first; search is a case-insensitive substring of the email with LIKE
+// metacharacters escaped by the caller.
+func (q *Queries) ListCredentialsPage(ctx context.Context, arg ListCredentialsPageParams) ([]ListCredentialsPageRow, error) {
+	rows, err := q.db.Query(ctx, listCredentialsPage,
+		arg.Search,
+		arg.CursorKey,
+		arg.CursorID,
+		arg.PageLimit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListCredentialsPageRow
+	for rows.Next() {
+		var i ListCredentialsPageRow
+		if err := rows.Scan(&i.UserID, &i.Email, &i.CreatedAt); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const purgeSessions = `-- name: PurgeSessions :execrows
+DELETE FROM auth.sessions
+WHERE id IN (
+    SELECT s.id FROM auth.sessions s
+    WHERE s.expires_at < $1 OR s.revoked_at < $1
+    LIMIT $2
+)
+`
+
+type PurgeSessionsParams struct {
+	Cutoff     pgtype.Timestamptz `json:"cutoff"`
+	PurgeLimit int32              `json:"purge_limit"`
+}
+
+// Retention: sessions that expired or were revoked before the cutoff can never
+// authenticate again and only cost space. Batched (purge_limit) so a large
+// backlog never becomes one long DELETE.
+func (q *Queries) PurgeSessions(ctx context.Context, arg PurgeSessionsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeSessions, arg.Cutoff, arg.PurgeLimit)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const revokeSession = `-- name: RevokeSession :exec
 UPDATE auth.sessions
 SET revoked_at = $2
 WHERE id = $1
+  AND revoked_at IS NULL
 `
 
 type RevokeSessionParams struct {
@@ -132,20 +219,50 @@ func (q *Queries) RevokeSession(ctx context.Context, arg RevokeSessionParams) er
 	return err
 }
 
-const rotateSession = `-- name: RotateSession :exec
+const rotateSession = `-- name: RotateSession :execrows
 UPDATE auth.sessions
-SET refresh_token_hash = $2,
-    expires_at = $3
-WHERE id = $1
+SET refresh_token_hash = $1,
+    expires_at = $2
+WHERE id = $3
+  AND refresh_token_hash = $4
+  AND revoked_at IS NULL
+  AND expires_at > now()
 `
 
 type RotateSessionParams struct {
-	ID               pgtype.UUID        `json:"id"`
-	RefreshTokenHash string             `json:"refresh_token_hash"`
-	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
+	NewRefreshTokenHash string             `json:"new_refresh_token_hash"`
+	ExpiresAt           pgtype.Timestamptz `json:"expires_at"`
+	ID                  pgtype.UUID        `json:"id"`
+	OldRefreshTokenHash string             `json:"old_refresh_token_hash"`
 }
 
-func (q *Queries) RotateSession(ctx context.Context, arg RotateSessionParams) error {
-	_, err := q.db.Exec(ctx, rotateSession, arg.ID, arg.RefreshTokenHash, arg.ExpiresAt)
+// Compare-and-swap: only the holder of the current refresh token, on a live
+// session, can rotate it. Zero rows affected means a stale/replayed token.
+func (q *Queries) RotateSession(ctx context.Context, arg RotateSessionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, rotateSession,
+		arg.NewRefreshTokenHash,
+		arg.ExpiresAt,
+		arg.ID,
+		arg.OldRefreshTokenHash,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const updateCredentialPasswordHash = `-- name: UpdateCredentialPasswordHash :exec
+UPDATE auth.credentials
+SET password_hash = $2
+WHERE user_id = $1
+`
+
+type UpdateCredentialPasswordHashParams struct {
+	UserID       pgtype.UUID `json:"user_id"`
+	PasswordHash string      `json:"password_hash"`
+}
+
+func (q *Queries) UpdateCredentialPasswordHash(ctx context.Context, arg UpdateCredentialPasswordHashParams) error {
+	_, err := q.db.Exec(ctx, updateCredentialPasswordHash, arg.UserID, arg.PasswordHash)
 	return err
 }

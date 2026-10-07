@@ -1,89 +1,49 @@
 //go:build integration
 
 // Integration tests against a real PostgreSQL container — see
-// docs/database.md and `make integration-test`. Run with
-// `go test -tags=integration ./internal/modules/tasks/...`; skipped by the
-// default `go test ./...` (no build tag) and by `make test`.
+// docs/content/database.md. Run with
+// `go test -tags=integration ./internal/modules/tasks/...` (or
+// `task test:integration`); skipped by the default `go test ./...`.
 package postgres_test
 
 import (
 	"context"
-	"database/sql"
+	"encoding/json"
+	"log/slog"
 	"testing"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/jackc/pgx/v5/stdlib" // registers the "pgx" database/sql driver for goose's migration runner
-	"github.com/pressly/goose/v3"
-	tc "github.com/testcontainers/testcontainers-go"
-	tcpostgres "github.com/testcontainers/testcontainers-go/modules/postgres"
-	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/aedst/server/internal/modules/tasks/api"
 	"github.com/aedst/server/internal/modules/tasks/application"
 	"github.com/aedst/server/internal/modules/tasks/domain"
 	"github.com/aedst/server/internal/modules/tasks/infrastructure/postgres"
+	"github.com/aedst/server/internal/platform/messaging"
+	"github.com/aedst/server/internal/platform/outbox"
+	"github.com/aedst/server/internal/platform/postgrestest"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
 	sharedtime "github.com/aedst/server/internal/shared/time"
 )
 
-// newRepository wires a Repository with real (but per-test-pool) outbox and
-// idempotency adapters, matching how cmd/server constructs one.
-func newRepository(pool *pgxpool.Pool) *postgres.Repository {
-	return postgres.NewRepository(pool, postgres.NewOutboxRepository(pool), postgres.NewIdempotencyStore(), sharedtime.Real{})
-}
-
-// newTestPool starts a real Postgres container, applies the tasks module's
-// goose migrations against it (the same migrations/tasks/ files `make
-// migrate-up` runs), and returns a pool scoped to the test's lifetime.
+// newTestPool starts Postgres with the tasks migrations and River schema.
 func newTestPool(t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	ctx := context.Background()
+	return postgrestest.NewPool(t, "tasks")
+}
 
-	container, err := tcpostgres.Run(ctx, "postgres:18",
-		tcpostgres.WithDatabase("aedst_test"),
-		tcpostgres.WithUsername("aedst"),
-		tcpostgres.WithPassword("aedst"),
-		tc.WithWaitStrategy(wait.ForListeningPort("5432/tcp").WithStartupTimeout(30*time.Second)),
-	)
-	if err != nil {
-		t.Fatalf("start postgres container: %v", err)
-	}
-	t.Cleanup(func() { _ = container.Terminate(context.Background()) })
-
-	dsn, err := container.ConnectionString(ctx, "sslmode=disable")
-	if err != nil {
-		t.Fatalf("container connection string: %v", err)
-	}
-
-	// goose's migration runner wants database/sql, unlike the app's own
-	// pgx/v5 pool below — the same split every `goose -dir migrations/...`
-	// CLI invocation has relative to the app's runtime pgxpool.Pool.
-	sqlDB, err := sql.Open("pgx", dsn)
-	if err != nil {
-		t.Fatalf("open migration connection: %v", err)
-	}
-	defer sqlDB.Close()
-
-	if err := goose.SetDialect("postgres"); err != nil {
-		t.Fatalf("goose.SetDialect: %v", err)
-	}
-	if err := goose.Up(sqlDB, "../../../../migrations/tasks"); err != nil {
-		t.Fatalf("apply tasks migrations: %v", err)
-	}
-
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("open pgxpool: %v", err)
-	}
-	t.Cleanup(pool.Close)
-
-	return pool
+// / newRepository wires a Repository with the real outbox writer, matching how
+// cmd/server constructs one.
+func newRepository(t *testing.T, pool *pgxpool.Pool) *postgres.Repository {
+	t.Helper()
+	writer := outbox.NewWriter(outbox.NewPostgresRepository(pool, "tasks"))
+	return postgres.NewRepository(pool, writer, sharedtime.Real{})
 }
 
 func TestRepository_CreateAndFind(t *testing.T) {
 	pool := newTestPool(t)
-	repo := newRepository(pool)
+	repo := newRepository(t, pool)
 	ctx := context.Background()
 
 	userID := ids.New()
@@ -112,7 +72,7 @@ func TestRepository_CreateAndFind(t *testing.T) {
 
 func TestRepository_FindByIDAndUserID_CrossUserIsNotFound(t *testing.T) {
 	pool := newTestPool(t)
-	repo := newRepository(pool)
+	repo := newRepository(t, pool)
 	ctx := context.Background()
 
 	owner := ids.New()
@@ -134,7 +94,7 @@ func TestRepository_FindByIDAndUserID_CrossUserIsNotFound(t *testing.T) {
 
 func TestRepository_ListAndStats(t *testing.T) {
 	pool := newTestPool(t)
-	repo := newRepository(pool)
+	repo := newRepository(t, pool)
 	ctx := context.Background()
 
 	userID := ids.New()
@@ -151,25 +111,25 @@ func TestRepository_ListAndStats(t *testing.T) {
 		seed[i] = created
 	}
 
-	completed, err := repo.SetStatus(ctx, seed[1].ID, userID, domain.StatusDone, &now, now)
+	completed, err := repo.Complete(ctx, seed[1].ID, userID, now)
 	if err != nil {
-		t.Fatalf("SetStatus() error = %v", err)
+		t.Fatalf("Complete() error = %v", err)
 	}
 	if completed.Status != domain.StatusDone {
-		t.Errorf("SetStatus() status = %v, want StatusDone", completed.Status)
+		t.Errorf("Complete() status = %v, want StatusDone", completed.Status)
 	}
 
-	tasks, total, err := repo.List(ctx, application.ListParams{
-		UserID: userID, SortBy: "created_at", SortDirection: "desc", PageSize: 10,
+	res, err := repo.List(ctx, application.ListParams{
+		UserID: userID, SortBy: "created_at", SortDirection: "desc", Limit: 10,
 	})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if total != 2 || len(tasks) != 2 {
-		t.Fatalf("List() = %d tasks (total %d), want 2", len(tasks), total)
+	if res.Total != 2 || len(res.Tasks) != 2 || res.Next != nil {
+		t.Fatalf("List() = %d tasks (total %d, next %v), want 2 and no next page", len(res.Tasks), res.Total, res.Next)
 	}
-	if tasks[0].Title != "in-progress-1" {
-		t.Errorf("List() sort order = %q first, want most-recently-created first", tasks[0].Title)
+	if res.Tasks[0].Title != "in-progress-1" {
+		t.Errorf("List() sort order = %q first, want most-recently-created first", res.Tasks[0].Title)
 	}
 
 	stats, err := repo.Stats(ctx, userID)
@@ -183,7 +143,7 @@ func TestRepository_ListAndStats(t *testing.T) {
 
 func TestRepository_Delete(t *testing.T) {
 	pool := newTestPool(t)
-	repo := newRepository(pool)
+	repo := newRepository(t, pool)
 	ctx := context.Background()
 
 	userID := ids.New()
@@ -217,7 +177,7 @@ func TestRepository_Delete(t *testing.T) {
 // as a conflict — see internal/platform/idempotency.
 func TestRepository_Create_IdempotentReplay(t *testing.T) {
 	pool := newTestPool(t)
-	repo := newRepository(pool)
+	repo := newRepository(t, pool)
 	ctx := context.Background()
 
 	userID := ids.New()
@@ -247,12 +207,12 @@ func TestRepository_Create_IdempotentReplay(t *testing.T) {
 		t.Fatalf("replayed Create() returned a different task: got %s, want %s", second.ID, first.ID)
 	}
 
-	_, total, err := repo.List(ctx, application.ListParams{UserID: userID, SortBy: "created_at", SortDirection: "desc", PageSize: 10})
+	listed, err := repo.List(ctx, application.ListParams{UserID: userID, SortBy: "created_at", SortDirection: "desc", Limit: 10})
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
-	if total != 1 {
-		t.Fatalf("List() total = %d, want 1 (replay must not create a duplicate row)", total)
+	if listed.Total != 1 {
+		t.Fatalf("List() total = %d, want 1 (replay must not create a duplicate row)", listed.Total)
 	}
 
 	conflicting := task
@@ -263,13 +223,14 @@ func TestRepository_Create_IdempotentReplay(t *testing.T) {
 	}
 }
 
-// TestRepository_Complete_WritesOutboxRow proves Complete's outbox
-// integration: completing a task writes an unpublished tasks.outbox row in
-// the same transaction as the status change — see internal/platform/outbox.
-func TestRepository_Complete_WritesOutboxRow(t *testing.T) {
+// TestRepository_Complete_OutboxToSubscriber proves the whole pipeline on a
+// real database: completing a task atomically writes the outbox row and the
+// River dispatch job; running the dispatch worker delivers the event to a bus
+// subscriber and marks the row published.
+func TestRepository_Complete_OutboxToSubscriber(t *testing.T) {
 	pool := newTestPool(t)
-	repo := newRepository(pool)
-	outboxRepo := postgres.NewOutboxRepository(pool)
+	repo := newRepository(t, pool)
+	outboxRepo := outbox.NewPostgresRepository(pool, "tasks")
 	ctx := context.Background()
 
 	userID := ids.New()
@@ -282,26 +243,203 @@ func TestRepository_Complete_WritesOutboxRow(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
 	}
-
-	completed, err := repo.Complete(ctx, created.ID, userID, now, now)
-	if err != nil {
+	if _, err := repo.Complete(ctx, created.ID, userID, now); err != nil {
 		t.Fatalf("Complete() error = %v", err)
 	}
-	if completed.Status != domain.StatusDone {
-		t.Fatalf("Complete() status = %v, want StatusDone", completed.Status)
+
+	var eventID ids.ID
+	if err := pool.QueryRow(ctx, `SELECT event_id FROM platform.outbox WHERE module = 'tasks' AND event_type = 'tasks.v1.TaskCompleted'`).Scan(&eventID); err != nil {
+		t.Fatalf("expected exactly one outbox row: %v", err)
+	}
+	row, err := outboxRepo.Get(ctx, eventID)
+	if err != nil {
+		t.Fatalf("outbox Get() error = %v", err)
+	}
+	if row.EventType != api.TaskCompletedEventType || row.PartitionKey != created.ID || row.PublishedAt != nil {
+		t.Fatalf("outbox row = %+v, want an unpublished %s for task %s", row, api.TaskCompletedEventType, created.ID)
+	}
+	var payload api.TaskCompletedEvent
+	if err := json.Unmarshal(row.Payload, &payload); err != nil || payload.Title != "Complete me" || payload.UserID != userID.String() {
+		t.Fatalf("payload = %+v (err %v), want the completed task's title and owner", payload, err)
 	}
 
-	rows, err := outboxRepo.FetchUnpublishedBatch(ctx, 10)
+	// Committing an event costs one INSERT: no queue job per event.
+	var jobs int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM river_job WHERE kind LIKE 'outbox.%'`).Scan(&jobs); err != nil || jobs != 0 {
+		t.Fatalf("outbox jobs = %d (err %v), want 0", jobs, err)
+	}
+
+	bus := messaging.NewBus()
+	var delivered messaging.Event
+	bus.Subscribe(api.TaskCompletedEventType, "test", func(_ context.Context, e messaging.Event) error { delivered = e; return nil })
+	relay, err := outbox.NewRelay(outboxRepo, bus, outbox.RelayConfig{Module: "tasks"}, slog.New(slog.DiscardHandler))
 	if err != nil {
-		t.Fatalf("FetchUnpublishedBatch() error = %v", err)
+		t.Fatalf("NewRelay() error = %v", err)
 	}
-	if len(rows) != 1 {
-		t.Fatalf("FetchUnpublishedBatch() = %d rows, want 1", len(rows))
+	if n, err := relay.RelayOnce(ctx); err != nil || n != 2 {
+		t.Fatalf("RelayOnce() = %d, %v; want 2 (TaskCreated + TaskCompleted), nil", n, err)
 	}
-	if rows[0].EventType != postgres.TaskCompletedEventType {
-		t.Errorf("outbox row event_type = %q, want %q", rows[0].EventType, postgres.TaskCompletedEventType)
+	if delivered.ID != eventID {
+		t.Fatalf("subscriber received %+v, want event %s", delivered, eventID)
 	}
-	if rows[0].PartitionKey != created.ID {
-		t.Errorf("outbox row partition_key = %s, want task id %s", rows[0].PartitionKey, created.ID)
+	row, _ = outboxRepo.Get(ctx, eventID)
+	if row.PublishedAt == nil {
+		t.Fatal("row not marked published after delivery")
+	}
+	if n, _ := relay.RelayOnce(ctx); n != 0 {
+		t.Fatalf("published row was claimed again (%d rows)", n)
+	}
+
+	backlog, err := outboxRepo.Backlog(ctx)
+	if err != nil || backlog.Pending != 0 || !backlog.Oldest.IsZero() {
+		t.Fatalf("Backlog() = %+v, %v; want empty", backlog, err)
+	}
+	purged, err := outboxRepo.PurgePublished(ctx, time.Now().Add(time.Minute), 100)
+	if err != nil || purged != 2 {
+		t.Fatalf("PurgePublished() = %d, %v; want 2, nil", purged, err)
+	}
+}
+
+func TestRepository_Complete_NotFoundWritesNothing(t *testing.T) {
+	pool := newTestPool(t)
+	repo := newRepository(t, pool)
+	ctx := context.Background()
+
+	if _, err := repo.Complete(ctx, ids.New(), ids.New(), time.Now()); sharederrors.KindOf(err) != sharederrors.KindNotFound {
+		t.Fatalf("Complete() of a missing task = %v, want KindNotFound", err)
+	}
+	var outboxRows int
+	_ = pool.QueryRow(ctx, `SELECT count(*) FROM platform.outbox WHERE module = 'tasks' AND event_type = 'tasks.v1.TaskCompleted'`).Scan(&outboxRows)
+	if outboxRows != 0 {
+		t.Fatalf("outbox rows = %d, want 0", outboxRows)
+	}
+}
+
+// walk pages through every task matching params with a page size of pageSize
+// and returns the titles in the order served, asserting the cursor contract
+// on the way: no duplicates, total only on the first page.
+func walk(t *testing.T, repo *postgres.Repository, params application.ListParams, pageSize int) []string {
+	t.Helper()
+	params.Limit = pageSize
+	var titles []string
+	seen := map[ids.ID]bool{}
+	for page := 0; ; page++ {
+		res, err := repo.List(context.Background(), params)
+		if err != nil {
+			t.Fatalf("List() page %d error = %v", page, err)
+		}
+		if page > 0 && res.Total != 0 {
+			t.Errorf("page %d: Total = %d, want 0 (counted on the first page only)", page, res.Total)
+		}
+		for _, task := range res.Tasks {
+			if seen[task.ID] {
+				t.Fatalf("task %q served twice", task.Title)
+			}
+			seen[task.ID] = true
+			titles = append(titles, task.Title)
+		}
+		if res.Next == nil {
+			return titles
+		}
+		params.After = res.Next
+		if page > 100 {
+			t.Fatal("pagination did not terminate")
+		}
+	}
+}
+
+func TestRepository_ListKeysetPagination(t *testing.T) {
+	pool := newTestPool(t)
+	repo := newRepository(t, pool)
+	ctx := context.Background()
+
+	userID, otherUser := ids.New(), ids.New()
+	base := time.Now().UTC().Truncate(time.Microsecond)
+	// 7 tasks: created 1s apart; every other one has a due date; two share a
+	// created_at (id must break the tie); one title contains a LIKE wildcard.
+	type seed struct {
+		title string
+		due   *time.Time
+		at    time.Time
+	}
+	due := func(d int) *time.Time { v := base.Add(time.Duration(d) * time.Hour); return &v }
+	seeds := []seed{
+		{"t0", nil, base},
+		{"t1", due(5), base.Add(time.Second)},
+		{"t2", nil, base.Add(2 * time.Second)},
+		{"t3", due(1), base.Add(3 * time.Second)},
+		{"t4-100%", nil, base.Add(4 * time.Second)},
+		{"t5", due(3), base.Add(4 * time.Second)},
+		{"t6", nil, base.Add(6 * time.Second)},
+	}
+	for _, s := range seeds {
+		if _, err := repo.Create(ctx, domain.Task{ID: ids.New(), UserID: userID, Title: s.title, Status: domain.StatusTodo, Priority: domain.PriorityLow, DueDate: s.due, CreatedAt: s.at, UpdatedAt: s.at}, ""); err != nil {
+			t.Fatalf("seed %s: %v", s.title, err)
+		}
+	}
+	// Another user's task must never appear.
+	if _, err := repo.Create(ctx, domain.Task{ID: ids.New(), UserID: otherUser, Title: "other", Status: domain.StatusTodo, Priority: domain.PriorityLow, CreatedAt: base, UpdatedAt: base}, ""); err != nil {
+		t.Fatalf("seed other: %v", err)
+	}
+
+	first, err := repo.List(ctx, application.ListParams{UserID: userID, SortBy: "created_at", SortDirection: "desc", Limit: 3})
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if first.Total != 7 || len(first.Tasks) != 3 || first.Next == nil {
+		t.Fatalf("first page = %d tasks, total %d, next %v; want 3, 7, non-nil", len(first.Tasks), first.Total, first.Next)
+	}
+
+	for pageSize := 1; pageSize <= 8; pageSize++ {
+		desc := walk(t, repo, application.ListParams{UserID: userID, SortBy: "created_at", SortDirection: "desc"}, pageSize)
+		asc := walk(t, repo, application.ListParams{UserID: userID, SortBy: "created_at", SortDirection: "asc"}, pageSize)
+		if len(desc) != 7 || len(asc) != 7 {
+			t.Fatalf("pageSize %d: walked %d desc / %d asc tasks, want 7 each", pageSize, len(desc), len(asc))
+		}
+		for i := range desc {
+			if desc[i] != asc[len(asc)-1-i] {
+				t.Fatalf("pageSize %d: desc %v is not the reverse of asc %v", pageSize, desc, asc)
+			}
+		}
+		// The page size must never change the order served.
+		if pageSize > 1 {
+			ref := walk(t, repo, application.ListParams{UserID: userID, SortBy: "created_at", SortDirection: "desc"}, 1)
+			for i := range desc {
+				if desc[i] != ref[i] {
+					t.Fatalf("pageSize %d changed the order: %v vs %v", pageSize, desc, ref)
+				}
+			}
+		}
+	}
+
+	// Due-date ordering: tasks without a due date sort first ascending and
+	// last descending, as they did before keyset pagination.
+	dueAsc := walk(t, repo, application.ListParams{UserID: userID, SortBy: "due_date", SortDirection: "asc"}, 2)
+	dueDesc := walk(t, repo, application.ListParams{UserID: userID, SortBy: "due_date", SortDirection: "desc"}, 2)
+	if len(dueAsc) != 7 || len(dueDesc) != 7 {
+		t.Fatalf("due walk sizes %d/%d, want 7", len(dueAsc), len(dueDesc))
+	}
+	wantDueTail := []string{"t3", "t5", "t1"} // due in 1h, 3h, 5h
+	if got := dueAsc[4:]; got[0] != wantDueTail[0] || got[1] != wantDueTail[1] || got[2] != wantDueTail[2] {
+		t.Errorf("due asc tail = %v, want %v", got, wantDueTail)
+	}
+	if got := dueDesc[:3]; got[0] != "t1" || got[1] != "t5" || got[2] != "t3" {
+		t.Errorf("due desc head = %v, want [t1 t5 t3]", got)
+	}
+
+	// Search matches literally: "%" is not a wildcard.
+	res, err := repo.List(ctx, application.ListParams{UserID: userID, Search: "100%", SortBy: "created_at", SortDirection: "desc", Limit: 10})
+	if err != nil {
+		t.Fatalf("List(search) error = %v", err)
+	}
+	if res.Total != 1 || len(res.Tasks) != 1 || res.Tasks[0].Title != "t4-100%" {
+		t.Errorf("search \"100%%\" = %+v, want only t4-100%%", res)
+	}
+	res, err = repo.List(ctx, application.ListParams{UserID: userID, Search: "%", SortBy: "created_at", SortDirection: "desc", Limit: 10})
+	if err != nil {
+		t.Fatalf("List(search %%) error = %v", err)
+	}
+	if res.Total != 1 {
+		t.Errorf("search \"%%\" matched %d tasks, want 1 (literal percent, not a wildcard)", res.Total)
 	}
 }

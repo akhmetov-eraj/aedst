@@ -6,7 +6,8 @@ package transport
 
 import (
 	"context"
-	"strconv"
+	"errors"
+	"fmt"
 	"time"
 
 	"connectrpc.com/connect"
@@ -18,6 +19,7 @@ import (
 	"github.com/aedst/server/internal/platform/idempotency"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
+	"github.com/aedst/server/internal/shared/pagination"
 
 	"github.com/aedst/server/internal/modules/tasks/api"
 )
@@ -69,11 +71,6 @@ func (h *Handler) ListTasks(ctx context.Context, req *connect.Request[tasksv1.Li
 		return nil, err
 	}
 
-	offset, err := decodePageToken(req.Msg.GetPageToken())
-	if err != nil {
-		return nil, connect.NewError(connect.CodeInvalidArgument, err)
-	}
-
 	statuses := make([]api.Status, 0, len(req.Msg.GetStatuses()))
 	for _, s := range req.Msg.GetStatuses() {
 		statuses = append(statuses, fromProtoStatus(s))
@@ -83,29 +80,37 @@ func (h *Handler) ListTasks(ctx context.Context, req *connect.Request[tasksv1.Li
 		priorities = append(priorities, fromProtoPriority(p))
 	}
 
-	tasks, total, svcErr := h.service.ListTasks(ctx, api.ListParams{
+	params := api.ListParams{
 		UserID:        userID,
 		Statuses:      statuses,
 		Priorities:    priorities,
 		Search:        req.Msg.GetSearch(),
 		SortBy:        fromProtoSortField(req.Msg.GetSortBy()),
 		SortDirection: fromProtoSortDirection(req.Msg.GetSortDirection()),
-		PageSize:      int(req.Msg.GetPageSize()),
-		Offset:        offset,
-	})
+		Limit:         int(req.Msg.GetPageSize()),
+	}
+	// Normalize first: the cursor is bound to the effective ordering.
+	params.Normalize()
+	after, decodeErr := pagination.Decode(req.Msg.GetPageToken(), params.SortToken())
+	if decodeErr != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid page_token"))
+	}
+	params.After = after
+
+	result, svcErr := h.service.ListTasks(ctx, params)
 	if svcErr != nil {
 		return nil, httpserver.ToConnectError(svcErr)
 	}
 
 	resp := &tasksv1.ListTasksResponse{
-		Tasks:      make([]*tasksv1.Task, 0, len(tasks)),
-		TotalCount: int32(total),
+		Tasks:      make([]*tasksv1.Task, 0, len(result.Tasks)),
+		TotalCount: int32(result.Total),
 	}
-	for _, t := range tasks {
+	for _, t := range result.Tasks {
 		resp.Tasks = append(resp.Tasks, toProtoTask(t))
 	}
-	if next := offset + len(tasks); next < total {
-		resp.NextPageToken = strconv.Itoa(next)
+	if result.Next != nil {
+		resp.NextPageToken = result.Next.Encode()
 	}
 	return connect.NewResponse(resp), nil
 }
@@ -119,39 +124,53 @@ func (h *Handler) UpdateTask(ctx context.Context, req *connect.Request[tasksv1.U
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-
-	current, svcErr := h.service.GetTask(ctx, userID, id)
-	if svcErr != nil {
-		return nil, httpserver.ToConnectError(svcErr)
+	patch, err := buildPatch(req.Msg)
+	if err != nil {
+		return nil, err
+	}
+	var expectedVersion *int
+	if req.Msg.ExpectedVersion != nil {
+		v := int(req.Msg.GetExpectedVersion())
+		expectedVersion = &v
 	}
 
-	title, description, priority, dueDate := current.Title, current.Description, current.Priority, current.DueDate
-	paths := req.Msg.GetUpdateMask().GetPaths()
-	if len(paths) == 0 {
-		// No mask: apply every field the request carries — the common case
-		// for a "save" button that always sends the whole form.
-		title, description = req.Msg.GetTitle(), req.Msg.GetDescription()
-		priority, dueDate = fromProtoPriority(req.Msg.GetPriority()), fromProtoTimestamp(req.Msg.GetDueDate())
-	} else {
-		for _, path := range paths {
-			switch path {
-			case "title":
-				title = req.Msg.GetTitle()
-			case "description":
-				description = req.Msg.GetDescription()
-			case "priority":
-				priority = fromProtoPriority(req.Msg.GetPriority())
-			case "due_date":
-				dueDate = fromProtoTimestamp(req.Msg.GetDueDate())
-			}
-		}
-	}
-
-	task, svcErr := h.service.UpdateTask(ctx, userID, id, title, description, priority, dueDate)
+	task, svcErr := h.service.UpdateTask(ctx, userID, id, patch, expectedVersion)
 	if svcErr != nil {
 		return nil, httpserver.ToConnectError(svcErr)
 	}
 	return connect.NewResponse(&tasksv1.UpdateTaskResponse{Task: toProtoTask(task)}), nil
+}
+
+// buildPatch turns the request into a partial update. With no update_mask the
+// request carries the whole form (the common "save" button) and every editable
+// field applies; with one, only the named fields do, which is how a client
+// clears due_date without resending the rest. Unknown mask paths are rejected
+// instead of silently ignored, so a typo cannot look like a successful save.
+func buildPatch(req *tasksv1.UpdateTaskRequest) (api.Patch, error) {
+	paths := req.GetUpdateMask().GetPaths()
+	if len(paths) == 0 {
+		paths = []string{"title", "description", "priority", "due_date"}
+	}
+	var patch api.Patch
+	for _, path := range paths {
+		switch path {
+		case "title":
+			title := req.GetTitle()
+			patch.Title = &title
+		case "description":
+			description := req.GetDescription()
+			patch.Description = &description
+		case "priority":
+			priority := fromProtoPriority(req.GetPriority())
+			patch.Priority = &priority
+		case "due_date":
+			patch.SetDueDate = true
+			patch.DueDate = fromProtoTimestamp(req.GetDueDate())
+		default:
+			return api.Patch{}, connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("update_mask: unsupported path %q", path))
+		}
+	}
+	return patch, nil
 }
 
 func (h *Handler) DeleteTask(ctx context.Context, req *connect.Request[tasksv1.DeleteTaskRequest]) (*connect.Response[tasksv1.DeleteTaskResponse], error) {
@@ -235,17 +254,6 @@ func requireIdentity(ctx context.Context) (ids.ID, error) {
 	return identity.UserID, nil
 }
 
-func decodePageToken(token string) (int, error) {
-	if token == "" {
-		return 0, nil
-	}
-	offset, err := strconv.Atoi(token)
-	if err != nil || offset < 0 {
-		return 0, sharederrors.Validation("tasks.decodePageToken", "invalid page_token")
-	}
-	return offset, nil
-}
-
 func toProtoTask(t api.Task) *tasksv1.Task {
 	return &tasksv1.Task{
 		Id:          t.ID.String(),
@@ -258,6 +266,7 @@ func toProtoTask(t api.Task) *tasksv1.Task {
 		UpdatedAt:   timestamppb.New(t.UpdatedAt),
 		CompletedAt: toProtoTimestamp(t.CompletedAt),
 		CreatedBy:   t.UserID.String(),
+		Version:     int32(t.Version),
 	}
 }
 

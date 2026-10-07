@@ -1,0 +1,34 @@
+replicaCount: 3
+existingSecret: aedst-server-prod
+config:
+  env: production
+  trustedProxyHops: 2
+  shutdownDrainSeconds: 15
+  shutdownTimeoutSeconds: 20
+  corsAllowedOrigins: ["https://app.example.com"]
+# database-url        -> PgBouncer (transaction mode, pgx default_query_exec_mode=cache_describe)
+# database-direct-url -> Postgres primary directly (advisory locks, LISTEN/NOTIFY, migrations)
+database:
+  dsnSecretKey: database-url
+  directDsnSecretKey: database-direct-url
+  maxConns: 20
+  jobsMaxConns: 10
+autoscaling:
+  minReplicas: 3
+  maxReplicas: 20
+resources:
+  requests:
+    cpu: 500m
+    memory: 512Mi
+  limits:
+    memory: 1Gi
+podDisruptionBudget:
+  minAvailable: null
+  maxUnavailable: 1
+metrics:
+  serviceMonitor:
+    enabled: true
+alerts:
+  enabled: true
+dashboards:
+  enabled: true

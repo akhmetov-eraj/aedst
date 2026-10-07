@@ -7,6 +7,8 @@ package architecturetest
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -14,9 +16,8 @@ import (
 )
 
 const (
-	modulePrefix    = "github.com/aedst/server/internal/modules/"
-	platformPrefix  = "github.com/aedst/server/internal/platform/"
-	natsPackagePath = "github.com/nats-io/nats.go"
+	modulePrefix   = "github.com/aedst/server/internal/modules/"
+	platformPrefix = "github.com/aedst/server/internal/platform/"
 )
 
 func TestModuleBoundaries(t *testing.T) {
@@ -64,25 +65,50 @@ func TestDomainDoesNotImportInfrastructure(t *testing.T) {
 	}
 }
 
-// TestOnlyMessagingImportsNATSDirectly enforces that internal/platform/messaging
-// is the sole owner of the NATS client library — every other package depends
-// on messaging.Publisher/Subscriber (or internal/platform/outbox's own
-// Publisher interface) instead, so the broker is swappable behind those
-// interfaces without touching module code (see docs/events.md).
-func TestOnlyMessagingImportsNATSDirectly(t *testing.T) {
+// forbiddenDependencies are libraries the stack has deliberately ruled out
+// (see docs/content/library-first.md). Importing one is a build-breaking
+// violation, not a style nit.
+var forbiddenDependencies = map[string]string{
+	"github.com/nats-io/":                   "no external broker until an in-process outbox+River bus is proven insufficient — deliver events via internal/platform/outbox and messaging.Publisher",
+	"github.com/go-redsync/redsync":         "no distributed locks in Redis/Valkey — use PostgreSQL advisory locks via internal/platform/lock",
+	"github.com/bsm/redislock":              "no distributed locks in Redis/Valkey — use PostgreSQL advisory locks via internal/platform/lock",
+	"github.com/golang-jwt/jwt":             "JWT/JOSE goes through lestrrat-go/jwx only (internal/platform/auth)",
+	"github.com/dgrijalva/jwt-go":           "JWT/JOSE goes through lestrrat-go/jwx only (internal/platform/auth)",
+	"github.com/gin-gonic/gin":              "router is Chi (internal/platform/httpserver)",
+	"github.com/labstack/echo":              "router is Chi (internal/platform/httpserver)",
+	"gorm.io/gorm":                          "no ORM — SQL goes through sqlc",
+	"github.com/jmoiron/sqlx":               "no ORM/query-builder — SQL goes through sqlc",
+	"github.com/SherClockHolmes/webpush-go": "pulls golang-jwt (a second JOSE library) — Web Push lives in internal/platform/push (jwx + stdlib crypto)",
+	"github.com/minio/minio-go":             "object storage goes through internal/platform/storage (aws-sdk-go-v2 S3 client, s3|minio|r2 presets)",
+}
+
+func TestNoForbiddenDependencies(t *testing.T) {
 	pkgs := loadPackages(t)
 
 	for _, pkg := range pkgs {
-		if strings.HasPrefix(pkg.PkgPath, platformPrefix+"messaging") {
+		for path := range pkg.Imports {
+			for prefix, why := range forbiddenDependencies {
+				if strings.HasPrefix(path, prefix) {
+					t.Errorf("forbidden dependency: %s imports %s — %s", pkg.PkgPath, path, why)
+				}
+			}
+		}
+	}
+}
+
+// TestOnlyValkeyPackageImportsRedisClient keeps the Valkey/Redis client behind
+// internal/platform/valkey, so cache and rate-limit consumers depend on
+// small interfaces and the backing store stays swappable.
+func TestOnlyValkeyPackageImportsRedisClient(t *testing.T) {
+	pkgs := loadPackages(t)
+
+	for _, pkg := range pkgs {
+		if strings.HasPrefix(pkg.PkgPath, platformPrefix+"valkey") {
 			continue
 		}
-
 		for path := range pkg.Imports {
-			if path == natsPackagePath || strings.HasPrefix(path, natsPackagePath+"/") {
-				t.Errorf(
-					"boundary violation: %s imports %s directly — only internal/platform/messaging may depend on the NATS client; everything else depends on its Publisher/Subscriber interfaces",
-					pkg.PkgPath, path,
-				)
+			if strings.HasPrefix(path, "github.com/redis/go-redis") || strings.HasPrefix(path, "github.com/go-redis/redis_rate") {
+				t.Errorf("boundary violation: %s imports %s directly — only internal/platform/valkey may", pkg.PkgPath, path)
 			}
 		}
 	}
@@ -123,4 +149,63 @@ func layerOf(pkgPath, module string) string {
 	rest := strings.TrimPrefix(pkgPath, prefix)
 	parts := strings.SplitN(rest, "/", 2)
 	return parts[0]
+}
+
+// TestPlatformDoesNotImportModules keeps the dependency arrow one-way: modules
+// depend on platform, never the reverse. (depguard checks the same rule by
+// path glob for fast editor feedback; this one resolves real import paths.)
+func TestPlatformDoesNotImportModules(t *testing.T) {
+	for _, pkg := range loadPackages(t) {
+		if !strings.HasPrefix(pkg.PkgPath, platformPrefix) {
+			continue
+		}
+		for path := range pkg.Imports {
+			if strings.HasPrefix(path, modulePrefix) {
+				t.Errorf("layering violation: platform package %s imports module package %s", pkg.PkgPath, path)
+			}
+		}
+	}
+}
+
+// TestEveryModuleHasAPIAndMigrations checks the module template is followed:
+// each module under internal/modules exposes a public api/ package (the only
+// way other modules may reach it) and owns a migrations/<module> directory.
+// A new module that forgets either fails here instead of at extraction time.
+func TestEveryModuleHasAPIAndMigrations(t *testing.T) {
+	entries, err := os.ReadDir("../internal/modules")
+	if err != nil {
+		t.Fatalf("read modules: %v", err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		name := entry.Name()
+		if info, err := os.Stat(filepath.Join("../internal/modules", name, "api")); err != nil || !info.IsDir() {
+			t.Errorf("module %q has no api/ package", name)
+		}
+		if info, err := os.Stat(filepath.Join("../migrations", name)); err != nil || !info.IsDir() {
+			t.Errorf("module %q has no migrations/%s directory", name, name)
+		}
+	}
+}
+
+// TestOnlyPlatformPackagesImportProviderSDKs keeps vendor SDKs behind their
+// platform port: the AWS SDK only in platform/storage, the push transports
+// (oauth2) only in platform/push. Modules depend on the ports.
+func TestOnlyPlatformPackagesImportProviderSDKs(t *testing.T) {
+	owners := map[string]string{
+		"github.com/aws/aws-sdk-go-v2": platformPrefix + "storage",
+		"github.com/aws/smithy-go":     platformPrefix + "storage",
+		"golang.org/x/oauth2":          platformPrefix + "push",
+	}
+	for _, pkg := range loadPackages(t) {
+		for path := range pkg.Imports {
+			for prefix, owner := range owners {
+				if strings.HasPrefix(path, prefix) && !strings.HasPrefix(pkg.PkgPath, owner) {
+					t.Errorf("boundary violation: %s imports %s directly — only %s may", pkg.PkgPath, path, owner)
+				}
+			}
+		}
+	}
 }

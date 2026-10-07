@@ -1,0 +1,129 @@
+# Alert rules for aedst-server, in native Prometheus rule format so they can be
+# checked and unit-tested with promtool (`task alerts:test`), and rendered into
+# a PrometheusRule by templates/prometheusrule.yaml.
+#
+# Metric names come from the server's own OpenTelemetry instrumentation
+# (verified against /metrics): otelhttp `http_server_request_duration_seconds`,
+# otelconnect `rpc_server_call_duration_seconds`, and the aedst_* gauges and
+# counters in internal/platform/{database,outbox,retention}. Every alert
+# links to its section of docs/content/runbook.md.
+#
+# Severity: `page` = a human is needed now, `ticket` = fix in working hours.
+groups:
+  - name: aedst-server.availability
+    rules:
+      - alert: AedstNoInstancesReporting
+        expr: absent(aedst_db_pool_connections{pool="api", state="max"})
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: No aedst-server instance is reporting metrics
+          description: No pod has exported metrics for 5 minutes — all replicas are down, crash-looping, or unscraped.
+          runbook_url: https://docs.aedst.dev/runbook#aedstnoinstancesreporting
+
+      - alert: AedstHighErrorRatio
+        expr: |
+          sum(rate(http_server_request_duration_seconds_count{http_response_status_code=~"5.."}[5m]))
+            /
+          sum(rate(http_server_request_duration_seconds_count[5m])) > 0.02
+        for: 10m
+        labels: {severity: page}
+        annotations:
+          summary: More than 2% of requests fail with a 5xx
+          description: "{{ $value | humanizePercentage }} of requests failed over the last 5 minutes. Server-side causes are logged by ErrorLogInterceptor (`rpc failed`)."
+          runbook_url: https://docs.aedst.dev/runbook#aedsthigherrorratio
+
+      - alert: AedstHighLatencyP95
+        expr: |
+          histogram_quantile(0.95,
+            sum by (le) (rate(http_server_request_duration_seconds_bucket{http_response_status_code!~"429|5.."}[5m]))
+          ) > 0.5
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: p95 request latency is above 500 ms
+          description: "p95 is {{ $value | humanizeDuration }} (SLO: 500 ms on the read path, docs/content/scaling.md)."
+          runbook_url: https://docs.aedst.dev/runbook#aedsthighlatencyp95
+
+      - alert: AedstShedding429
+        expr: sum(rate(http_server_request_duration_seconds_count{http_response_status_code="429"}[5m])) > 1
+        for: 5m
+        labels: {severity: ticket}
+        annotations:
+          summary: Requests are being throttled or shed
+          description: More than 1 request/s is answered 429 — per-user rate limits or AEDST_MAX_IN_FLIGHT load shedding are firing.
+          runbook_url: https://docs.aedst.dev/runbook#aedstshedding429
+
+  - name: aedst-server.database
+    rules:
+      - alert: AedstDBPoolSaturated
+        expr: |
+          max by (pool) (aedst_db_pool_connections{state="acquired"})
+            /
+          max by (pool) (aedst_db_pool_connections{state="max"}) > 0.8
+        for: 5m
+        labels: {severity: ticket}
+        annotations:
+          summary: "Connection pool {{ $labels.pool }} is over 80% in use"
+          description: The pool is close to exhaustion; requests (api) or events/jobs (jobs) will start to queue.
+          runbook_url: https://docs.aedst.dev/runbook#aedstdbpoolsaturated
+
+      - alert: AedstDBPoolWaiting
+        expr: sum by (pool) (rate(aedst_db_pool_acquire_wait_seconds_total[5m])) > 0.1
+        for: 10m
+        labels: {severity: page}
+        annotations:
+          summary: "Callers wait for a connection from pool {{ $labels.pool }}"
+          description: Time spent waiting for a free connection exceeds 0.1 s per second — the pool is the bottleneck.
+          runbook_url: https://docs.aedst.dev/runbook#aedstdbpoolwaiting
+
+  - name: aedst-server.events
+    rules:
+      - alert: AedstOutboxLagging
+        expr: max by (module) (aedst_outbox_oldest_pending_age_seconds) > 30
+        for: 5m
+        labels: {severity: page}
+        annotations:
+          summary: "Events of module {{ $labels.module }} are delivered more than 30 s late"
+          description: The oldest undelivered event is {{ $value | humanizeDuration }} old — the relay is stuck or a subscriber keeps failing.
+          runbook_url: https://docs.aedst.dev/runbook#aedstoutboxlagging
+
+      - alert: AedstOutboxBacklogGrowing
+        expr: |
+          max by (module) (aedst_outbox_pending) > 1000
+            and
+          deriv(aedst_outbox_pending[15m]) > 0
+        for: 15m
+        labels: {severity: ticket}
+        annotations:
+          summary: "The outbox backlog of module {{ $labels.module }} keeps growing"
+          description: More than 1000 events are pending and the number is rising — producers outpace delivery.
+          runbook_url: https://docs.aedst.dev/runbook#aedstoutboxbackloggrowing
+
+      - alert: AedstOutboxDeliveryFailing
+        expr: sum by (module) (rate(aedst_outbox_failed_total[10m])) > 0.1
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "Event deliveries of module {{ $labels.module }} keep failing"
+          description: A subscriber is failing and events are being retried with backoff.
+          runbook_url: https://docs.aedst.dev/runbook#aedstoutboxdeliveryfailing
+
+      - alert: AedstOutboxEventPoisoned
+        expr: sum by (module) (increase(aedst_outbox_poisoned_total[15m])) > 0
+        labels: {severity: page}
+        annotations:
+          summary: "An event of module {{ $labels.module }} was given up on"
+          description: An event exhausted its delivery attempts and was marked poisoned; consumers are missing it until it is replayed.
+          runbook_url: https://docs.aedst.dev/runbook#aedstoutboxeventpoisoned
+
+  - name: aedst-server.runtime
+    rules:
+      - alert: AedstGoroutinesHigh
+        expr: max by (pod) (go_goroutines) > 10000
+        for: 15m
+        labels: {severity: ticket}
+        annotations:
+          summary: "Pod {{ $labels.pod }} has more than 10000 goroutines"
+          description: A steadily high goroutine count usually means a leak or requests stuck on a slow dependency.
+          runbook_url: https://docs.aedst.dev/runbook#aedstgoroutineshigh

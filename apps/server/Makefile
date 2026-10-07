@@ -12,7 +12,7 @@ DB_URL ?= postgres://aedst:aedst@localhost:5432/aedst?sslmode=disable
 dev: up migrate-up
 	go run ./cmd/server
 
-## up: start Postgres/Redis/NATS for local development.
+## up: start Postgres/Valkey for local development.
 up:
 	$(COMPOSE) up -d --wait
 
@@ -48,7 +48,7 @@ breaking:
 test:
 	go test ./internal/... ./cmd/...
 
-## integration-test: tests that talk to real Postgres/Redis/NATS via
+## integration-test: tests that talk to real Postgres/Valkey via
 ## Testcontainers. Requires Docker.
 integration-test:
 	go test -tags=integration ./...
@@ -63,14 +63,14 @@ build:
 
 ## migrate-up: apply all pending migrations for every module schema.
 migrate-up:
-	for m in auth tasks; do \
-		goose -dir migrations/$$m postgres "$(DB_URL)" up; \
+	for m in auth tasks notifications; do \
+		goose -dir migrations/$$m -table goose_$$m postgres "$(DB_URL)" up; \
 	done
 
 ## migrate-down: roll back the latest migration for every module schema.
 migrate-down:
-	for m in auth tasks; do \
-		goose -dir migrations/$$m postgres "$(DB_URL)" down; \
+	for m in auth tasks notifications; do \
+		goose -dir migrations/$$m -table goose_$$m postgres "$(DB_URL)" down; \
 	done
 
 clean:

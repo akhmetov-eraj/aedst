@@ -1,0 +1,243 @@
+# Default values for aedst-server. Environment overlays: values-{dev,staging,prod}.yaml.
+#
+# NOTHING SECRET LIVES HERE. Database DSNs, JWT keys and the Valkey password are
+# read from an EXISTING Kubernetes Secret (existingSecret) that is provisioned
+# out-of-band (External Secrets Operator, sealed-secrets, SOPS, ...).
+
+replicaCount: 2
+
+image:
+  repository: ghcr.io/aedst/aedst-server
+  # Empty = .Chart.AppVersion. Prefer an immutable tag or digest in staging/prod.
+  tag: ""
+  pullPolicy: IfNotPresent
+imagePullSecrets: []
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+# Name of an existing Secret in the release namespace. Required.
+existingSecret: ""
+# Keys inside that Secret. An empty key name disables the corresponding variable.
+secretKeys:
+  jwtSigningKey: jwt-signing-key # AEDST_JWT_SIGNING_KEY (required when config.auth.firstPartyEnabled)
+  jwtPreviousSigningKey: "" # AEDST_JWT_PREVIOUS_SIGNING_KEY (verify-only, during rotation)
+  valkeyPassword: valkey-password # AEDST_VALKEY_PASSWORD ("" = no password)
+
+database:
+  # Key holding the DSN the API pool uses (AEDST_DATABASE_URL). In production this
+  # SHOULD point at PgBouncer (transaction pooling). With PgBouncer transaction
+  # pooling pgx must not use its default named prepared-statement cache: append
+  # `default_query_exec_mode=cache_describe` (or `exec` / `simple_protocol`) to the
+  # DSN query string, e.g.
+  #   postgres://user:pass@pgbouncer:6432/aedst?sslmode=require&default_query_exec_mode=cache_describe
+  # PgBouncer also needs ignore_startup_parameters=extra_float_digits,statement_timeout,idle_in_transaction_session_timeout
+  # because the server sends those as startup parameters (set them on the DB role instead).
+  dsnSecretKey: database-url
+  # Key holding a DIRECT (non-pooled) DSN, straight to Postgres/the primary
+  # (AEDST_DATABASE_DIRECT_DSN). When set, the jobs pool (River, outbox, inbox)
+  # uses it instead of the main DSN, and the migration Job uses it too.
+  # Needed because session-level advisory locks (internal/platform/lock) and
+  # River's LISTEN/NOTIFY do not work through a transaction-pooling proxy.
+  # Empty = not set (fine for dev / when the main DSN is already direct).
+  directDsnSecretKey: ""
+  maxConns: 20 # AEDST_DATABASE_MAX_CONNS (API pool, per pod)
+  minConns: 2 # AEDST_DATABASE_MIN_CONNS
+  jobsMaxConns: 10 # AEDST_DATABASE_JOBS_MAX_CONNS (separate background pool, per pod)
+  maxConnLifetimeMinutes: 60
+  maxConnIdleMinutes: 15
+  statementTimeoutMs: 15000
+  idleInTxTimeoutMs: 30000
+
+config:
+  env: production # AEDST_ENV: development|test|staging|production
+  requestTimeoutSeconds: 30
+  maxRequestBytes: 1048576
+  # Should be >= the load balancer's health-check interval x unhealthy threshold.
+  shutdownDrainSeconds: 10
+  shutdownTimeoutSeconds: 15
+  corsAllowedOrigins: [] # "*" is rejected by the server in staging/production
+  trustedProxyHops: 2 # Cloudflare -> ingress = 2; verify after deploy
+  authRateLimitPerMinute: 30
+  loginRateLimitPerMinute: 10
+  # Procedures restricted to callers holding one of the roles; validated at startup
+  # (unknown or public procedures fail the deploy). Example:
+  #   rolePolicy:
+  #     /aedst.tasks.v1.TasksService/DeleteTask: [admin, support]
+  rolePolicy: {}
+  apiRateLimitPerMinute: 1200 # per authenticated user, cluster-wide via Valkey (0 = off)
+  maxInFlight: 1024 # concurrent requests per pod before 429 load shedding (0 = off)
+  grpcReflectionEnabled: false # publishes the whole API surface; enable deliberately
+  retention:
+    intervalMinutes: 60
+    idempotencyHours: 48
+    inboxHours: 336 # must be >= outbox.retentionHours
+    sessionHours: 720
+  valkey:
+    addr: valkey:6379
+    db: 0
+  auth:
+    firstPartyEnabled: true
+    accessTokenTtlMinutes: 15
+    refreshTokenTtlHours: 720
+  oidc:
+    issuer: ""
+    audience: ""
+    jwksUrl: ""
+    algorithms: ["RS256", "ES256", "EdDSA"]
+    rolesClaim: roles
+    clockSkewSeconds: 30
+  outbox:
+    relayIntervalMs: 500 # AEDST_OUTBOX_RELAY_INTERVAL_MS
+    batchSize: 100 # AEDST_OUTBOX_BATCH_SIZE
+    concurrency: 4 # AEDST_OUTBOX_CONCURRENCY (events of a batch published in parallel)
+    retentionHours: 168 # AEDST_OUTBOX_RETENTION_HOURS (delivered rows kept before purge)
+  # Minimum supported client versions, e.g. "web=1.0.0,android=1.2.0". Empty = gate disabled.
+  minClientVersions: "" # AEDST_MIN_CLIENT_VERSIONS
+  log:
+    level: info
+    format: json
+  serviceName: aedst-server
+  otel:
+    # Endpoint only; OTLP headers carrying credentials belong in the Secret, not here.
+    endpoint: ""
+
+# Extra environment variables (e.g. OTEL_RESOURCE_ATTRIBUTES). Rendered verbatim.
+extraEnv: []
+# extraEnv:
+#   - name: OTEL_RESOURCE_ATTRIBUTES
+#     value: deployment.environment=prod
+
+containerPorts:
+  http: 8080
+  metrics: 9090
+
+service:
+  type: ClusterIP
+  port: 80
+
+metrics:
+  # Exposes the Prometheus endpoint (AEDST_METRICS_ADDR) on containerPorts.metrics.
+  enabled: true
+  podAnnotations: true # prometheus.io/* annotations on the pod
+  serviceMonitor:
+    enabled: false # requires the prometheus-operator CRDs
+    interval: 30s
+    labels: {}
+
+# Left null it is computed as shutdownDrainSeconds + shutdownTimeoutSeconds + 10.
+# An explicit value that is not larger than drain + timeout fails the render.
+terminationGracePeriodSeconds: null
+
+resources:
+  requests:
+    cpu: 250m
+    memory: 256Mi
+  limits:
+    memory: 512Mi
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 1 # set maxUnavailable instead (and null this) if preferred
+  maxUnavailable: null
+
+probes:
+  startup:
+    failureThreshold: 30
+    periodSeconds: 2
+  liveness:
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    periodSeconds: 5
+    timeoutSeconds: 3
+    failureThreshold: 2
+
+podAnnotations: {}
+podLabels: {}
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop: ["ALL"]
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+# Spread replicas over zones and nodes. The chart injects labelSelector.
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: ScheduleAnyway
+  - maxSkew: 1
+    topologyKey: kubernetes.io/hostname
+    whenUnsatisfiable: ScheduleAnyway
+
+# Schema migrations run as a Helm pre-install/pre-upgrade hook Job (goose).
+migrations:
+  enabled: true
+  image:
+    # Built from deployments/docker/Dockerfile.migrate (goose + migrations/).
+    repository: ghcr.io/aedst/aedst-server-migrate
+    tag: "" # empty = .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  # One goose directory (and one version table, goose_<module>) per module schema.
+  modules: ["platform", "auth", "tasks", "notifications"]
+  backoffLimit: 0
+  activeDeadlineSeconds: 600
+  resources:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      memory: 128Mi
+
+# Opt-in NetworkPolicy (see templates/networkpolicy.yaml). Selectors are
+# cluster-specific, so nothing is enabled by default.
+# NOTE: with enabled=true, egress is default-deny except DNS: egressTo MUST list
+# Postgres/PgBouncer, Valkey, the OTLP collector and the OIDC provider, or the
+# pods lose them. That is why it is not switched on in values-prod.yaml.
+networkPolicy:
+  enabled: false
+  # Who may reach the API port, e.g. the ingress controller's namespace:
+  #   - namespaceSelector: { matchLabels: { kubernetes.io/metadata.name: ingress-nginx } }
+  ingressFrom: []
+  # Who may scrape the metrics port (e.g. the monitoring namespace).
+  metricsFrom: []
+  # Where the pods may connect besides DNS: Postgres/PgBouncer, Valkey, the OTLP
+  # collector, the OIDC provider (podSelector / namespaceSelector / ipBlock).
+  egressTo: []
+
+# Alert rules (files/alerts.rules.yaml) as a prometheus-operator PrometheusRule.
+# Requires the operator's CRDs; each alert links to docs/content/runbook.md.
+alerts:
+  enabled: false
+  labels: {} # e.g. {release: kube-prometheus-stack} so the operator selects the rule
+
+# Grafana dashboard (files/aedst-server-dashboard.json) as a ConfigMap for the
+# Grafana sidecar (kube-prometheus-stack / grafana chart convention).
+dashboards:
+  enabled: false
+  sidecarLabel: grafana_dashboard
+  folder: aedst

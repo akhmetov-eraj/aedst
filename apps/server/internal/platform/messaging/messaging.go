@@ -1,147 +1,100 @@
-// Package messaging wires NATS JetStream for domain/integration events (see
-// docs/events.md for subject naming, versioning and idempotency conventions).
-// Modules never talk to the nats.Conn directly — they depend on the
-// Publisher/Subscriber interfaces below, which keeps event publishing testable
-// without a running broker.
+// Package messaging is the in-process event bus that sits at the end of the
+// transactional outbox pipeline:
+//
+//	domain change + outbox row (one Postgres tx)
+//	    -> outbox.Relay (batched, lease-based, any replica)
+//	    -> Publisher.Publish  (this package)
+//	    -> subscriber handlers (each guarded by internal/platform/inbox)
+//
+// There is exactly one asynchronous mechanism family in this codebase:
+// Postgres outbox + inbox (+ River for deferred jobs). Retries, backoff and
+// poisoning are the relay's; exactly-once *effect* comes from the inbox. No
+// external broker is required.
+//
+// Publisher is the seam where an external broker (NATS JetStream, Kafka, ...)
+// can be plugged in later — implement it in a new adapter and pass that to
+// the outbox relay — but do NOT do so until an in-process bus is proven
+// insufficient (cross-service fan-out, independent scaling of consumers).
+// Until then Bus is the only implementation.
 package messaging
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"uuid"
+	"sync"
+	"time"
 
-	"github.com/nats-io/nats.go"
-	"github.com/nats-io/nats.go/jetstream"
-	"go.opentelemetry.io/otel/trace"
-	"google.golang.org/protobuf/proto"
+	"github.com/aedst/server/internal/shared/ids"
 )
 
-const (
-	// HeaderEventID carries the idempotency key every consumer must dedupe on.
-	HeaderEventID = "Aedst-Event-Id"
-	// HeaderTraceID propagates the originating request's trace for
-	// correlation across the async boundary (see docs/events.md).
-	HeaderTraceID = "Aedst-Trace-Id"
-)
+// Event is one integration event as delivered to subscribers. ID is the
+// outbox row id and is stable across redeliveries — consumers dedupe on it.
+type Event struct {
+	ID           ids.ID
+	Type         string
+	Version      uint32
+	OccurredAt   time.Time
+	PartitionKey ids.ID
+	// Payload is the event body, already serialized by the producing module
+	// (JSON today). Consumers decode it themselves.
+	Payload []byte
+}
 
-// Publisher publishes a domain event onto a subject. Implemented by *Client.
+// Handler processes one event. It must be idempotent: the outbox relay
+// delivers at-least-once (a failed or crashed delivery is retried). Wrap handlers that touch the database with
+// internal/platform/inbox.Consumer to get effectively-once processing.
+type Handler func(ctx context.Context, event Event) error
+
+// Publisher delivers an event to its subscribers. Returning an error makes
+// the outbox relay retry the event with backoff (and poison it after too many
+// attempts), so implementations must be safe to call again with the same
+// Event.ID.
 type Publisher interface {
-	Publish(ctx context.Context, subject string, event proto.Message) error
+	Publish(ctx context.Context, event Event) error
 }
 
-// Client wraps a NATS connection and its JetStream context.
-type Client struct {
-	conn *nats.Conn
-	js   jetstream.JetStream
+// Bus is the in-process Publisher: it fans an event out to every handler
+// subscribed to its type. Register subscriptions at startup (cmd/server)
+// before the outbox relays start.
+type Bus struct {
+	mu       sync.RWMutex
+	handlers map[string][]namedHandler
 }
 
-func Connect(url string) (*Client, error) {
-	conn, err := nats.Connect(url,
-		nats.RetryOnFailedConnect(true),
-		nats.MaxReconnects(-1),
-	)
-	if err != nil {
-		return nil, fmt.Errorf("messaging: connect: %w", err)
-	}
-
-	js, err := jetstream.New(conn)
-	if err != nil {
-		conn.Close()
-		return nil, fmt.Errorf("messaging: jetstream: %w", err)
-	}
-
-	return &Client{conn: conn, js: js}, nil
+type namedHandler struct {
+	name string
+	fn   Handler
 }
 
-func (c *Client) Close() {
-	c.conn.Close()
+var _ Publisher = (*Bus)(nil)
+
+func NewBus() *Bus {
+	return &Bus{handlers: make(map[string][]namedHandler)}
 }
 
-// EnsureStream creates the named stream if it doesn't exist yet. Called once
-// per stream at startup by cmd/server; modules declare the subjects they
-// publish under their own stream (e.g. "AEDST_PROFILE" for
-// "aedst.profile.>").
-func (c *Client) EnsureStream(ctx context.Context, name string, subjects []string) error {
-	_, err := c.js.CreateOrUpdateStream(ctx, jetstream.StreamConfig{
-		Name:     name,
-		Subjects: subjects,
-		Storage:  jetstream.FileStorage,
-	})
-	if err != nil {
-		return fmt.Errorf("messaging: ensure stream %s: %w", name, err)
-	}
-	return nil
+// Subscribe registers handler under a unique name (for error reporting) for
+// eventType, e.g. "tasks.v1.TaskCompleted".
+func (b *Bus) Subscribe(eventType, name string, handler Handler) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.handlers[eventType] = append(b.handlers[eventType], namedHandler{name: name, fn: handler})
 }
 
-// Publish marshals event and publishes it to subject with an idempotency
-// key and the current trace ID attached as headers.
-func (c *Client) Publish(ctx context.Context, subject string, event proto.Message) error {
-	payload, err := proto.Marshal(event)
-	if err != nil {
-		return fmt.Errorf("messaging: marshal event: %w", err)
-	}
+// Publish runs every subscriber for event.Type. All handlers run even if one
+// fails (so a broken subscriber cannot starve the others); the failures are
+// joined into the returned error so the job retries. An event with no
+// subscribers is a successful no-op.
+func (b *Bus) Publish(ctx context.Context, event Event) error {
+	b.mu.RLock()
+	subs := b.handlers[event.Type]
+	b.mu.RUnlock()
 
-	msg := nats.NewMsg(subject)
-	msg.Data = payload
-	msg.Header.Set(HeaderEventID, uuid.NewV7().String())
-	if sc := trace.SpanContextFromContext(ctx); sc.HasTraceID() {
-		msg.Header.Set(HeaderTraceID, sc.TraceID().String())
-	}
-
-	if _, err := c.js.PublishMsg(ctx, msg); err != nil {
-		return fmt.Errorf("messaging: publish %s: %w", subject, err)
-	}
-	return nil
-}
-
-// PublishRaw publishes an already-serialized payload to subject, tagged with
-// the caller-supplied eventID rather than a freshly generated one. Used by
-// internal/platform/outbox's Forwarder so the idempotency key a consumer's
-// inbox dedupes on is the same outbox row id that was committed alongside
-// the domain change — not an id invented at publish time, which would let a
-// redelivered-after-crash retry of the same row be seen as a new event.
-func (c *Client) PublishRaw(ctx context.Context, subject, eventID string, payload []byte) error {
-	msg := nats.NewMsg(subject)
-	msg.Data = payload
-	msg.Header.Set(HeaderEventID, eventID)
-	if sc := trace.SpanContextFromContext(ctx); sc.HasTraceID() {
-		msg.Header.Set(HeaderTraceID, sc.TraceID().String())
-	}
-
-	if _, err := c.js.PublishMsg(ctx, msg); err != nil {
-		return fmt.Errorf("messaging: publish raw %s: %w", subject, err)
-	}
-	return nil
-}
-
-// HandlerFunc processes one delivered message. Returning an error leaves the
-// message unacked for JetStream redelivery; handlers must be idempotent (see
-// docs/events.md).
-type HandlerFunc func(ctx context.Context, msg jetstream.Msg) error
-
-// Subscribe creates (or attaches to) a durable consumer and processes
-// messages with handler until ctx is cancelled.
-func (c *Client) Subscribe(ctx context.Context, stream, durable, filterSubject string, handler HandlerFunc) error {
-	cons, err := c.js.CreateOrUpdateConsumer(ctx, stream, jetstream.ConsumerConfig{
-		Durable:       durable,
-		FilterSubject: filterSubject,
-		AckPolicy:     jetstream.AckExplicitPolicy,
-	})
-	if err != nil {
-		return fmt.Errorf("messaging: create consumer %s: %w", durable, err)
-	}
-
-	_, err = cons.Consume(func(msg jetstream.Msg) {
-		if err := handler(ctx, msg); err != nil {
-			_ = msg.Nak()
-			return
+	var errs []error
+	for _, sub := range subs {
+		if err := sub.fn(ctx, event); err != nil {
+			errs = append(errs, fmt.Errorf("subscriber %s: %w", sub.name, err))
 		}
-		_ = msg.Ack()
-	})
-	if err != nil {
-		return fmt.Errorf("messaging: consume %s: %w", durable, err)
 	}
-
-	<-ctx.Done()
-	return nil
+	return errors.Join(errs...)
 }

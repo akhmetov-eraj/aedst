@@ -79,6 +79,14 @@ func (r *CredentialRepository) FindByUserID(ctx context.Context, userID ids.ID) 
 	}, nil
 }
 
+func (r *CredentialRepository) UpdatePasswordHash(ctx context.Context, userID ids.ID, hash string) error {
+	q := authdb.New(r.pool)
+	if err := q.UpdateCredentialPasswordHash(ctx, authdb.UpdateCredentialPasswordHashParams{UserID: toPgUUID(userID), PasswordHash: hash}); err != nil {
+		return sharederrors.Wrap("auth.UpdatePasswordHash", err)
+	}
+	return nil
+}
+
 type SessionRepository struct {
 	pool *pgxpool.Pool
 }
@@ -130,17 +138,18 @@ func (r *SessionRepository) FindByID(ctx context.Context, id ids.ID) (domain.Ses
 	}, nil
 }
 
-func (r *SessionRepository) Rotate(ctx context.Context, id ids.ID, newRefreshTokenHash string, newExpiresAt time.Time) error {
+func (r *SessionRepository) Rotate(ctx context.Context, id ids.ID, oldRefreshTokenHash, newRefreshTokenHash string, newExpiresAt time.Time) (bool, error) {
 	q := authdb.New(r.pool)
-	err := q.RotateSession(ctx, authdb.RotateSessionParams{
-		ID:               toPgUUID(id),
-		RefreshTokenHash: newRefreshTokenHash,
-		ExpiresAt:        toPgTimestamptz(newExpiresAt),
+	affected, err := q.RotateSession(ctx, authdb.RotateSessionParams{
+		ID:                  toPgUUID(id),
+		OldRefreshTokenHash: oldRefreshTokenHash,
+		NewRefreshTokenHash: newRefreshTokenHash,
+		ExpiresAt:           toPgTimestamptz(newExpiresAt),
 	})
 	if err != nil {
-		return sharederrors.Wrap("auth.RotateSession", err)
+		return false, sharederrors.Wrap("auth.RotateSession", err)
 	}
-	return nil
+	return affected == 1, nil
 }
 
 func (r *SessionRepository) Revoke(ctx context.Context, id ids.ID, revokedAt time.Time) error {
@@ -174,4 +183,18 @@ const postgresUniqueViolation = "23505"
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
 	return errors.As(err, &pgErr) && pgErr.Code == postgresUniqueViolation
+}
+
+// PurgeDeadSessions deletes up to limit sessions that expired or were revoked
+// before cutoff (retention: see internal/platform/retention) and returns how
+// many it deleted.
+func (r *SessionRepository) PurgeDeadSessions(ctx context.Context, cutoff time.Time, limit int) (int64, error) {
+	n, err := authdb.New(r.pool).PurgeSessions(ctx, authdb.PurgeSessionsParams{
+		Cutoff:     toPgTimestamptz(cutoff),
+		PurgeLimit: int32(limit),
+	})
+	if err != nil {
+		return 0, sharederrors.Wrap("auth.PurgeDeadSessions", err)
+	}
+	return n, nil
 }

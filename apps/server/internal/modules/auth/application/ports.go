@@ -16,12 +16,19 @@ type CredentialRepository interface {
 	Create(ctx context.Context, cred domain.Credential) error
 	FindByEmail(ctx context.Context, email string) (domain.Credential, error)
 	FindByUserID(ctx context.Context, userID ids.ID) (domain.Credential, error)
+	// UpdatePasswordHash replaces the stored hash (transparent upgrade of
+	// legacy bcrypt hashes and outdated argon2id parameters on login).
+	UpdatePasswordHash(ctx context.Context, userID ids.ID, hash string) error
 }
 
 type SessionRepository interface {
 	Create(ctx context.Context, session domain.Session) error
 	FindByID(ctx context.Context, id ids.ID) (domain.Session, error)
-	Rotate(ctx context.Context, id ids.ID, newRefreshTokenHash string, newExpiresAt time.Time) error
+	// Rotate atomically swaps the refresh-token hash if and only if the
+	// session is still active AND its current hash equals oldRefreshTokenHash
+	// (compare-and-swap). It reports whether the swap happened; false means
+	// the presented token was stale, i.e. a concurrent refresh or a replay.
+	Rotate(ctx context.Context, id ids.ID, oldRefreshTokenHash, newRefreshTokenHash string, newExpiresAt time.Time) (rotated bool, err error)
 	Revoke(ctx context.Context, id ids.ID, revokedAt time.Time) error
 }
 
@@ -45,10 +52,23 @@ type RefreshClaims struct {
 	SessionID ids.ID
 }
 
-// PasswordHasher hashes and verifies passwords (bcrypt in production).
+// PasswordHasher hashes and verifies passwords (argon2id in production).
 type PasswordHasher interface {
 	Hash(password string) (string, error)
 	Verify(hash, password string) bool
+	// NeedsRehash reports whether hash was produced by a weaker algorithm or
+	// weaker parameters than the current policy.
+	NeedsRehash(hash string) bool
+	// VerifyDummy burns the same CPU/memory as a real Verify against a
+	// throwaway hash, so unknown-account logins are not distinguishable by
+	// response time.
+	VerifyDummy(password string)
+}
+
+// LoginLimiter throttles credential guessing per account. Allow reports
+// whether another attempt for key is permitted right now.
+type LoginLimiter interface {
+	Allow(ctx context.Context, key string) (bool, error)
 }
 
 // User is the identity DTO Register/GetCurrentUser return — deliberately not

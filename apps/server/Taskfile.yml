@@ -1,7 +1,10 @@
 version: "3"
 
 vars:
-  MODULES: auth tasks
+  # platform first: the shared outbox/inbox/idempotency tables must exist before
+  # any module migration that references them. Rollback runs in reverse.
+  MODULES: platform auth tasks notifications search media admin
+  MODULES_REVERSE: admin media search notifications tasks auth platform
 
 tasks:
   default:
@@ -11,14 +14,16 @@ tasks:
   # --- local infra -----------------------------------------------------
 
   up:
-    desc: Start Postgres/Redis/NATS for local development.
+    desc: Start Postgres + Valkey for local development (add PROFILES="--profile observability --profile idp" for otel-lgtm and Keycloak).
+    vars:
+      PROFILES: '{{.PROFILES | default ""}}'
     cmds:
-      - docker compose -f deployments/docker/docker-compose.yml up -d --wait
+      - docker compose -f deployments/docker/docker-compose.yml {{.PROFILES}} up -d --wait
 
   down:
     desc: Stop local infra.
     cmds:
-      - docker compose -f deployments/docker/docker-compose.yml down
+      - docker compose -f deployments/docker/docker-compose.yml --profile "*" down
 
   dev:
     desc: Start local infra, apply migrations, run the server.
@@ -55,11 +60,12 @@ tasks:
       - gofumpt -l -w .
 
   lint:
-    desc: gofumpt check, vet, golangci-lint, buf lint/format.
+    desc: gofumpt check, vet, golangci-lint, sqlc vet, buf lint/format.
     cmds:
       - test -z "$(gofumpt -l .)"
       - go vet ./...
       - golangci-lint run ./...
+      - sqlc vet
       - buf lint
       - buf format -d --exit-code
 
@@ -73,27 +79,13 @@ tasks:
     cmds:
       - govulncheck ./...
 
-  # squawk isn't installed as a Go tool (it's a Rust binary) — run via
-  # Docker so contributors don't need a second toolchain just to lint SQL.
-  # Only the `-- +goose Up` half of each migration is linted: squawk has no
-  # notion of goose's `-- +goose Down` marker and would otherwise flag every
-  # rollback's DROP TABLE/DROP COLUMN as if it were forward DDL.
+  # squawk is a Rust binary: scripts/lint-migrations.sh uses it from PATH, else
+  # `npx squawk-cli`, else Docker. It lints only the `-- +goose Up` half of each
+  # migration (see the script for why).
   lint:migrations:
     desc: Lint SQL migrations for unsafe changes (squawk).
-    vars:
-      REPO_ROOT:
-        sh: pwd
     cmds:
-      - |
-        set -eu
-        for m in {{.MODULES}}; do
-          for f in migrations/$m/*.sql; do
-            up_only="${f%.sql}.up-only.sql"
-            sed '/-- +goose Down/q' "$f" | sed '$ d' > "$up_only"
-            docker run --rm -v "{{.REPO_ROOT}}:/work:ro" -w /work ghcr.io/sbdchd/squawk:latest squawk "${up_only#./}"
-            rm -f "$up_only"
-          done
-        done
+      - bash scripts/lint-migrations.sh
 
   breaking:
     desc: Fail if this branch's proto changes break wire/source compatibility against main.
@@ -107,19 +99,69 @@ tasks:
     cmds:
       - go test ./internal/... ./cmd/...
 
-  test:integration:
-    desc: Tests against real Postgres/Redis/NATS via Testcontainers. Requires Docker.
+  test:race:
+    desc: Unit tests with the race detector (needs cgo/gcc; CI runs this).
     cmds:
-      - go test -tags=integration ./...
+      - go test -race -count=1 ./internal/... ./cmd/...
 
-  test:load:
-    desc: k6 load test against a running server (see test/load). Not part of check/check:full.
+  test:integration:
+    desc: Tests against a real Postgres via Testcontainers (advisory locks, outbox->River, session CAS, repositories, migrations) with the race detector and a coverage gate (COVERAGE_MIN, default 70). Requires Docker, or AEDST_TEST_DATABASE_URL pointing at a Postgres (NORACE=1 when there is no cgo toolchain).
     vars:
-      SCRIPT: '{{.SCRIPT | default "server_smoke.js"}}'
+      RACE: '{{if .NORACE}}{{else}}-race{{end}}'
+    cmds:
+      - go test {{.RACE}} -count=1 -tags=integration -coverpkg=./internal/... -coverprofile=coverage.out ./...
+      - task: cover:check
+
+  cover:check:
+    desc: Fail if the total statement coverage in coverage.out is below COVERAGE_MIN percent.
+    vars:
+      COVERAGE_MIN: '{{.COVERAGE_MIN | default "70"}}'
+    cmds:
+      - |
+        total=$(go tool cover -func=coverage.out | awk '/^total:/ {sub("%", "", $3); print $3}')
+        echo "total coverage: ${total}% (minimum {{.COVERAGE_MIN}}%)"
+        awk -v t="$total" -v m="{{.COVERAGE_MIN}}" 'BEGIN { exit !(t+0 >= m+0) }'
+
+  # k6 load tests (test/load). Not part of check/check:full: they need a
+  # running server with migrated infra (task dev). Uses a local k6 when
+  # installed, else the grafana/k6 image. Each scenario has pass/fail
+  # thresholds, so a run exits non-zero on an SLO breach.
+  #   task load                       # smoke (1 VU, 30s)
+  #   task load SCENARIO=load         # sustained arrival rate
+  #   task load SCENARIO=stress       # ramp until thresholds break
+  #   task load BASE_URL=https://staging.example.com TOKEN=<bearer>
+  load:
+    desc: k6 load test against a running server (SCENARIO=smoke|load|stress, BASE_URL, TOKEN, RATE, DURATION).
+    vars:
+      SCENARIO: '{{.SCENARIO | default "smoke"}}'
+      BASE_URL: '{{.BASE_URL | default "http://localhost:8080"}}'
+      RATE: '{{.RATE | default "20"}}'
+      DURATION: '{{.DURATION | default "2m"}}'
+      TOKEN: '{{.TOKEN | default ""}}'
       REPO_ROOT:
         sh: pwd
     cmds:
-      - docker run --rm -v "{{.REPO_ROOT}}/test/load:/scripts:ro" --network host grafana/k6:0.56.0 run "/scripts/{{.SCRIPT}}"
+      - |
+        if command -v k6 >/dev/null 2>&1; then
+          k6 run -e SCENARIO={{.SCENARIO}} -e BASE_URL={{.BASE_URL}} -e RATE={{.RATE}} -e DURATION={{.DURATION}} -e TOKEN={{.TOKEN}} test/load/api.js
+        else
+          docker run --rm -v "{{.REPO_ROOT}}/test/load:/scripts:ro" --network host grafana/k6:2.3.0 run \
+            -e SCENARIO={{.SCENARIO}} -e BASE_URL={{.BASE_URL}} -e RATE={{.RATE}} -e DURATION={{.DURATION}} -e TOKEN={{.TOKEN}} /scripts/api.js
+        fi
+
+  test:load:
+    desc: Alias of `task load` (kept for existing CI/scripts).
+    cmds:
+      - task: load
+
+  test:load:tasks:
+    desc: Legacy tasks-only k6 scenario (test/load/scenario_tasks.js, RATE/DURATION/BASE_URL); prefer `task load SCENARIO=load`.
+    vars:
+      RATE: '{{.RATE | default "20"}}'
+      DURATION: '{{.DURATION | default "1m"}}'
+      BASE_URL: '{{.BASE_URL | default "http://localhost:8080"}}'
+    cmds:
+      - k6 run -e BASE_URL={{.BASE_URL}} -e RATE={{.RATE}} -e DURATION={{.DURATION}} test/load/scenario_tasks.js
 
   # --- composite gates -----------------------------------------------------
 
@@ -149,7 +191,7 @@ tasks:
       - |
         set -eu
         for m in {{.MODULES}}; do
-          goose -dir migrations/$m postgres "{{.DB_URL}}" up
+          PGOPTIONS="-c lock_timeout=5s" goose -dir migrations/$m -table goose_$m postgres "{{.DB_URL}}" up
         done
 
   migrate:down:
@@ -159,8 +201,8 @@ tasks:
     cmds:
       - |
         set -eu
-        for m in {{.MODULES}}; do
-          goose -dir migrations/$m postgres "{{.DB_URL}}" down
+        for m in {{.MODULES_REVERSE}}; do
+          PGOPTIONS="-c lock_timeout=5s" goose -dir migrations/$m -table goose_$m postgres "{{.DB_URL}}" down
         done
 
   # --- secrets (see deployments/secrets/README.md) ------------------------

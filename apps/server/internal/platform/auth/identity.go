@@ -9,12 +9,19 @@ import (
 // Identity is the authenticated principal, extracted from a verified access
 // token by the httpserver auth interceptor and placed on the context. Modules
 // consume it via FromContext — they never verify tokens themselves (see
-// docs/architecture.md and section 17 of the project brief).
+// docs/content/architecture.md).
 type Identity struct {
+	// UserID is the stable owner id modules key their data by. For an
+	// external OIDC token it is derived from (Issuer, Subject) via
+	// ids.FromExternal.
 	UserID    ids.ID
 	SessionID ids.ID
 	DeviceID  string
 	Roles     []string
+	// Issuer and Subject are the token's iss/sub as issued, for audit logs
+	// and for linking to an external identity.
+	Issuer  string
+	Subject string
 }
 
 func (i Identity) HasRole(role string) bool {
@@ -38,4 +45,14 @@ func WithIdentity(ctx context.Context, id Identity) context.Context {
 func FromContext(ctx context.Context) (Identity, bool) {
 	id, ok := ctx.Value(identityKey{}).(Identity)
 	return id, ok
+}
+
+// HasAnyRole reports whether the identity holds at least one of roles.
+func (i Identity) HasAnyRole(roles ...string) bool {
+	for _, role := range roles {
+		if i.HasRole(role) {
+			return true
+		}
+	}
+	return false
 }

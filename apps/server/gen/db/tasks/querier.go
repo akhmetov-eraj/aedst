@@ -11,31 +11,58 @@ import (
 )
 
 type Querier interface {
+	AdminDeleteTask(ctx context.Context, id pgtype.UUID) (AdminDeleteTaskRow, error)
+	// Operator (AdminService) queries: deliberately NOT scoped by user_id. They
+	// are reachable only through tasks/api's AdminService, which only the admin
+	// module uses, behind the admin role policy.
+	AdminListTasks(ctx context.Context, arg AdminListTasksParams) ([]TasksTask, error)
+	AdminTaskStats(ctx context.Context) (AdminTaskStatsRow, error)
+	// Guarded transition: only a task that is not yet done changes, so completing
+	// twice (a retry, a double click, two devices) is a no-op instead of a second
+	// state change and a second TaskCompleted event. No row back means "not found"
+	// or "already done" and the caller tells them apart.
+	CompleteTask(ctx context.Context, arg CompleteTaskParams) (TasksTask, error)
+	CountTasks(ctx context.Context, arg CountTasksParams) (int64, error)
+	CountTasksByOwners(ctx context.Context, ownerIds []pgtype.UUID) ([]CountTasksByOwnersRow, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (TasksTask, error)
-	DeleteTask(ctx context.Context, arg DeleteTaskParams) (int64, error)
-	FetchUnpublishedOutboxRows(ctx context.Context, limit int32) ([]TasksOutbox, error)
+	// RETURNING the version lets the caller publish TaskDeleted with a version
+	// above every earlier snapshot (projections apply newest-version-wins).
+	DeleteTask(ctx context.Context, arg DeleteTaskParams) (int32, error)
 	FindTaskByIDAndUserID(ctx context.Context, arg FindTaskByIDAndUserIDParams) (TasksTask, error)
-	GetIdempotencyKey(ctx context.Context, key string) (GetIdempotencyKeyRow, error)
 	GetTaskStats(ctx context.Context, userID pgtype.UUID) (GetTaskStatsRow, error)
-	IncrementOutboxAttempts(ctx context.Context, arg IncrementOutboxAttemptsParams) error
-	InsertOutboxRow(ctx context.Context, arg InsertOutboxRowParams) error
-	IsInboxEventProcessed(ctx context.Context, eventID pgtype.UUID) (bool, error)
-	// Dynamic filter/sort via CASE/cardinality rather than building SQL in Go —
-	// keeps this the single source of truth for the query (sqlc still
-	// type-checks it) instead of an ORM-shaped query builder. `count(*) OVER ()`
-	// gives the filtered total in the same round trip ListTasksResponse needs,
-	// instead of a second COUNT query.
-	ListTasks(ctx context.Context, arg ListTasksParams) ([]ListTasksRow, error)
-	MarkInboxEventProcessed(ctx context.Context, eventID pgtype.UUID) error
-	MarkOutboxRowPoisoned(ctx context.Context, eventID pgtype.UUID) error
-	MarkOutboxRowsPublished(ctx context.Context, eventIds []pgtype.UUID) error
-	SaveIdempotencyKey(ctx context.Context, arg SaveIdempotencyKeyParams) error
-	// Backs both CompleteTask (status='done', completed_at=now) and ReopenTask
-	// (status='todo', completed_at=NULL) — same shape, different args, so one
-	// query instead of two near-identical ones.
-	SetTaskStatus(ctx context.Context, arg SetTaskStatusParams) (TasksTask, error)
-	// Only title/description/priority/due_date — status is never set here, see
-	// SetTaskStatus (tasks.proto's UpdateTask doc comment explains why).
+	ListTasksByCreatedAsc(ctx context.Context, arg ListTasksByCreatedAscParams) ([]TasksTask, error)
+	// Keyset-paginated listing (see internal/shared/pagination). One query per
+	// sort order so each has a plain, index-friendly ORDER BY — a CASE-switched
+	// ORDER BY cannot use any index. The cursor predicate is unconditional: on
+	// the first page the caller passes an open-ended cursor (infinity for DESC,
+	// -infinity for ASC) that every row satisfies, so there is no
+	// `flag OR (...)` for the planner to mishandle in a generic plan.
+	//
+	// Rows without a due date use a fixed sentinel (year 1) as their due sort
+	// key: a total, non-NULL ordering that keeps `(key, id)` row comparison valid
+	// and matches idx_tasks_user_due_keyset. It reproduces the earlier
+	// NULLS FIRST (asc) / NULLS LAST (desc) behaviour.
+	//
+	// Fetch page_limit+1 rows; the caller uses the extra row only to know whether
+	// a next page exists. No count(*) here: counting the matching set is O(rows)
+	// on every page. CountTasks below runs once, on the first page only.
+	ListTasksByCreatedDesc(ctx context.Context, arg ListTasksByCreatedDescParams) ([]TasksTask, error)
+	ListTasksByDueAsc(ctx context.Context, arg ListTasksByDueAscParams) ([]TasksTask, error)
+	ListTasksByDueDesc(ctx context.Context, arg ListTasksByDueDescParams) ([]TasksTask, error)
+	// Guarded "publish once per (task, due date)": a row comes back only the
+	// first time, and only while the task is open and still due at that instant;
+	// the caller writes the TaskDueSoon outbox row in the same transaction.
+	MarkDueSoon(ctx context.Context, arg MarkDueSoonParams) (pgtype.UUID, error)
+	// Guarded like CompleteTask: reopening a task that is already todo changes
+	// nothing.
+	ReopenTask(ctx context.Context, arg ReopenTaskParams) (TasksTask, error)
+	// Partial update of title/description/priority/due_date in ONE statement: a
+	// NULL argument leaves the column unchanged (set_due_date says whether due_date
+	// is being written, since NULL is also how it is cleared). Status is never set
+	// here, see CompleteTask/ReopenTask (tasks.proto's UpdateTask doc comment
+	// explains why). When expected_version is given the row must still be at that
+	// version; no row back means "not found" or "version mismatch" and the caller
+	// tells them apart.
 	UpdateTask(ctx context.Context, arg UpdateTaskParams) (TasksTask, error)
 }
 

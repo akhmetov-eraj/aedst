@@ -1,4 +1,18 @@
 version: "2"
+
+# `sqlc vet` (task lint) runs the offline rules below over every query.
+# Rules that need a live database (sqlc/db-prepare, EXPLAIN-based checks) are
+# intentionally not enabled: `task test:integration` exercises the queries
+# against a real Postgres via Testcontainers instead. `sqlc verify` needs the
+# paid sqlc Cloud and is not used.
+rules:
+  - name: delete-needs-where
+    message: "DELETE without WHERE removes every row"
+    rule: query.sql.contains("DELETE FROM") && !query.sql.contains("WHERE")
+  - name: update-needs-where
+    message: "UPDATE without WHERE rewrites every row"
+    rule: query.sql.startsWith("UPDATE") && !query.sql.contains("WHERE")
+
 sql:
   - schema: migrations/auth
     queries: sql/auth
@@ -10,6 +24,9 @@ sql:
         sql_package: pgx/v5
         emit_json_tags: true
         emit_interface: true
+    rules:
+      - delete-needs-where
+      - update-needs-where
 
   - schema: migrations/tasks
     queries: sql/tasks
@@ -21,3 +38,62 @@ sql:
         sql_package: pgx/v5
         emit_json_tags: true
         emit_interface: true
+    rules:
+      - delete-needs-where
+      - update-needs-where
+
+  - schema: migrations/notifications
+    queries: sql/notifications
+    engine: postgresql
+    gen:
+      go:
+        package: notificationsdb
+        out: gen/db/notifications
+        sql_package: pgx/v5
+        emit_json_tags: true
+        emit_interface: true
+    rules:
+      - delete-needs-where
+      - update-needs-where
+
+  - schema: migrations/search
+    queries: sql/search
+    engine: postgresql
+    gen:
+      go:
+        package: searchdb
+        out: gen/db/search
+        sql_package: pgx/v5
+        emit_json_tags: true
+        emit_interface: true
+    rules:
+      - delete-needs-where
+      - update-needs-where
+
+  - schema: migrations/media
+    queries: sql/media
+    engine: postgresql
+    gen:
+      go:
+        package: mediadb
+        out: gen/db/media
+        sql_package: pgx/v5
+        emit_json_tags: true
+        emit_interface: true
+    rules:
+      - delete-needs-where
+      - update-needs-where
+
+  - schema: migrations/admin
+    queries: sql/admin
+    engine: postgresql
+    gen:
+      go:
+        package: admindb
+        out: gen/db/admin
+        sql_package: pgx/v5
+        emit_json_tags: true
+        emit_interface: true
+    rules:
+      - delete-needs-where
+      - update-needs-where

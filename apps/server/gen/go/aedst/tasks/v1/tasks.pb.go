@@ -230,17 +230,20 @@ func (SortDirection) EnumDescriptor() ([]byte, []int) {
 }
 
 type Task struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Title         string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
-	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
-	Status        TaskStatus             `protobuf:"varint,4,opt,name=status,proto3,enum=aedst.tasks.v1.TaskStatus" json:"status,omitempty"`
-	Priority      TaskPriority           `protobuf:"varint,5,opt,name=priority,proto3,enum=aedst.tasks.v1.TaskPriority" json:"priority,omitempty"`
-	DueDate       *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=due_date,json=dueDate,proto3" json:"due_date,omitempty"`
-	CreatedAt     *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	UpdatedAt     *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
-	CompletedAt   *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
-	CreatedBy     string                 `protobuf:"bytes,10,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
+	state       protoimpl.MessageState `protogen:"open.v1"`
+	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Title       string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
+	Description string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	Status      TaskStatus             `protobuf:"varint,4,opt,name=status,proto3,enum=aedst.tasks.v1.TaskStatus" json:"status,omitempty"`
+	Priority    TaskPriority           `protobuf:"varint,5,opt,name=priority,proto3,enum=aedst.tasks.v1.TaskPriority" json:"priority,omitempty"`
+	DueDate     *timestamppb.Timestamp `protobuf:"bytes,6,opt,name=due_date,json=dueDate,proto3" json:"due_date,omitempty"`
+	CreatedAt   *timestamppb.Timestamp `protobuf:"bytes,7,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	UpdatedAt   *timestamppb.Timestamp `protobuf:"bytes,8,opt,name=updated_at,json=updatedAt,proto3" json:"updated_at,omitempty"`
+	CompletedAt *timestamppb.Timestamp `protobuf:"bytes,9,opt,name=completed_at,json=completedAt,proto3" json:"completed_at,omitempty"`
+	CreatedBy   string                 `protobuf:"bytes,10,opt,name=created_by,json=createdBy,proto3" json:"created_by,omitempty"`
+	// Bumped on every mutation. Send it back as UpdateTaskRequest.expected_version
+	// to detect that someone else changed the task since you read it.
+	Version       int32 `protobuf:"varint,11,opt,name=version,proto3" json:"version,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -343,6 +346,13 @@ func (x *Task) GetCreatedBy() string {
 		return x.CreatedBy
 	}
 	return ""
+}
+
+func (x *Task) GetVersion() int32 {
+	if x != nil {
+		return x.Version
+	}
+	return 0
 }
 
 type CreateTaskRequest struct {
@@ -551,7 +561,8 @@ type ListTasksRequest struct {
 	// Empty means "any status"; same for priorities below.
 	Statuses   []TaskStatus   `protobuf:"varint,1,rep,packed,name=statuses,proto3,enum=aedst.tasks.v1.TaskStatus" json:"statuses,omitempty"`
 	Priorities []TaskPriority `protobuf:"varint,2,rep,packed,name=priorities,proto3,enum=aedst.tasks.v1.TaskPriority" json:"priorities,omitempty"`
-	// Case-insensitive substring match against title + description.
+	// Case-insensitive substring match against title + description (LIKE
+	// wildcards in the input match literally).
 	Search string `protobuf:"bytes,3,opt,name=search,proto3" json:"search,omitempty"`
 	// Defaults to CREATED_AT if unspecified.
 	SortBy TaskSortField `protobuf:"varint,4,opt,name=sort_by,json=sortBy,proto3,enum=aedst.tasks.v1.TaskSortField" json:"sort_by,omitempty"`
@@ -559,8 +570,10 @@ type ListTasksRequest struct {
 	SortDirection SortDirection `protobuf:"varint,5,opt,name=sort_direction,json=sortDirection,proto3,enum=aedst.tasks.v1.SortDirection" json:"sort_direction,omitempty"`
 	// Defaults to 20, clamped to 100, if unspecified.
 	PageSize int32 `protobuf:"varint,6,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	// Opaque — echo back exactly what a previous response returned in
-	// next_page_token. Empty means "first page".
+	// Opaque keyset cursor — echo back exactly what a previous response returned
+	// in next_page_token, with the same filters and sort. Empty means "first
+	// page". A token issued for a different sort order is rejected with
+	// INVALID_ARGUMENT. Never parse or construct one: the format may change.
 	PageToken     string `protobuf:"bytes,7,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -651,7 +664,10 @@ type ListTasksResponse struct {
 	// Empty means there is no next page.
 	NextPageToken string `protobuf:"bytes,2,opt,name=next_page_token,json=nextPageToken,proto3" json:"next_page_token,omitempty"`
 	// Count of tasks matching the filter (statuses/priorities/search), not
-	// just this page — what the UI shows next to "Tasks".
+	// just this page — what the UI shows next to "Tasks". Populated on the
+	// FIRST page only (request page_token empty) and 0 on every later page:
+	// counting the matching set is O(rows) and would otherwise be paid on every
+	// page. Clients should keep the value from the first response.
 	TotalCount    int32 `protobuf:"varint,3,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -709,8 +725,11 @@ func (x *ListTasksResponse) GetTotalCount() int32 {
 }
 
 type UpdateTaskRequest struct {
-	state       protoimpl.MessageState `protogen:"open.v1"`
-	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Id    string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	// title and priority are validated by the domain only when named in
+	// update_mask (or when there is no mask), so a client that updates just
+	// due_date need not resend them.
 	Title       string                 `protobuf:"bytes,2,opt,name=title,proto3" json:"title,omitempty"`
 	Description string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
 	Priority    TaskPriority           `protobuf:"varint,4,opt,name=priority,proto3,enum=aedst.tasks.v1.TaskPriority" json:"priority,omitempty"`
@@ -718,9 +737,13 @@ type UpdateTaskRequest struct {
 	// Which of title/description/priority/due_date to apply — lets a client
 	// clear due_date (present in the mask, absent as a value) without also
 	// having to resend the current title/description/priority verbatim.
-	UpdateMask    *fieldmaskpb.FieldMask `protobuf:"bytes,6,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
-	unknownFields protoimpl.UnknownFields
-	sizeCache     protoimpl.SizeCache
+	UpdateMask *fieldmaskpb.FieldMask `protobuf:"bytes,6,opt,name=update_mask,json=updateMask,proto3" json:"update_mask,omitempty"`
+	// Optimistic concurrency: when set, the update applies only if the task is
+	// still at this version; otherwise the RPC fails with ABORTED and the client
+	// should re-read and retry. Omit for last-write-wins.
+	ExpectedVersion *int32 `protobuf:"varint,7,opt,name=expected_version,json=expectedVersion,proto3,oneof" json:"expected_version,omitempty"`
+	unknownFields   protoimpl.UnknownFields
+	sizeCache       protoimpl.SizeCache
 }
 
 func (x *UpdateTaskRequest) Reset() {
@@ -793,6 +816,13 @@ func (x *UpdateTaskRequest) GetUpdateMask() *fieldmaskpb.FieldMask {
 		return x.UpdateMask
 	}
 	return nil
+}
+
+func (x *UpdateTaskRequest) GetExpectedVersion() int32 {
+	if x != nil && x.ExpectedVersion != nil {
+		return *x.ExpectedVersion
+	}
+	return 0
 }
 
 type UpdateTaskResponse struct {
@@ -1212,7 +1242,7 @@ var File_aedst_tasks_v1_tasks_proto protoreflect.FileDescriptor
 
 const file_aedst_tasks_v1_tasks_proto_rawDesc = "" +
 	"\n" +
-	"\x1aaedst/tasks/v1/tasks.proto\x12\x0eaedst.tasks.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xc7\x03\n" +
+	"\x1aaedst/tasks/v1/tasks.proto\x12\x0eaedst.tasks.v1\x1a\x1bbuf/validate/validate.proto\x1a google/protobuf/field_mask.proto\x1a\x1fgoogle/protobuf/timestamp.proto\"\xe1\x03\n" +
 	"\x04Task\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05title\x18\x02 \x01(\tR\x05title\x12 \n" +
@@ -1227,7 +1257,8 @@ const file_aedst_tasks_v1_tasks_proto_rawDesc = "" +
 	"\fcompleted_at\x18\t \x01(\v2\x1a.google.protobuf.TimestampR\vcompletedAt\x12\x1d\n" +
 	"\n" +
 	"created_by\x18\n" +
-	" \x01(\tR\tcreatedBy\"\xde\x01\n" +
+	" \x01(\tR\tcreatedBy\x12\x18\n" +
+	"\aversion\x18\v \x01(\x05R\aversion\"\xde\x01\n" +
 	"\x11CreateTaskRequest\x12 \n" +
 	"\x05title\x18\x01 \x01(\tB\n" +
 	"\xbaH\ar\x05\x10\x01\x18\xc8\x01R\x05title\x12*\n" +
@@ -1258,17 +1289,17 @@ const file_aedst_tasks_v1_tasks_proto_rawDesc = "" +
 	"\x05tasks\x18\x01 \x03(\v2\x14.aedst.tasks.v1.TaskR\x05tasks\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12\x1f\n" +
 	"\vtotal_count\x18\x03 \x01(\x05R\n" +
-	"totalCount\"\xb5\x02\n" +
+	"totalCount\"\xff\x02\n" +
 	"\x11UpdateTaskRequest\x12\x18\n" +
-	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\x12 \n" +
-	"\x05title\x18\x02 \x01(\tB\n" +
-	"\xbaH\ar\x05\x10\x01\x18\xc8\x01R\x05title\x12*\n" +
-	"\vdescription\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\xa0\x1fR\vdescription\x12D\n" +
-	"\bpriority\x18\x04 \x01(\x0e2\x1c.aedst.tasks.v1.TaskPriorityB\n" +
-	"\xbaH\a\x82\x01\x04\x10\x01 \x00R\bpriority\x125\n" +
+	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\x12\x1e\n" +
+	"\x05title\x18\x02 \x01(\tB\b\xbaH\x05r\x03\x18\xc8\x01R\x05title\x12*\n" +
+	"\vdescription\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\xa0\x1fR\vdescription\x12B\n" +
+	"\bpriority\x18\x04 \x01(\x0e2\x1c.aedst.tasks.v1.TaskPriorityB\b\xbaH\x05\x82\x01\x02\x10\x01R\bpriority\x125\n" +
 	"\bdue_date\x18\x05 \x01(\v2\x1a.google.protobuf.TimestampR\adueDate\x12;\n" +
 	"\vupdate_mask\x18\x06 \x01(\v2\x1a.google.protobuf.FieldMaskR\n" +
-	"updateMask\">\n" +
+	"updateMask\x127\n" +
+	"\x10expected_version\x18\a \x01(\x05B\a\xbaH\x04\x1a\x02(\x01H\x00R\x0fexpectedVersion\x88\x01\x01B\x13\n" +
+	"\x11_expected_version\">\n" +
 	"\x12UpdateTaskResponse\x12(\n" +
 	"\x04task\x18\x01 \x01(\v2\x14.aedst.tasks.v1.TaskR\x04task\"-\n" +
 	"\x11DeleteTaskRequest\x12\x18\n" +
@@ -1415,6 +1446,7 @@ func file_aedst_tasks_v1_tasks_proto_init() {
 	if File_aedst_tasks_v1_tasks_proto != nil {
 		return
 	}
+	file_aedst_tasks_v1_tasks_proto_msgTypes[7].OneofWrappers = []any{}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{

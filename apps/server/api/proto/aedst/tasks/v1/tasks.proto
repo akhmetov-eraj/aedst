@@ -64,6 +64,9 @@ message Task {
   google.protobuf.Timestamp updated_at = 8;
   google.protobuf.Timestamp completed_at = 9;
   string created_by = 10;
+  // Bumped on every mutation. Send it back as UpdateTaskRequest.expected_version
+  // to detect that someone else changed the task since you read it.
+  int32 version = 11;
 }
 
 message CreateTaskRequest {
@@ -108,7 +111,8 @@ message ListTasksRequest {
   // Empty means "any status"; same for priorities below.
   repeated TaskStatus statuses = 1 [(buf.validate.field).repeated.items.enum.defined_only = true];
   repeated TaskPriority priorities = 2 [(buf.validate.field).repeated.items.enum.defined_only = true];
-  // Case-insensitive substring match against title + description.
+  // Case-insensitive substring match against title + description (LIKE
+  // wildcards in the input match literally).
   string search = 3 [(buf.validate.field).string.max_len = 200];
   // Defaults to CREATED_AT if unspecified.
   TaskSortField sort_by = 4;
@@ -116,8 +120,10 @@ message ListTasksRequest {
   SortDirection sort_direction = 5;
   // Defaults to 20, clamped to 100, if unspecified.
   int32 page_size = 6 [(buf.validate.field).int32.gte = 0];
-  // Opaque — echo back exactly what a previous response returned in
-  // next_page_token. Empty means "first page".
+  // Opaque keyset cursor — echo back exactly what a previous response returned
+  // in next_page_token, with the same filters and sort. Empty means "first
+  // page". A token issued for a different sort order is rejected with
+  // INVALID_ARGUMENT. Never parse or construct one: the format may change.
   string page_token = 7;
 }
 
@@ -126,26 +132,30 @@ message ListTasksResponse {
   // Empty means there is no next page.
   string next_page_token = 2;
   // Count of tasks matching the filter (statuses/priorities/search), not
-  // just this page — what the UI shows next to "Tasks".
+  // just this page — what the UI shows next to "Tasks". Populated on the
+  // FIRST page only (request page_token empty) and 0 on every later page:
+  // counting the matching set is O(rows) and would otherwise be paid on every
+  // page. Clients should keep the value from the first response.
   int32 total_count = 3;
 }
 
 message UpdateTaskRequest {
   string id = 1 [(buf.validate.field).string.uuid = true];
-  string title = 2 [(buf.validate.field).string = {
-    min_len: 1
-    max_len: 200
-  }];
+  // title and priority are validated by the domain only when named in
+  // update_mask (or when there is no mask), so a client that updates just
+  // due_date need not resend them.
+  string title = 2 [(buf.validate.field).string = {max_len: 200}];
   string description = 3 [(buf.validate.field).string.max_len = 4000];
-  TaskPriority priority = 4 [(buf.validate.field).enum = {
-    defined_only: true
-    not_in: [0]
-  }];
+  TaskPriority priority = 4 [(buf.validate.field).enum = {defined_only: true}];
   google.protobuf.Timestamp due_date = 5;
   // Which of title/description/priority/due_date to apply — lets a client
   // clear due_date (present in the mask, absent as a value) without also
   // having to resend the current title/description/priority verbatim.
   google.protobuf.FieldMask update_mask = 6;
+  // Optimistic concurrency: when set, the update applies only if the task is
+  // still at this version; otherwise the RPC fails with ABORTED and the client
+  // should re-read and retry. Omit for last-write-wins.
+  optional int32 expected_version = 7 [(buf.validate.field).int32.gte = 1];
 }
 
 message UpdateTaskResponse {

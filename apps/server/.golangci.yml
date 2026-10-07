@@ -50,7 +50,9 @@ linters:
         - sharederrors.Unauthorized(
         - sharederrors.Forbidden(
         - sharederrors.Wrap(
+        - sharederrors.FailedPrecondition(
         - ids.New(
+        - river.JobCancel(
 
     depguard:
       rules:
@@ -75,40 +77,34 @@ linters:
             - pkg: github.com/aedst/server/internal/platform
               desc: "domain must not depend on platform infrastructure"
 
-        # Mirrors architecturetest.TestModuleBoundaries: a module may only
-        # import another module's api/ package, never its internals
-        # directly.
-        no-cross-module-imports-auth:
-          files:
-            - "**/internal/modules/auth/**/*.go"
-          deny:
-            - pkg: github.com/aedst/server/internal/modules/tasks/domain
-              desc: "modules may only depend on another module's api/ package"
-            - pkg: github.com/aedst/server/internal/modules/tasks/application
-              desc: "modules may only depend on another module's api/ package"
-            - pkg: github.com/aedst/server/internal/modules/tasks/infrastructure
-              desc: "modules may only depend on another module's api/ package"
-            - pkg: github.com/aedst/server/internal/modules/tasks/transport
-              desc: "modules may only depend on another module's api/ package"
-        no-cross-module-imports-tasks:
-          files:
-            - "**/internal/modules/tasks/**/*.go"
-          deny:
-            - pkg: github.com/aedst/server/internal/modules/auth/domain
-              desc: "modules may only depend on another module's api/ package"
-            - pkg: github.com/aedst/server/internal/modules/auth/application
-              desc: "modules may only depend on another module's api/ package"
-            - pkg: github.com/aedst/server/internal/modules/auth/infrastructure
-              desc: "modules may only depend on another module's api/ package"
-            - pkg: github.com/aedst/server/internal/modules/auth/transport
-              desc: "modules may only depend on another module's api/ package"
+        # Cross-module imports (a module may only reach another through its api/
+        # package) are enforced by architecturetest.TestModuleBoundaries, which
+        # discovers modules from the directory tree. It is deliberately NOT
+        # duplicated here as one depguard rule per module pair: that list grows
+        # quadratically with the number of modules and silently misses any module
+        # nobody remembered to add. `task arch` runs in CI on every change.
 
-        # "only internal/platform/messaging may import the NATS client" is
-        # enforced by architecturetest.TestOnlyMessagingImportsNATSDirectly
-        # instead of a depguard rule here — depguard's glob negation
-        # (`!path`) didn't reliably exclude messaging's own files from its
-        # own ban in testing, and the Go test is exact rather than
-        # glob-approximate.
+        # Banned libraries (NATS, RedSync/Redlock, competing JWT/router/ORM
+        # stacks) and "only internal/platform/valkey imports go-redis" are
+        # enforced by architecturetest (exact, rather than glob-approximate)
+        # and by the `banned-dependencies` depguard rule below (fast feedback
+        # in the editor/lint step).
+        banned-dependencies:
+          files:
+            - "**/*.go"
+          deny:
+            - pkg: github.com/nats-io
+              desc: "no external broker: events go through the outbox + River (internal/platform/outbox, messaging)"
+            - pkg: github.com/go-redsync/redsync
+              desc: "no distributed locks in Valkey: use PostgreSQL advisory locks (internal/platform/lock)"
+            - pkg: github.com/golang-jwt
+              desc: "JWT/JOSE goes through lestrrat-go/jwx only"
+            - pkg: gorm.io/gorm
+              desc: "no ORM: SQL goes through sqlc"
+            - pkg: github.com/SherClockHolmes/webpush-go
+              desc: "pulls golang-jwt; Web Push is internal/platform/push (jwx + stdlib crypto)"
+            - pkg: github.com/minio/minio-go
+              desc: "object storage goes through internal/platform/storage (aws-sdk-go-v2)"
 
         platform-no-modules:
           files:
@@ -143,7 +139,7 @@ linters:
           - wrapcheck
         # cmd/server only ever returns errors straight from platform
         # constructors, which already wrap with fmt.Errorf("pkg: action: %w").
-      - path: 'internal/platform/(httpserver|observability|resilience|rpc)/'
+      - path: 'internal/platform/(httpserver|observability|resilience|rpc|outbox|inbox|push)/'
         linters:
           - wrapcheck
         # These platform packages sit at the same architectural layer as the

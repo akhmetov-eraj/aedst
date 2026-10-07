@@ -9,6 +9,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/aedst/server/internal/platform/database"
+	"github.com/aedst/server/internal/platform/messaging"
 	"github.com/aedst/server/internal/shared/ids"
 )
 
@@ -27,13 +28,13 @@ type Consumer struct {
 	logger *slog.Logger
 }
 
-func NewConsumer(module string, pool *pgxpool.Pool, repo Repository, handle Handler, logger *slog.Logger) *Consumer {
-	return &Consumer{module: module, pool: pool, repo: repo, handle: handle, logger: logger}
+func NewConsumer(name string, pool *pgxpool.Pool, handle Handler, logger *slog.Logger) *Consumer {
+	return &Consumer{module: name, pool: pool, repo: NewPostgresRepository(name), handle: handle, logger: logger}
 }
 
-// Process is a messaging.HandlerFunc-shaped entry point: call it from the
-// subject's Subscribe handler, passing the event id parsed from the
-// message's messaging.HeaderEventID header.
+// Process handles one delivered event; Subscriber adapts it to the bus. Call
+// it directly only from tests or non-bus entry points, passing the event id
+// and payload.
 func (c *Consumer) Process(ctx context.Context, eventID ids.ID, payload []byte) error {
 	err := database.WithTx(ctx, c.pool, func(ctx context.Context, tx pgx.Tx) error {
 		processed, err := c.repo.IsProcessed(ctx, tx, eventID)
@@ -55,4 +56,12 @@ func (c *Consumer) Process(ctx context.Context, eventID ids.ID, payload []byte) 
 		return fmt.Errorf("inbox: process %s: %w", eventID, err)
 	}
 	return nil
+}
+
+// Subscriber adapts the Consumer to a messaging.Handler, for
+// messaging.Bus.Subscribe.
+func (c *Consumer) Subscriber() messaging.Handler {
+	return func(ctx context.Context, event messaging.Event) error {
+		return c.Process(ctx, event.ID, event.Payload)
+	}
 }

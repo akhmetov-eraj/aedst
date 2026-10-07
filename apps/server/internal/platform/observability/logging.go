@@ -5,22 +5,29 @@ package observability
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
+
+	"go.opentelemetry.io/otel/trace"
 )
 
 type ctxKey int
 
 const (
 	requestIDKey ctxKey = iota
-	traceIDKey
 	userIDKey
 )
 
 // NewLogger builds the process-wide slog.Logger. Format/level come from
 // config so the same binary logs human-readable text locally and structured
 // JSON in every deployed environment.
-func NewLogger(level, format, serviceName string) *slog.Logger {
+func NewLogger(level, format, serviceName string, extra ...slog.Handler) *slog.Logger {
+	return NewLoggerTo(os.Stdout, level, format, serviceName, extra...)
+}
+
+// NewLoggerTo is NewLogger writing to w (tests, or a non-stdout sink).
+func NewLoggerTo(w io.Writer, level, format, serviceName string, extra ...slog.Handler) *slog.Logger {
 	var lvl slog.Level
 	if err := lvl.UnmarshalText([]byte(level)); err != nil {
 		lvl = slog.LevelInfo
@@ -30,12 +37,17 @@ func NewLogger(level, format, serviceName string) *slog.Logger {
 
 	var handler slog.Handler
 	if format == "text" {
-		handler = slog.NewTextHandler(os.Stdout, handlerOpts)
+		handler = slog.NewTextHandler(w, handlerOpts)
 	} else {
-		handler = slog.NewJSONHandler(os.Stdout, handlerOpts)
+		handler = slog.NewJSONHandler(w, handlerOpts)
 	}
 
-	return slog.New(&contextHandler{Handler: handler}).With(
+	root := slog.Handler(handler)
+	if len(extra) > 0 {
+		root = slog.NewMultiHandler(append([]slog.Handler{handler}, extra...)...)
+	}
+
+	return slog.New(&contextHandler{Handler: root}).With(
 		slog.String("service", serviceName),
 	)
 }
@@ -50,8 +62,8 @@ func (h *contextHandler) Handle(ctx context.Context, r slog.Record) error {
 	if id, ok := ctx.Value(requestIDKey).(string); ok && id != "" {
 		r.AddAttrs(slog.String("request_id", id))
 	}
-	if id, ok := ctx.Value(traceIDKey).(string); ok && id != "" {
-		r.AddAttrs(slog.String("trace_id", id))
+	if sc := trace.SpanContextFromContext(ctx); sc.HasTraceID() {
+		r.AddAttrs(slog.String("trace_id", sc.TraceID().String()), slog.String("span_id", sc.SpanID().String()))
 	}
 	if id, ok := ctx.Value(userIDKey).(string); ok && id != "" {
 		r.AddAttrs(slog.String("user_id", id))
@@ -70,11 +82,6 @@ func (h *contextHandler) WithGroup(name string) slog.Handler {
 // WithRequestID returns a context carrying the request ID for log correlation.
 func WithRequestID(ctx context.Context, id string) context.Context {
 	return context.WithValue(ctx, requestIDKey, id)
-}
-
-// WithTraceID returns a context carrying the trace ID for log correlation.
-func WithTraceID(ctx context.Context, id string) context.Context {
-	return context.WithValue(ctx, traceIDKey, id)
 }
 
 // WithUserID returns a context carrying the authenticated user ID for log

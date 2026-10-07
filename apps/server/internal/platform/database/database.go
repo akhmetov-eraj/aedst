@@ -8,6 +8,8 @@ package database
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -20,6 +22,16 @@ type Config struct {
 	DSN      string
 	MaxConns int32
 	MinConns int32
+
+	// MaxConnLifetime and MaxConnIdleTime recycle connections (0 = pgx default).
+	MaxConnLifetime time.Duration
+	MaxConnIdleTime time.Duration
+	// StatementTimeout and IdleInTxTimeout are applied server-side to every
+	// session (0 = unlimited).
+	StatementTimeout time.Duration
+	IdleInTxTimeout  time.Duration
+	// ApplicationName shows up in pg_stat_activity and logs.
+	ApplicationName string
 }
 
 // NewPool creates and verifies a pgx connection pool.
@@ -33,6 +45,30 @@ func NewPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	}
 	if cfg.MinConns > 0 {
 		poolCfg.MinConns = cfg.MinConns
+	}
+
+	if cfg.MaxConnLifetime > 0 {
+		poolCfg.MaxConnLifetime = cfg.MaxConnLifetime
+		// Jitter avoids every connection expiring in the same instant.
+		poolCfg.MaxConnLifetimeJitter = cfg.MaxConnLifetime / 10
+	}
+	if cfg.MaxConnIdleTime > 0 {
+		poolCfg.MaxConnIdleTime = cfg.MaxConnIdleTime
+	}
+	poolCfg.HealthCheckPeriod = time.Minute
+
+	if poolCfg.ConnConfig.RuntimeParams == nil {
+		poolCfg.ConnConfig.RuntimeParams = map[string]string{}
+	}
+	params := poolCfg.ConnConfig.RuntimeParams
+	if cfg.ApplicationName != "" {
+		params["application_name"] = cfg.ApplicationName
+	}
+	if cfg.StatementTimeout > 0 {
+		params["statement_timeout"] = strconv.FormatInt(cfg.StatementTimeout.Milliseconds(), 10)
+	}
+	if cfg.IdleInTxTimeout > 0 {
+		params["idle_in_transaction_session_timeout"] = strconv.FormatInt(cfg.IdleInTxTimeout.Milliseconds(), 10)
 	}
 
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)

@@ -9,6 +9,7 @@ package resilience
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"time"
 
@@ -69,18 +70,38 @@ func WrapRoundTripper(next http.RoundTripper, cfg Config) http.RoundTripper {
 
 func (rt *resilientRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) { //nolint:bodyclose // caller owns the response body, mirroring http.RoundTripper's own contract
 	ctx := req.Context()
+	cancel := func() {}
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline && rt.timeout > 0 {
-		var cancel context.CancelFunc
 		ctx, cancel = context.WithTimeout(ctx, rt.timeout)
-		defer cancel()
 		req = req.WithContext(ctx)
 	}
 
 	if err := rt.limiter.Wait(ctx); err != nil {
+		cancel()
 		return nil, err
 	}
 
-	return rt.breaker.Execute(func() (*http.Response, error) {
+	resp, err := rt.breaker.Execute(func() (*http.Response, error) {
 		return rt.next.RoundTrip(req)
 	})
+	if err != nil || resp == nil {
+		cancel()
+		return resp, err
+	}
+	// The deadline must outlive this call: the caller reads the body after
+	// RoundTrip returns, so the context is released when the body is closed,
+	// not here (cancelling on return would truncate every response).
+	resp.Body = &cancelOnClose{ReadCloser: resp.Body, cancel: cancel}
+	return resp, nil
+}
+
+type cancelOnClose struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (c *cancelOnClose) Close() error {
+	err := c.ReadCloser.Close()
+	c.cancel()
+	return err
 }

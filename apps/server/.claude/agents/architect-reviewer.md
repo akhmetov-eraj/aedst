@@ -23,8 +23,10 @@ a summary to apply against the diff, not a replacement for it.
    `ports.go`?
 3. **Platform purity** — does anything under `internal/platform/**` import
    `internal/modules/**`?
-4. **NATS ownership** — does any file outside `internal/platform/messaging`
-   import `github.com/nats-io/nats.go` directly?
+4. **Banned dependencies** — does anything import `github.com/nats-io/*`,
+   `go-redsync/redsync`, another JWT library or an ORM? Async work must go
+   through outbox + inbox + River; locks through `internal/platform/lock`
+   (Postgres advisory locks).
 5. **Outbox for integration events** — does a change publish an event that
    another system/module cares about via a direct `messaging.Publish` call
    inside a request handler, instead of writing an outbox row in the same

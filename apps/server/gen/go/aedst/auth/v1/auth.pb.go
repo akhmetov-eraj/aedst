@@ -632,27 +632,35 @@ const file_aedst_auth_v1_auth_proto_rawDesc = "" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x14\n" +
 	"\x05email\x18\x02 \x01(\tR\x05email\x129\n" +
 	"\n" +
-	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"{\n" +
-	"\x0fRegisterRequest\x12\x1d\n" +
-	"\x05email\x18\x01 \x01(\tB\a\xbaH\x04r\x02`\x01R\x05email\x12#\n" +
-	"\bpassword\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\bR\bpassword\x12$\n" +
-	"\tdevice_id\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\bdeviceId\"m\n" +
+	"created_at\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\tcreatedAt\"\x84\x01\n" +
+	"\x0fRegisterRequest\x12 \n" +
+	"\x05email\x18\x01 \x01(\tB\n" +
+	"\xbaH\ar\x05\x18\xfe\x01`\x01R\x05email\x12&\n" +
+	"\bpassword\x18\x02 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\b\x18\x80\x01R\bpassword\x12'\n" +
+	"\tdevice_id\x18\x03 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80\x01R\bdeviceId\"m\n" +
 	"\x10RegisterResponse\x12'\n" +
 	"\x04user\x18\x01 \x01(\v2\x13.aedst.auth.v1.UserR\x04user\x120\n" +
-	"\x06tokens\x18\x02 \x01(\v2\x18.aedst.auth.v1.TokenPairR\x06tokens\"x\n" +
-	"\fLoginRequest\x12\x1d\n" +
-	"\x05email\x18\x01 \x01(\tB\a\xbaH\x04r\x02`\x01R\x05email\x12#\n" +
-	"\bpassword\x18\x02 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\bpassword\x12$\n" +
-	"\tdevice_id\x18\x03 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\bdeviceId\"Z\n" +
+	"\x06tokens\x18\x02 \x01(\v2\x18.aedst.auth.v1.TokenPairR\x06tokens\"\x81\x01\n" +
+	"\fLoginRequest\x12 \n" +
+	"\x05email\x18\x01 \x01(\tB\n" +
+	"\xbaH\ar\x05\x18\xfe\x01`\x01R\x05email\x12&\n" +
+	"\bpassword\x18\x02 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80\x01R\bpassword\x12'\n" +
+	"\tdevice_id\x18\x03 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80\x01R\bdeviceId\"Z\n" +
 	"\rLoginResponse\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x120\n" +
-	"\x06tokens\x18\x02 \x01(\v2\x18.aedst.auth.v1.TokenPairR\x06tokens\"C\n" +
-	"\x13RefreshTokenRequest\x12,\n" +
-	"\rrefresh_token\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\frefreshToken\"H\n" +
+	"\x06tokens\x18\x02 \x01(\v2\x18.aedst.auth.v1.TokenPairR\x06tokens\"F\n" +
+	"\x13RefreshTokenRequest\x12/\n" +
+	"\rrefresh_token\x18\x01 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80 R\frefreshToken\"H\n" +
 	"\x14RefreshTokenResponse\x120\n" +
-	"\x06tokens\x18\x01 \x01(\v2\x18.aedst.auth.v1.TokenPairR\x06tokens\"=\n" +
-	"\rLogoutRequest\x12,\n" +
-	"\rrefresh_token\x18\x01 \x01(\tB\a\xbaH\x04r\x02\x10\x01R\frefreshToken\"\x10\n" +
+	"\x06tokens\x18\x01 \x01(\v2\x18.aedst.auth.v1.TokenPairR\x06tokens\"@\n" +
+	"\rLogoutRequest\x12/\n" +
+	"\rrefresh_token\x18\x01 \x01(\tB\n" +
+	"\xbaH\ar\x05\x10\x01\x18\x80 R\frefreshToken\"\x10\n" +
 	"\x0eLogoutResponse\"\x17\n" +
 	"\x15GetCurrentUserRequest\"A\n" +
 	"\x16GetCurrentUserResponse\x12'\n" +

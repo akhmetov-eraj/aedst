@@ -9,6 +9,7 @@ import (
 
 	"github.com/aedst/server/internal/modules/auth/application"
 	"github.com/aedst/server/internal/shared/ids"
+	"github.com/aedst/server/internal/shared/pagination"
 )
 
 // TokenPair and User are the DTOs transport receives; they mirror
@@ -33,3 +34,20 @@ type Service interface {
 }
 
 var _ Service = (*application.Service)(nil)
+
+type (
+	DirectoryUser = application.DirectoryUser
+	UserPage      = application.UserPage
+)
+
+// DirectorySortToken binds Directory cursors to their ordering.
+const DirectorySortToken = application.DirectorySortToken
+
+// Directory is the operator view of first-party accounts (admin module). It is
+// only wired when first-party auth is enabled.
+type Directory interface {
+	ListUsers(ctx context.Context, search string, limit int32, after *pagination.Cursor) (UserPage, error)
+	CountUsers(ctx context.Context) (int64, error)
+}
+
+var _ Directory = (*application.Directory)(nil)

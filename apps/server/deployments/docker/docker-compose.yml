@@ -1,5 +1,41 @@
 name: aedst
 
+# Local development infrastructure.
+#
+#   docker compose -f deployments/docker/docker-compose.yml up -d --wait
+#       -> Postgres + Valkey (the only required services)
+#
+#   ... --profile observability up -d
+#       -> + Grafana otel-lgtm (Grafana, Loki, Tempo, Mimir/Prometheus and an
+#          OTLP receiver in ONE container). Point the server at it with
+#          OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 (see .env.example)
+#          and open Grafana at http://localhost:3001 (admin/admin).
+#
+#   ... --profile idp up -d
+#       -> + Keycloak, a pre-configured OIDC provider for exercising the
+#          server as an OIDC resource server (AEDST_OIDC_ISSUER, see
+#          docs/adr/0001-identity-provider.md and .env.example).
+#
+#   ... --profile minio up -d --wait
+#       -> + MinIO (S3-compatible object storage for MediaService) on
+#          localhost:9000 (console :9001, aedst/aedst-dev-secret) with the
+#          bucket "aedst-media" created. Server settings: AEDST_STORAGE_PROVIDER=minio
+#          AEDST_STORAGE_ENDPOINT=http://localhost:9000 AEDST_STORAGE_BUCKET=aedst-media
+#          AEDST_STORAGE_ACCESS_KEY_ID=aedst AEDST_STORAGE_SECRET_ACCESS_KEY=aedst-dev-secret
+#          MinIO no longer publishes free images on Docker Hub; override the
+#          image with AEDST_MINIO_IMAGE (any S3-compatible server works, e.g.
+#          RustFS, since the server only speaks the S3 API).
+#
+#   ... --profile pgbouncer up -d
+#       -> + PgBouncer (transaction pooling) on localhost:6432 in front of
+#          postgres. Point AEDST_DATABASE_URL at it to rehearse production:
+#          postgres://aedst:aedst@localhost:6432/aedst?sslmode=disable&default_query_exec_mode=cache_describe
+#          and keep AEDST_DATABASE_DIRECT_DSN on localhost:5432 (advisory
+#          locks / LISTEN-NOTIFY / migrations need a direct connection).
+#
+# There is deliberately no message broker: async work is the Postgres
+# outbox/inbox + River (see internal/platform/messaging).
+
 services:
   postgres:
     image: postgres:18
@@ -17,27 +53,128 @@ services:
       timeout: 3s
       retries: 30
 
-  redis:
-    image: redis:8
+  # Valkey (BSD-3, Linux Foundation) is the cache + rate-limit store. The
+  # server talks to it with the go-redis client; the wire protocol is the same.
+  valkey:
+    image: valkey/valkey:9-alpine
     ports:
       - "6379:6379"
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD", "valkey-cli", "ping"]
       interval: 2s
       timeout: 3s
       retries: 30
 
-  nats:
-    image: nats:2-alpine
-    command: ["-js"]
+  # --- optional: PgBouncer in transaction-pooling mode ---
+  # pgx must use default_query_exec_mode=cache_describe (or exec/simple_protocol)
+  # through it. statement_timeout & co. are sent as startup parameters by the
+  # server; PgBouncer would reject them, so they are ignored here (set them on
+  # the role instead: ALTER ROLE aedst SET statement_timeout = '15s').
+  pgbouncer:
+    profiles: ["pgbouncer"]
+    image: edoburu/pgbouncer:v1.24.1-p1
+    environment:
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_USER: aedst
+      DB_PASSWORD: aedst
+      DB_NAME: aedst
+      LISTEN_PORT: "6432"
+      POOL_MODE: transaction
+      AUTH_TYPE: scram-sha-256
+      MAX_CLIENT_CONN: "1000"
+      DEFAULT_POOL_SIZE: "20"
+      IGNORE_STARTUP_PARAMETERS: extra_float_digits,statement_timeout,idle_in_transaction_session_timeout
     ports:
-      - "4222:4222"
-      - "8222:8222"
+      - "6432:6432"
+    depends_on:
+      postgres:
+        condition: service_healthy
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
-      interval: 2s
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # --- optional: S3-compatible object storage for media (dev only) ---
+  minio:
+    profiles: ["minio"]
+    image: ${AEDST_MINIO_IMAGE:-quay.io/minio/minio:latest}
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: aedst
+      MINIO_ROOT_PASSWORD: aedst-dev-secret
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - aedst_minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "mc ready local || curl -fsS http://localhost:9000/minio/health/live"]
+      interval: 3s
       timeout: 3s
       retries: 30
+
+  minio-init:
+    profiles: ["minio"]
+    image: ${AEDST_MINIO_IMAGE:-quay.io/minio/minio:latest}
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mc alias set local http://minio:9000 aedst aedst-dev-secret &&
+        mc mb --ignore-existing local/aedst-media
+    restart: "no"
+
+  # --- optional: observability (OpenTelemetry backend in one container) ---
+  otel-lgtm:
+    profiles: ["observability"]
+    image: grafana/otel-lgtm:0.34.0
+    ports:
+      - "3001:3000" # Grafana (3001 to avoid clashing with apps/web on 3000)
+      - "4317:4317" # OTLP gRPC
+      - "4318:4318" # OTLP HTTP
+    volumes:
+      - aedst_lgtm_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:3000/api/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # --- optional: identity provider for OIDC resource-server testing ---
+  # Dev-only: start-dev, H2 database, HTTP, imported realm with a throwaway
+  # user (dev / dev). Never use this configuration outside a laptop.
+  keycloak:
+    profiles: ["idp"]
+    image: quay.io/keycloak/keycloak:26.7
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: admin
+      KC_HTTP_PORT: "8082"
+      # Must equal the browser/server-visible URL: it becomes the token `iss`.
+      KC_HOSTNAME: http://localhost:8082
+    ports:
+      - "8082:8082"
+    volumes:
+      - ../keycloak/aedst-realm.json:/opt/keycloak/data/import/aedst-realm.json:ro
+    healthcheck:
+      # The image has no curl; use bash's /dev/tcp against the management port.
+      test:
+        - CMD-SHELL
+        - >-
+          exec 3<>/dev/tcp/127.0.0.1/9000 &&
+          printf 'GET /health/ready HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n' >&3 &&
+          grep -q '"status": "UP"' <&3
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
 
 volumes:
   aedst_postgres_data:
+  aedst_lgtm_data:
+  aedst_minio_data:

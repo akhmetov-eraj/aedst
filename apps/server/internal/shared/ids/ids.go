@@ -3,6 +3,7 @@
 package ids
 
 import (
+	"crypto/sha256"
 	"database/sql/driver"
 	"fmt"
 	"uuid"
@@ -89,4 +90,23 @@ func (id *ID) Scan(src any) error {
 		return fmt.Errorf("ids: cannot scan %T into ID", src)
 	}
 	return nil
+}
+
+// FromExternal maps an identity provider's (issuer, subject) pair to a stable
+// ID. A subject that is already a UUID is used as-is (Keycloak, Cognito, ...);
+// any other subject (Zitadel's numeric ids, Auth0's "auth0|abc") is hashed
+// with its issuer into a deterministic UUID, so the same external principal
+// always maps to the same owner id without a users table. The hashed form
+// sets the RFC 9562 version-8 (custom) and variant bits, so it can never
+// collide with a random UUIDv4/v7 by construction of its own version nibble.
+func FromExternal(issuer, subject string) ID {
+	if id, err := Parse(subject); err == nil {
+		return id
+	}
+	sum := sha256.Sum256([]byte(issuer + "\x00" + subject))
+	var id ID
+	copy(id[:], sum[:16])
+	id[6] = (id[6] & 0x0f) | 0x80 // version 8
+	id[8] = (id[8] & 0x3f) | 0x80 // RFC 4122/9562 variant
+	return id
 }

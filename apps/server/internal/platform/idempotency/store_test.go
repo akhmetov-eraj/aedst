@@ -16,29 +16,35 @@ type storeEntry struct {
 }
 
 type fakeStore struct {
-	byKey map[string]storeEntry
+	byKey    map[string]storeEntry
+	acquired int
 }
 
 func newFakeStore() *fakeStore {
 	return &fakeStore{byKey: map[string]storeEntry{}}
 }
 
-func (f *fakeStore) Get(_ context.Context, _ pgx.Tx, key string) ([]byte, string, bool, error) {
-	entry, ok := f.byKey[key]
+func (f *fakeStore) Acquire(_ context.Context, _ pgx.Tx, _, _ string) error {
+	f.acquired++
+	return nil
+}
+
+func (f *fakeStore) Get(_ context.Context, _ pgx.Tx, scope, key string) ([]byte, string, bool, error) {
+	entry, ok := f.byKey[scope+"/"+key]
 	if !ok {
 		return nil, "", false, nil
 	}
 	return entry.result, entry.hash, true, nil
 }
 
-func (f *fakeStore) Save(_ context.Context, _ pgx.Tx, key, requestHash string, result []byte) error {
-	f.byKey[key] = storeEntry{result: result, hash: requestHash}
+func (f *fakeStore) Save(_ context.Context, _ pgx.Tx, scope, key, requestHash string, result []byte) error {
+	f.byKey[scope+"/"+key] = storeEntry{result: result, hash: requestHash}
 	return nil
 }
 
 func TestCheck_NoKey_ProceedsNormally(t *testing.T) {
 	store := newFakeStore()
-	result, replay, err := idempotency.Check(context.Background(), nil, store, "", []byte("payload"))
+	result, replay, err := idempotency.Check(context.Background(), nil, store, "scope-a", "", []byte("payload"))
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}
@@ -52,7 +58,7 @@ func TestCheck_FirstSeen_ThenSave_ThenReplay(t *testing.T) {
 	ctx := context.Background()
 	payload := []byte(`{"title":"buy milk"}`)
 
-	result, replay, err := idempotency.Check(ctx, nil, store, "key-1", payload)
+	result, replay, err := idempotency.Check(ctx, nil, store, "scope-a", "key-1", payload)
 	if err != nil {
 		t.Fatalf("Check: %v", err)
 	}
@@ -61,11 +67,11 @@ func TestCheck_FirstSeen_ThenSave_ThenReplay(t *testing.T) {
 	}
 
 	computed := []byte(`{"id":"task-1"}`)
-	if err := idempotency.Save(ctx, nil, store, "key-1", payload, computed); err != nil {
+	if err := idempotency.Save(ctx, nil, store, "scope-a", "key-1", payload, computed); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
-	result, replay, err = idempotency.Check(ctx, nil, store, "key-1", payload)
+	result, replay, err = idempotency.Check(ctx, nil, store, "scope-a", "key-1", payload)
 	if err != nil {
 		t.Fatalf("Check (replay): %v", err)
 	}
@@ -81,14 +87,14 @@ func TestCheck_SameKeyDifferentPayload_Conflict(t *testing.T) {
 	store := newFakeStore()
 	ctx := context.Background()
 
-	if _, _, err := idempotency.Check(ctx, nil, store, "key-1", []byte("a")); err != nil {
+	if _, _, err := idempotency.Check(ctx, nil, store, "scope-a", "key-1", []byte("a")); err != nil {
 		t.Fatalf("Check: %v", err)
 	}
-	if err := idempotency.Save(ctx, nil, store, "key-1", []byte("a"), []byte("result-a")); err != nil {
+	if err := idempotency.Save(ctx, nil, store, "scope-a", "key-1", []byte("a"), []byte("result-a")); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 
-	_, _, err := idempotency.Check(ctx, nil, store, "key-1", []byte("b"))
+	_, _, err := idempotency.Check(ctx, nil, store, "scope-a", "key-1", []byte("b"))
 	if err == nil {
 		t.Fatal("expected a conflict error for a reused key with a different payload")
 	}
@@ -99,7 +105,7 @@ func TestCheck_SameKeyDifferentPayload_Conflict(t *testing.T) {
 
 func TestSave_NoKey_NoOp(t *testing.T) {
 	store := newFakeStore()
-	if err := idempotency.Save(context.Background(), nil, store, "", []byte("a"), []byte("b")); err != nil {
+	if err := idempotency.Save(context.Background(), nil, store, "scope-a", "", []byte("a"), []byte("b")); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 	if len(store.byKey) != 0 {

@@ -1,7 +1,7 @@
 // Package application holds the tasks module's use cases. It depends only
-// on domain and the interfaces declared here — infrastructure/postgres and
-// infrastructure/jobs provide the concrete implementations, keeping this
-// package testable without a database or a job queue (see docs/modules.md).
+// on domain and the interfaces declared here — infrastructure/postgres
+// provides the concrete implementation, keeping this package testable
+// without a database or a job queue (see docs/modules.md).
 package application
 
 import (
@@ -10,30 +10,50 @@ import (
 
 	"github.com/aedst/server/internal/modules/tasks/domain"
 	"github.com/aedst/server/internal/shared/ids"
+	"github.com/aedst/server/internal/shared/pagination"
 )
 
 type Repository interface {
 	// Create persists task. If idempotencyKey is non-empty, the write is
 	// wrapped in an idempotency check (see internal/platform/idempotency) so
 	// a client retrying the same CreateTask request after a dropped response
-	// gets back the original task instead of a duplicate.
+	// gets back the original task instead of a duplicate. Side effects that
+	// must not be lost (the due-date reminder job) commit in the same
+	// transaction.
 	Create(ctx context.Context, task domain.Task, idempotencyKey string) (domain.Task, error)
 	FindByIDAndUserID(ctx context.Context, id, userID ids.ID) (domain.Task, error)
-	// Update mutates title/description/priority/due_date only — see
-	// tasks.proto's UpdateTask doc comment on why status is never included.
-	Update(ctx context.Context, task domain.Task) (domain.Task, error)
-	// SetStatus is used by ReopenTask only. CompleteTask uses Complete
-	// instead, which additionally publishes a TaskCompleted event via the
-	// outbox in the same transaction — see docs/events.md.
-	SetStatus(ctx context.Context, id, userID ids.ID, status domain.Status, completedAt *time.Time, updatedAt time.Time) (domain.Task, error)
-	// Complete marks id done and, in the same transaction, writes a
-	// TaskCompleted outbox row (see internal/platform/outbox).
-	Complete(ctx context.Context, id, userID ids.ID, completedAt, updatedAt time.Time) (domain.Task, error)
+	// Update applies params.Patch to title/description/priority/due_date only
+	// — see tasks.proto's UpdateTask doc comment on why status is never
+	// included — in one atomic statement. It returns a Conflict-kind error
+	// when params.ExpectedVersion is set and stale, NotFound when the task is
+	// not the caller's.
+	Update(ctx context.Context, params UpdateParams) (domain.Task, error)
+	// Complete moves id to done and, in the same transaction, writes a
+	// TaskCompleted outbox row (see internal/platform/outbox). Completing an
+	// already-done task returns it as-is and writes nothing: the transition,
+	// and the event, happen at most once.
+	Complete(ctx context.Context, id, userID ids.ID, now time.Time) (domain.Task, error)
+	// Reopen moves id back to todo; a no-op when it already is.
+	Reopen(ctx context.Context, id, userID ids.ID, now time.Time) (domain.Task, error)
 	Delete(ctx context.Context, id, userID ids.ID) error
-	List(ctx context.Context, params ListParams) ([]domain.Task, int, error)
+	List(ctx context.Context, params ListParams) (ListResult, error)
 	Stats(ctx context.Context, userID ids.ID) (Stats, error)
 }
 
+// UpdateParams is one partial update of a task.
+type UpdateParams struct {
+	ID     ids.ID
+	UserID ids.ID
+	Patch  domain.Patch
+	// ExpectedVersion, when non-nil, makes the update conditional on the task
+	// still being at that version (optimistic concurrency).
+	ExpectedVersion *int
+	UpdatedAt       time.Time
+}
+
+// ListParams selects one keyset page of a user's tasks (see
+// internal/shared/pagination). After is the cursor decoded from the client's
+// page token, nil for the first page.
 type ListParams struct {
 	UserID        ids.ID
 	Statuses      []domain.Status
@@ -41,8 +61,40 @@ type ListParams struct {
 	Search        string
 	SortBy        string // "created_at" | "due_date"
 	SortDirection string // "asc" | "desc"
-	PageSize      int
-	Offset        int
+	Limit         int
+	After         *pagination.Cursor
+}
+
+// SortToken names the ordering of a request. It is embedded in cursors so a
+// token cannot be replayed against a different ordering.
+func (p ListParams) SortToken() string { return p.SortBy + ":" + p.SortDirection }
+
+// Normalize applies the defaults and bounds for unset or out-of-range fields.
+// Call it before SortToken so the token is stable whether or not the client
+// spelled out the default ordering.
+func (p *ListParams) Normalize() {
+	if p.Limit <= 0 {
+		p.Limit = defaultPageSize
+	}
+	if p.Limit > maxPageSize {
+		p.Limit = maxPageSize
+	}
+	if p.SortBy == "" {
+		p.SortBy = "created_at"
+	}
+	if p.SortDirection == "" {
+		p.SortDirection = "desc"
+	}
+}
+
+// ListResult is one page. Total is the count of tasks matching the filter and
+// is populated only on the first page (After == nil); on later pages it is 0
+// because counting the matching set is O(rows) and keyset paging exists to
+// avoid per-page O(rows) work.
+type ListResult struct {
+	Tasks []domain.Task
+	Next  *pagination.Cursor
+	Total int
 }
 
 type Stats struct {
@@ -51,18 +103,4 @@ type Stats struct {
 	InProgress int
 	Done       int
 	Overdue    int
-}
-
-// ReminderScheduler enqueues the due-date reminder job (see
-// internal/modules/tasks/jobs and docs/decisions/0005-river-for-jobs.md) —
-// kept as its own port, separate from Repository, so Service stays testable
-// with a fake instead of a real job queue.
-type ReminderScheduler interface {
-	// ScheduleDueReminder is a no-op if dueDate is nil. Safe to call
-	// repeatedly for the same task (e.g. on every UpdateTask that touches
-	// due_date) — DueReminderWorker re-checks the task's current due_date
-	// against what it was scheduled for and no-ops on mismatch, so a stale
-	// job from a since-changed or since-completed task never sends a wrong
-	// reminder; see jobs/due_reminder.go.
-	ScheduleDueReminder(ctx context.Context, taskID, userID ids.ID, dueDate time.Time) error
 }

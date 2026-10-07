@@ -1,0 +1,26 @@
+meta {
+  name: List Users
+  type: http
+  seq: 2
+}
+
+post {
+  url: {{baseUrl}}/aedst.admin.v1.AdminService/ListUsers
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+body:json {
+  {
+    "query": "",
+    "pageSize": 20
+  }
+}
+
+assert {
+  res.status: eq 200
+}

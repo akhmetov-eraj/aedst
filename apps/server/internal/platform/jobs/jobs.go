@@ -8,6 +8,7 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -24,17 +25,51 @@ type Client = river.Client[pgx.Tx]
 // workers registered by every module (via workers.AddWorker in cmd/server's
 // wiring) so a job enqueued in the same transaction as the state change that
 // triggers it (see ADR-0005) shares that module's connection pool.
-func NewClient(pool *pgxpool.Pool, workers *river.Workers) (*Client, error) {
-	client, err := river.NewClient(riverpgxv5.New(pool), &river.Config{
-		Queues: map[string]river.QueueConfig{
-			river.QueueDefault: {MaxWorkers: 10},
-		},
+func NewClient(pool *pgxpool.Pool, workers *river.Workers, logger *slog.Logger, periodic ...*river.PeriodicJob) (*Client, error) {
+	return NewClientWithQueues(pool, workers, logger, map[string]int{river.QueueDefault: 10}, periodic...)
+}
+
+// QueueMedia is the queue of heavy media processing jobs (image variants,
+// ffmpeg). It is separate so a dedicated worker deployment can run only it
+// (AEDST_JOBS_QUEUES=media) while API replicas run the light queues.
+const QueueMedia = "media"
+
+// NewClientWithQueues is NewClient with an explicit set of queues this process
+// works (queue name -> max concurrent workers). An empty map makes the client
+// insert-only: it can enqueue jobs inside transactions but never runs any,
+// which is what an API-only replica wants when workers are deployed apart.
+func NewClientWithQueues(pool *pgxpool.Pool, workers *river.Workers, logger *slog.Logger, queues map[string]int, periodic ...*river.PeriodicJob) (*Client, error) {
+	cfg := &river.Config{
+		Logger:  logger,
 		Workers: workers,
-	})
+	}
+	if len(queues) > 0 {
+		cfg.Queues = make(map[string]river.QueueConfig, len(queues))
+		for name, n := range queues {
+			cfg.Queues[name] = river.QueueConfig{MaxWorkers: n}
+		}
+		cfg.PeriodicJobs = periodic
+	}
+	client, err := river.NewClient(riverpgxv5.New(pool), cfg)
 	if err != nil {
 		return nil, fmt.Errorf("jobs: new river client: %w", err)
 	}
 	return client, nil
+}
+
+// Works reports whether client runs jobs (has queues) rather than only
+// inserting them.
+func Works(queues map[string]int) bool { return len(queues) > 0 }
+
+// PendingCount is the number of jobs waiting to run or to be retried, across
+// all queues (operator dashboards, see the admin module).
+func PendingCount(ctx context.Context, pool *pgxpool.Pool) (int64, error) {
+	var n int64
+	err := pool.QueryRow(ctx, `SELECT count(*) FROM river_job WHERE state IN ('available', 'retryable', 'scheduled')`).Scan(&n)
+	if err != nil {
+		return 0, fmt.Errorf("jobs: pending count: %w", err)
+	}
+	return n, nil
 }
 
 // Migrate applies River's own schema migrations (the river_job/river_leader

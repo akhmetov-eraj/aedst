@@ -31,7 +31,15 @@ Tasks/                 requires Authorization: Bearer {{accessToken}} (folder.br
   List Tasks
   Complete Task
   Get Task (Not Found — Wrong Id)   negative test, expects 404 — see its docs block for why 404, not 403
+Notifications/         inbox, push-device registry (FCM / Web Push), preferences
+Search/                Search (FTS, U+E000/U+E001 highlight markers), Suggest
+Media/                 Create Upload -> PUT to the presigned URL yourself -> Complete Upload -> Get/List/Delete
+Admin/                 needs the `admin` role (built-in policy /aedst.admin.v1.AdminService/*=admin)
 ```
+
+The collection sends `Connect-Protocol-Version: 1` on every request
+(collection.bru): the server rejects Connect calls without it (CSRF defense in
+depth, `AEDST_REQUIRE_CONNECT_PROTOCOL_HEADER`).
 
 (`Users/` and `Profile/` were removed along with those modules — see
 [ADR-0007](../../../docs/content/decisions/0007-merge-users-into-auth.md).)
@@ -68,7 +76,7 @@ npx @usebruno/cli run apps/server/api/bruno --env local -r
 `-r` runs folders in their `seq` order (Auth → Tasks), so
 `Register` populates the shared variables before anything that needs them
 runs. Not wired into `.github/workflows/server-ci.yml` yet — doing so needs
-the full `docker compose` stack (Postgres/Redis/NATS) plus a running
+the full `docker compose` stack (Postgres/Valkey) plus a running
 `aedst-server` up first, the same prerequisite `make integration-test`
 already has locally but that CI doesn't run either; a natural follow-up
 once that gap is closed, not scope-crept into this collection's setup.

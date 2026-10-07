@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -13,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	tasksdb "github.com/aedst/server/gen/db/tasks"
+	"github.com/aedst/server/internal/modules/tasks/api"
 	"github.com/aedst/server/internal/modules/tasks/application"
 	"github.com/aedst/server/internal/modules/tasks/domain"
 	"github.com/aedst/server/internal/platform/database"
@@ -20,24 +22,70 @@ import (
 	"github.com/aedst/server/internal/platform/outbox"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
+	"github.com/aedst/server/internal/shared/pagination"
 	sharedtime "github.com/aedst/server/internal/shared/time"
 )
 
+// EventWriter persists an integration event inside the caller's transaction
+// and schedules its delivery. Satisfied by *outbox.Writer.
+type EventWriter interface {
+	Write(ctx context.Context, tx pgx.Tx, row outbox.Row) error
+}
+
+// ReminderEnqueuer enqueues the due-date reminder job inside the caller's
+// transaction, so the job exists if and only if the task change committed.
+// Satisfied by infrastructure/jobs.Scheduler.
+type ReminderEnqueuer interface {
+	EnqueueDueReminder(ctx context.Context, tx pgx.Tx, taskID, userID ids.ID, dueDate time.Time) error
+}
+
 type Repository struct {
 	pool        *pgxpool.Pool
-	outbox      outbox.Repository
+	outbox      EventWriter
 	idempotency idempotency.Store
+	reminders   ReminderEnqueuer
 	clock       sharedtime.Clock
 }
 
-func NewRepository(pool *pgxpool.Pool, outboxRepo outbox.Repository, idempotencyStore idempotency.Store, clock sharedtime.Clock) *Repository {
-	return &Repository{pool: pool, outbox: outboxRepo, idempotency: idempotencyStore, clock: clock}
+var _ application.Repository = (*Repository)(nil)
+
+// Option customises optional collaborators of Repository.
+type Option func(*Repository)
+
+// WithReminders makes Create/Update enqueue due-date reminders atomically.
+func WithReminders(r ReminderEnqueuer) Option { return func(repo *Repository) { repo.reminders = r } }
+
+// NewRepository builds the tasks repository over pool. outboxWriter may be nil
+// for read-only use (the reminder worker only calls FindByIDAndUserID).
+func NewRepository(pool *pgxpool.Pool, outboxWriter EventWriter, clock sharedtime.Clock, opts ...Option) *Repository {
+	r := &Repository{pool: pool, outbox: outboxWriter, idempotency: idempotency.NewPostgresStore(), clock: clock}
+	for _, opt := range opts {
+		opt(r)
+	}
+	return r
+}
+
+// idempotencyScope namespaces a caller's keys: two users can never collide on,
+// or replay, each other's keys.
+func idempotencyScope(userID ids.ID) string { return "tasks:" + userID.String() }
+
+// enqueueReminder schedules the reminder for task if it needs one.
+func (r *Repository) enqueueReminder(ctx context.Context, tx pgx.Tx, task domain.Task) error {
+	if r.reminders == nil || !task.NeedsReminder(r.clock.Now()) {
+		return nil
+	}
+	if err := r.reminders.EnqueueDueReminder(ctx, tx, task.ID, task.UserID, *task.DueDate); err != nil {
+		return sharederrors.Wrap("tasks.enqueueReminder", err)
+	}
+	return nil
 }
 
 // Create persists task. When idempotencyKey is non-empty, the write and the
 // idempotency-key record commit in the same transaction (see
 // internal/platform/idempotency), so a client retry after a dropped
-// response replays the original result instead of creating a duplicate task.
+// response replays the original result instead of creating a duplicate task —
+// even when the retry races the original request, because Check serializes
+// same-key requests with an advisory lock.
 func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKey string) (domain.Task, error) {
 	// Hashed on the client-supplied fields only — never task.ID/CreatedAt,
 	// which Service.CreateTask generates fresh on every call including
@@ -45,26 +93,25 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 	// different request (see idempotency.Check's doc comment on request
 	// hash mismatch).
 	requestPayload, err := json.Marshal(struct {
-		UserID      ids.ID          `json:"user_id"`
 		Title       string          `json:"title"`
 		Description string          `json:"description"`
 		Priority    domain.Priority `json:"priority"`
 		DueDate     *time.Time      `json:"due_date"`
-	}{task.UserID, task.Title, task.Description, task.Priority, task.DueDate})
+	}{task.Title, task.Description, task.Priority, task.DueDate})
 	if err != nil {
 		return domain.Task{}, sharederrors.Wrap("tasks.Create", err)
 	}
+	scope := idempotencyScope(task.UserID)
 
 	var result domain.Task
 	err = database.WithTx(ctx, r.pool, func(ctx context.Context, tx pgx.Tx) error {
-		if cached, replay, err := idempotency.Check(ctx, tx, r.idempotency, idempotencyKey, requestPayload); err != nil {
+		if cached, replay, err := idempotency.Check(ctx, tx, r.idempotency, scope, idempotencyKey, requestPayload); err != nil {
 			return err
 		} else if replay {
 			return json.Unmarshal(cached, &result)
 		}
 
-		q := tasksdb.New(tx)
-		row, err := q.CreateTask(ctx, tasksdb.CreateTaskParams{
+		row, err := tasksdb.New(tx).CreateTask(ctx, tasksdb.CreateTaskParams{
 			ID:          toPgUUID(task.ID),
 			UserID:      toPgUUID(task.UserID),
 			Title:       task.Title,
@@ -78,11 +125,17 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 		}
 		result = fromDB(row)
 
+		if err := r.enqueueReminder(ctx, tx, result); err != nil {
+			return err
+		}
+		if err := r.writeEvent(ctx, tx, api.TaskCreatedEventType, api.TaskCreatedEventVersion, result.ID, api.SnapshotOf(result)); err != nil {
+			return err
+		}
 		resultPayload, err := json.Marshal(result)
 		if err != nil {
 			return sharederrors.Wrap("tasks.Create", err)
 		}
-		return idempotency.Save(ctx, tx, r.idempotency, idempotencyKey, requestPayload, resultPayload)
+		return idempotency.Save(ctx, tx, r.idempotency, scope, idempotencyKey, requestPayload, resultPayload)
 	})
 	if err != nil {
 		return domain.Task{}, err
@@ -90,45 +143,63 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 	return result, nil
 }
 
-// Complete marks id done and, in the same transaction, writes a
-// TaskCompleted event to the outbox (see internal/platform/outbox) —
-// CompleteTask's fire-and-forget precedent doesn't apply here: unlike a
-// best-effort reminder, an integration event another system's projection
-// depends on (see docs/events.md) must not be silently lost.
-func (r *Repository) Complete(ctx context.Context, id, userID ids.ID, completedAt, updatedAt time.Time) (domain.Task, error) {
+// Complete moves id to done and, in the same transaction, writes a
+// TaskCompleted event to the outbox (see internal/platform/outbox) — an
+// integration event another system's projection depends on (see
+// docs/events.md) must not be silently lost. The UPDATE only matches a task
+// that is not done yet, so a repeated or concurrent Complete finds no row,
+// returns the current task and writes no second event.
+func (r *Repository) Complete(ctx context.Context, id, userID ids.ID, now time.Time) (domain.Task, error) {
 	var result domain.Task
 	err := database.WithTx(ctx, r.pool, func(ctx context.Context, tx pgx.Tx) error {
 		q := tasksdb.New(tx)
-		row, err := q.SetTaskStatus(ctx, tasksdb.SetTaskStatusParams{
-			ID:          toPgUUID(id),
-			UserID:      toPgUUID(userID),
-			Status:      toDBStatus(domain.StatusDone),
-			CompletedAt: toPgTimestamptzPtr(&completedAt),
-			UpdatedAt:   toPgTimestamptz(updatedAt),
+		row, err := q.CompleteTask(ctx, tasksdb.CompleteTaskParams{
+			ID:     toPgUUID(id),
+			UserID: toPgUUID(userID),
+			Now:    toPgTimestamptz(now),
 		})
-		if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Already done, or not this user's task.
+			existing, err := q.FindTaskByIDAndUserID(ctx, tasksdb.FindTaskByIDAndUserIDParams{ID: toPgUUID(id), UserID: toPgUUID(userID)})
 			if errors.Is(err, pgx.ErrNoRows) {
 				return sharederrors.NotFound("tasks.Complete", "task not found")
 			}
+			if err != nil {
+				return sharederrors.Wrap("tasks.Complete", err)
+			}
+			result = fromDB(existing)
+			return nil
+		}
+		if err != nil {
 			return sharederrors.Wrap("tasks.Complete", err)
 		}
 		result = fromDB(row)
 
-		payload, err := json.Marshal(TaskCompletedEvent{
+		return r.writeEvent(ctx, tx, api.TaskCompletedEventType, api.TaskCompletedEventVersion, result.ID, api.TaskCompletedEvent{
 			TaskID:      result.ID.String(),
 			UserID:      result.UserID.String(),
-			CompletedAt: completedAt,
+			Title:       result.Title,
+			CompletedAt: now,
+			Version:     result.Version,
 		})
-		if err != nil {
-			return sharederrors.Wrap("tasks.Complete", err)
-		}
-		outboxRow := outbox.NewRow(r.clock, TaskCompletedEventType, taskCompletedEventVersion, result.ID, "", payload)
-		return r.outbox.Insert(ctx, tx, outboxRow)
 	})
 	if err != nil {
 		return domain.Task{}, err
 	}
 	return result, nil
+}
+
+func (r *Repository) Reopen(ctx context.Context, id, userID ids.ID, now time.Time) (domain.Task, error) {
+	q := tasksdb.New(r.pool)
+	row, err := q.ReopenTask(ctx, tasksdb.ReopenTaskParams{ID: toPgUUID(id), UserID: toPgUUID(userID), Now: toPgTimestamptz(now)})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Already todo, or not this user's task.
+		return r.FindByIDAndUserID(ctx, id, userID)
+	}
+	if err != nil {
+		return domain.Task{}, sharederrors.Wrap("tasks.Reopen", err)
+	}
+	return fromDB(row), nil
 }
 
 func (r *Repository) FindByIDAndUserID(ctx context.Context, id, userID ids.ID) (domain.Task, error) {
@@ -146,91 +217,113 @@ func (r *Repository) FindByIDAndUserID(ctx context.Context, id, userID ids.ID) (
 	return fromDB(row), nil
 }
 
-func (r *Repository) Update(ctx context.Context, task domain.Task) (domain.Task, error) {
+func updateParams(p application.UpdateParams) tasksdb.UpdateTaskParams {
+	out := tasksdb.UpdateTaskParams{
+		ID:         toPgUUID(p.ID),
+		UserID:     toPgUUID(p.UserID),
+		SetDueDate: p.Patch.SetDueDate,
+		DueDate:    toPgTimestamptzPtr(p.Patch.DueDate),
+		UpdatedAt:  toPgTimestamptz(p.UpdatedAt),
+	}
+	if p.Patch.Title != nil {
+		out.Title = pgtype.Text{String: *p.Patch.Title, Valid: true}
+	}
+	if p.Patch.Description != nil {
+		out.Description = pgtype.Text{String: *p.Patch.Description, Valid: true}
+	}
+	if p.Patch.Priority != nil {
+		out.Priority = pgtype.Text{String: string(*p.Patch.Priority), Valid: true}
+	}
+	if p.ExpectedVersion != nil {
+		out.ExpectedVersion = pgtype.Int4{Int32: int32(*p.ExpectedVersion), Valid: true}
+	}
+	return out
+}
+
+// noDueSortKey is the sort key of a task without a due date. It must match
+// the sentinel in sql/tasks/queries.sql (to_timestamp(-62135596800), i.e.
+// 0001-01-01T00:00:00Z).
+var noDueSortKey = time.Date(1, time.January, 1, 0, 0, 0, 0, time.UTC)
+
+// List returns one keyset page. It fetches Limit+1 rows so it can tell
+// whether a next page exists without a count. The filtered total is computed
+// only for the first page (After == nil): counting the matching set is O(rows)
+// and would otherwise be paid on every page.
+func (r *Repository) List(ctx context.Context, params application.ListParams) (application.ListResult, error) {
 	q := tasksdb.New(r.pool)
-	row, err := q.UpdateTask(ctx, tasksdb.UpdateTaskParams{
-		ID:          toPgUUID(task.ID),
-		UserID:      toPgUUID(task.UserID),
-		Title:       task.Title,
-		Description: task.Description,
-		Priority:    toDBPriority(task.Priority),
-		DueDate:     toPgTimestamptzPtr(task.DueDate),
-		UpdatedAt:   toPgTimestamptz(task.UpdatedAt),
-	})
+	asc := params.SortDirection == "asc"
+	byDue := params.SortBy == "due_date"
+
+	cursorKey, cursorID := openCursor(asc)
+	if params.After != nil {
+		cursorKey = pgtype.Timestamptz{Time: params.After.Key, Valid: true}
+		cursorID = toPgUUID(params.After.ID)
+	}
+
+	statuses, priorities := toDBStatuses(params.Statuses), toDBPriorities(params.Priorities)
+	search := escapeLike(params.Search)
+	limit := int32(params.Limit) + 1
+
+	var (
+		rows []tasksdb.TasksTask
+		err  error
+	)
+	switch {
+	case byDue && asc:
+		rows, err = q.ListTasksByDueAsc(ctx, tasksdb.ListTasksByDueAscParams{UserID: toPgUUID(params.UserID), Statuses: statuses, Priorities: priorities, Search: search, CursorKey: cursorKey, CursorID: cursorID, PageLimit: limit})
+	case byDue:
+		rows, err = q.ListTasksByDueDesc(ctx, tasksdb.ListTasksByDueDescParams{UserID: toPgUUID(params.UserID), Statuses: statuses, Priorities: priorities, Search: search, CursorKey: cursorKey, CursorID: cursorID, PageLimit: limit})
+	case asc:
+		rows, err = q.ListTasksByCreatedAsc(ctx, tasksdb.ListTasksByCreatedAscParams{UserID: toPgUUID(params.UserID), Statuses: statuses, Priorities: priorities, Search: search, CursorKey: cursorKey, CursorID: cursorID, PageLimit: limit})
+	default:
+		rows, err = q.ListTasksByCreatedDesc(ctx, tasksdb.ListTasksByCreatedDescParams{UserID: toPgUUID(params.UserID), Statuses: statuses, Priorities: priorities, Search: search, CursorKey: cursorKey, CursorID: cursorID, PageLimit: limit})
+	}
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Task{}, sharederrors.NotFound("tasks.Update", "task not found")
+		return application.ListResult{}, sharederrors.Wrap("tasks.List", err)
+	}
+
+	tasks := make([]domain.Task, len(rows))
+	for i, row := range rows {
+		tasks[i] = fromDB(row)
+	}
+	sortToken := params.SortToken()
+	page := pagination.NewPage(tasks, params.Limit, func(t domain.Task) pagination.Cursor {
+		key := t.CreatedAt
+		if byDue {
+			key = noDueSortKey
+			if t.DueDate != nil {
+				key = *t.DueDate
+			}
 		}
-		return domain.Task{}, sharederrors.Wrap("tasks.Update", err)
-	}
-	return fromDB(row), nil
-}
-
-func (r *Repository) SetStatus(ctx context.Context, id, userID ids.ID, status domain.Status, completedAt *time.Time, updatedAt time.Time) (domain.Task, error) {
-	q := tasksdb.New(r.pool)
-	row, err := q.SetTaskStatus(ctx, tasksdb.SetTaskStatusParams{
-		ID:          toPgUUID(id),
-		UserID:      toPgUUID(userID),
-		Status:      toDBStatus(status),
-		CompletedAt: toPgTimestamptzPtr(completedAt),
-		UpdatedAt:   toPgTimestamptz(updatedAt),
+		return pagination.Cursor{Sort: sortToken, Key: key, ID: t.ID}
 	})
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return domain.Task{}, sharederrors.NotFound("tasks.SetStatus", "task not found")
+
+	result := application.ListResult{Tasks: page.Items, Next: page.Next}
+	if params.After == nil {
+		total, err := q.CountTasks(ctx, tasksdb.CountTasksParams{UserID: toPgUUID(params.UserID), Statuses: statuses, Priorities: priorities, Search: search})
+		if err != nil {
+			return application.ListResult{}, sharederrors.Wrap("tasks.List.count", err)
 		}
-		return domain.Task{}, sharederrors.Wrap("tasks.SetStatus", err)
+		result.Total = int(total)
 	}
-	return fromDB(row), nil
+	return result, nil
 }
 
-func (r *Repository) Delete(ctx context.Context, id, userID ids.ID) error {
-	q := tasksdb.New(r.pool)
-	affected, err := q.DeleteTask(ctx, tasksdb.DeleteTaskParams{ID: toPgUUID(id), UserID: toPgUUID(userID)})
-	if err != nil {
-		return sharederrors.Wrap("tasks.Delete", err)
+// openCursor is the "before everything" cursor for the first page: every row
+// sorts strictly before (DESC) / after (ASC) it, so the keyset predicate is
+// always true without a separate code path.
+func openCursor(asc bool) (pgtype.Timestamptz, pgtype.UUID) {
+	if asc {
+		return pgtype.Timestamptz{InfinityModifier: pgtype.NegativeInfinity, Valid: true}, pgtype.UUID{Valid: true}
 	}
-	if affected == 0 {
-		return sharederrors.NotFound("tasks.Delete", "task not found")
-	}
-	return nil
+	return pgtype.Timestamptz{InfinityModifier: pgtype.Infinity, Valid: true}, pgtype.UUID{Bytes: [16]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, Valid: true}
 }
 
-func (r *Repository) List(ctx context.Context, params application.ListParams) ([]domain.Task, int, error) {
-	q := tasksdb.New(r.pool)
-	rows, err := q.ListTasks(ctx, tasksdb.ListTasksParams{
-		UserID:        toPgUUID(params.UserID),
-		Statuses:      toDBStatuses(params.Statuses),
-		Priorities:    toDBPriorities(params.Priorities),
-		Search:        params.Search,
-		SortBy:        params.SortBy,
-		SortDirection: params.SortDirection,
-		PageLimit:     int32(params.PageSize),
-		PageOffset:    int32(params.Offset),
-	})
-	if err != nil {
-		return nil, 0, sharederrors.Wrap("tasks.List", err)
-	}
+// likeEscaper neutralizes the LIKE metacharacters in a user-supplied search
+// term so "50%" or "a_b" match literally instead of as wildcards.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
-	tasks := make([]domain.Task, 0, len(rows))
-	total := 0
-	for _, row := range rows {
-		tasks = append(tasks, fromDB(tasksdb.TasksTask{
-			ID:          row.ID,
-			UserID:      row.UserID,
-			Title:       row.Title,
-			Description: row.Description,
-			Status:      row.Status,
-			Priority:    row.Priority,
-			DueDate:     row.DueDate,
-			CompletedAt: row.CompletedAt,
-			CreatedAt:   row.CreatedAt,
-			UpdatedAt:   row.UpdatedAt,
-		}))
-		total = int(row.TotalCount)
-	}
-	return tasks, total, nil
-}
+func escapeLike(s string) string { return likeEscaper.Replace(s) }
 
 func (r *Repository) Stats(ctx context.Context, userID ids.ID) (application.Stats, error) {
 	q := tasksdb.New(r.pool)
@@ -259,6 +352,7 @@ func fromDB(row tasksdb.TasksTask) domain.Task {
 		CompletedAt: fromPgTimestamptzPtr(row.CompletedAt),
 		CreatedAt:   row.CreatedAt.Time,
 		UpdatedAt:   row.UpdatedAt.Time,
+		Version:     int(row.Version),
 	}
 }
 
@@ -288,23 +382,26 @@ func fromPgTimestamptzPtr(t pgtype.Timestamptz) *time.Time {
 	return &t.Time
 }
 
-func toDBStatus(s domain.Status) tasksdb.TasksStatus         { return tasksdb.TasksStatus(s) }
 func fromDBStatus(s tasksdb.TasksStatus) domain.Status       { return domain.Status(s) }
 func toDBPriority(p domain.Priority) tasksdb.TasksPriority   { return tasksdb.TasksPriority(p) }
 func fromDBPriority(p tasksdb.TasksPriority) domain.Priority { return domain.Priority(p) }
 
-func toDBStatuses(statuses []domain.Status) []tasksdb.TasksStatus {
-	out := make([]tasksdb.TasksStatus, len(statuses))
+// toDBStatuses/toDBPriorities pass filters as text[]: pgx cannot encode a
+// slice of a Go string type into an enum array (the array's OID is unknown to
+// it), so the query casts text[] to the enum array server-side. An empty slice
+// means "no filter".
+func toDBStatuses(statuses []domain.Status) []string {
+	out := make([]string, len(statuses))
 	for i, s := range statuses {
-		out[i] = toDBStatus(s)
+		out[i] = string(s)
 	}
 	return out
 }
 
-func toDBPriorities(priorities []domain.Priority) []tasksdb.TasksPriority {
-	out := make([]tasksdb.TasksPriority, len(priorities))
+func toDBPriorities(priorities []domain.Priority) []string {
+	out := make([]string, len(priorities))
 	for i, p := range priorities {
-		out[i] = toDBPriority(p)
+		out[i] = string(p)
 	}
 	return out
 }

@@ -1,0 +1,130 @@
+# Highly available PostgreSQL for aedst-server on Kubernetes, using the
+# CloudNativePG operator (https://cloudnative-pg.io) — cloud-agnostic, so it
+# works on any conformant cluster. Apply the operator first, then this file.
+#
+# UNVERIFIED: written against the CloudNativePG v1 API but never applied to a
+# cluster (none was available). Run `kubectl apply --dry-run=server` against your
+# operator version, and check the parameters marked CHECK, before first use.
+#
+# Topology: 3 instances (1 primary + 2 replicas) on different nodes, one
+# synchronous replica so an acknowledged commit survives losing the primary,
+# automatic failover, continuous WAL archiving + scheduled base backups to
+# S3-compatible object storage (point-in-time recovery), and a PgBouncer pooler
+# in transaction mode for the API pool.
+#
+# How the server connects (see docs/content/deployment.md):
+#   AEDST_DATABASE_URL         -> the pooler   (aedst-pg-pooler-rw:5432)
+#   AEDST_DATABASE_DIRECT_DSN  -> the cluster  (aedst-pg-rw:5432): River's
+#     LISTEN/NOTIFY, advisory locks and migrations need a session connection.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: aedst-pg
+spec:
+  instances: 3
+  # Pin the major version; upgrade deliberately (rolling, replicas first).
+  imageName: ghcr.io/cloudnative-pg/postgresql:18
+  primaryUpdateStrategy: unsupervised
+  enableSuperuserAccess: false
+
+  # One synchronous replica: commits wait for it, so failover loses nothing.
+  # CHECK: newer operator versions prefer `.spec.postgresql.synchronous`.
+  minSyncReplicas: 1
+  maxSyncReplicas: 1
+
+  # Never put two instances on one node or (where labelled) one zone.
+  affinity:
+    enablePodAntiAffinity: true
+    podAntiAffinityType: required
+    topologyKey: kubernetes.io/hostname
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+      labelSelector:
+        matchLabels:
+          cnpg.io/cluster: aedst-pg
+
+  postgresql:
+    parameters:
+      # replicas x (AEDST_DATABASE_MAX_CONNS + JOBS_MAX_CONNS) must fit under
+      # this once the pooler is in front of the API pool; size from the load test.
+      max_connections: "300"
+      shared_buffers: 1GB
+      effective_cache_size: 3GB
+      work_mem: 8MB
+      maintenance_work_mem: 256MB
+      # Statement statistics for the runbook's slow-query steps (the operator adds
+      # pg_stat_statements to shared_preload_libraries itself).
+      pg_stat_statements.max: "10000"
+      pg_stat_statements.track: all
+      log_min_duration_statement: "500"
+      log_lock_waits: "on"
+      idle_in_transaction_session_timeout: "60000"
+
+  bootstrap:
+    initdb:
+      database: aedst
+      owner: aedst
+      secret:
+        name: aedst-pg-app # kubernetes.io/basic-auth: username=aedst, password=<generated>
+      postInitApplicationSQL:
+        - CREATE EXTENSION IF NOT EXISTS pg_trgm
+
+  storage:
+    size: 100Gi
+    # storageClass: <fast SSD class of your cluster>
+  walStorage:
+    size: 20Gi
+
+  resources:
+    requests: {cpu: "2", memory: 4Gi}
+    limits: {memory: 4Gi}
+
+  monitoring:
+    enablePodMonitor: true # needs the prometheus-operator CRDs
+
+  backup:
+    retentionPolicy: 30d
+    barmanObjectStore:
+      destinationPath: s3://aedst-pg-backups/prod # CHECK: your bucket
+      # endpointURL: https://<s3-compatible-endpoint>  # non-AWS object stores
+      s3Credentials:
+        accessKeyId: {name: aedst-pg-backup, key: ACCESS_KEY_ID}
+        secretAccessKey: {name: aedst-pg-backup, key: ACCESS_SECRET_KEY}
+      wal: {compression: gzip}
+      data: {compression: gzip}
+---
+# A base backup every night; WAL is archived continuously, so recovery can stop
+# at any second inside the retention window.
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: aedst-pg-nightly
+spec:
+  schedule: "0 0 2 * * *" # CloudNativePG cron has a leading seconds field
+  backupOwnerReference: self
+  cluster:
+    name: aedst-pg
+---
+# PgBouncer in transaction mode in front of the primary, for the API pool.
+# The jobs pool bypasses it (AEDST_DATABASE_DIRECT_DSN): River's LISTEN/NOTIFY
+# and session advisory locks do not survive transaction pooling.
+# The DSN must carry default_query_exec_mode=cache_describe (see values.yaml).
+apiVersion: postgresql.cnpg.io/v1
+kind: Pooler
+metadata:
+  name: aedst-pg-pooler-rw
+spec:
+  cluster:
+    name: aedst-pg
+  instances: 3
+  type: rw
+  pgbouncer:
+    poolMode: transaction
+    parameters:
+      max_client_conn: "2000"
+      default_pool_size: "40"
+      # The server sets these as startup parameters; PgBouncer must not reject
+      # them. CHECK: some operator versions manage this list themselves.
+      ignore_startup_parameters: "extra_float_digits,statement_timeout,idle_in_transaction_session_timeout,options"

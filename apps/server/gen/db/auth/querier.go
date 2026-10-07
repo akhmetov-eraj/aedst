@@ -11,13 +11,25 @@ import (
 )
 
 type Querier interface {
+	CountCredentials(ctx context.Context) (int64, error)
 	CreateCredential(ctx context.Context, arg CreateCredentialParams) error
 	CreateSession(ctx context.Context, arg CreateSessionParams) error
 	FindCredentialByEmail(ctx context.Context, email string) (AuthCredential, error)
 	FindCredentialByUserID(ctx context.Context, userID pgtype.UUID) (AuthCredential, error)
 	FindSessionByID(ctx context.Context, id pgtype.UUID) (AuthSession, error)
+	// Operator directory (admin module via auth/api.Directory). Keyset page,
+	// newest first; search is a case-insensitive substring of the email with LIKE
+	// metacharacters escaped by the caller.
+	ListCredentialsPage(ctx context.Context, arg ListCredentialsPageParams) ([]ListCredentialsPageRow, error)
+	// Retention: sessions that expired or were revoked before the cutoff can never
+	// authenticate again and only cost space. Batched (purge_limit) so a large
+	// backlog never becomes one long DELETE.
+	PurgeSessions(ctx context.Context, arg PurgeSessionsParams) (int64, error)
 	RevokeSession(ctx context.Context, arg RevokeSessionParams) error
-	RotateSession(ctx context.Context, arg RotateSessionParams) error
+	// Compare-and-swap: only the holder of the current refresh token, on a live
+	// session, can rotate it. Zero rows affected means a stale/replayed token.
+	RotateSession(ctx context.Context, arg RotateSessionParams) (int64, error)
+	UpdateCredentialPasswordHash(ctx context.Context, arg UpdateCredentialPasswordHashParams) error
 }
 
 var _ Querier = (*Queries)(nil)

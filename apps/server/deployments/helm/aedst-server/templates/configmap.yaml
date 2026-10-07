@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "aedst-server.fullname" . }}
+  labels:
+    {{- include "aedst-server.labels" . | nindent 4 }}
+data:
+  AEDST_ENV: {{ .Values.config.env | quote }}
+  AEDST_SERVICE_NAME: {{ .Values.config.serviceName | quote }}
+  AEDST_LOG_LEVEL: {{ .Values.config.log.level | quote }}
+  AEDST_LOG_FORMAT: {{ .Values.config.log.format | quote }}
+  AEDST_HTTP_ADDR: {{ printf ":%d" (int .Values.containerPorts.http) | quote }}
+  {{- if .Values.metrics.enabled }}
+  AEDST_METRICS_ADDR: {{ printf ":%d" (int .Values.containerPorts.metrics) | quote }}
+  {{- end }}
+  AEDST_SHUTDOWN_TIMEOUT_SECONDS: {{ .Values.config.shutdownTimeoutSeconds | int64 | quote }}
+  AEDST_SHUTDOWN_DRAIN_SECONDS: {{ .Values.config.shutdownDrainSeconds | int64 | quote }}
+  AEDST_REQUEST_TIMEOUT_SECONDS: {{ .Values.config.requestTimeoutSeconds | int64 | quote }}
+  AEDST_MAX_REQUEST_BYTES: {{ .Values.config.maxRequestBytes | int64 | quote }}
+  {{- if .Values.config.corsAllowedOrigins }}
+  AEDST_CORS_ALLOWED_ORIGINS: {{ join "," .Values.config.corsAllowedOrigins | quote }}
+  {{- end }}
+  AEDST_TRUSTED_PROXY_HOPS: {{ .Values.config.trustedProxyHops | int64 | quote }}
+  AEDST_AUTH_RATE_LIMIT_PER_MINUTE: {{ .Values.config.authRateLimitPerMinute | int64 | quote }}
+  AEDST_LOGIN_RATE_LIMIT_PER_MINUTE: {{ .Values.config.loginRateLimitPerMinute | int64 | quote }}
+  {{- if .Values.config.rolePolicy }}
+  AEDST_ROLE_POLICY: {{ include "aedst-server.rolePolicy" . | quote }}
+  {{- end }}
+  AEDST_API_RATE_LIMIT_PER_MINUTE: {{ .Values.config.apiRateLimitPerMinute | int64 | quote }}
+  AEDST_MAX_IN_FLIGHT: {{ .Values.config.maxInFlight | int64 | quote }}
+  AEDST_GRPC_REFLECTION_ENABLED: {{ .Values.config.grpcReflectionEnabled | quote }}
+  # Retention of append-only tables.
+  AEDST_RETENTION_INTERVAL_MINUTES: {{ .Values.config.retention.intervalMinutes | int64 | quote }}
+  AEDST_RETENTION_IDEMPOTENCY_HOURS: {{ .Values.config.retention.idempotencyHours | int64 | quote }}
+  AEDST_RETENTION_INBOX_HOURS: {{ .Values.config.retention.inboxHours | int64 | quote }}
+  AEDST_RETENTION_SESSION_HOURS: {{ .Values.config.retention.sessionHours | int64 | quote }}
+  # Database (DSNs are secrets, see the Deployment).
+  AEDST_DATABASE_MAX_CONNS: {{ .Values.database.maxConns | int64 | quote }}
+  AEDST_DATABASE_MIN_CONNS: {{ .Values.database.minConns | int64 | quote }}
+  AEDST_DATABASE_JOBS_MAX_CONNS: {{ .Values.database.jobsMaxConns | int64 | quote }}
+  AEDST_DATABASE_MAX_CONN_LIFETIME_MINUTES: {{ .Values.database.maxConnLifetimeMinutes | int64 | quote }}
+  AEDST_DATABASE_MAX_CONN_IDLE_MINUTES: {{ .Values.database.maxConnIdleMinutes | int64 | quote }}
+  AEDST_DATABASE_STATEMENT_TIMEOUT_MS: {{ .Values.database.statementTimeoutMs | int64 | quote }}
+  AEDST_DATABASE_IDLE_IN_TX_TIMEOUT_MS: {{ .Values.database.idleInTxTimeoutMs | int64 | quote }}
+  # Outbox relay.
+  AEDST_OUTBOX_RELAY_INTERVAL_MS: {{ .Values.config.outbox.relayIntervalMs | int64 | quote }}
+  AEDST_OUTBOX_BATCH_SIZE: {{ .Values.config.outbox.batchSize | int64 | quote }}
+  AEDST_OUTBOX_CONCURRENCY: {{ .Values.config.outbox.concurrency | int64 | quote }}
+  AEDST_OUTBOX_RETENTION_HOURS: {{ .Values.config.outbox.retentionHours | int64 | quote }}
+  {{- if .Values.config.minClientVersions }}
+  AEDST_MIN_CLIENT_VERSIONS: {{ .Values.config.minClientVersions | quote }}
+  {{- end }}
+  # Valkey (password is a secret).
+  AEDST_VALKEY_ADDR: {{ .Values.config.valkey.addr | quote }}
+  AEDST_VALKEY_DB: {{ .Values.config.valkey.db | int64 | quote }}
+  # Auth.
+  AEDST_AUTH_FIRST_PARTY_ENABLED: {{ .Values.config.auth.firstPartyEnabled | quote }}
+  AEDST_ACCESS_TOKEN_TTL_MINUTES: {{ .Values.config.auth.accessTokenTtlMinutes | int64 | quote }}
+  AEDST_REFRESH_TOKEN_TTL_HOURS: {{ .Values.config.auth.refreshTokenTtlHours | int64 | quote }}
+  {{- if .Values.config.oidc.issuer }}
+  AEDST_OIDC_ISSUER: {{ .Values.config.oidc.issuer | quote }}
+  AEDST_OIDC_AUDIENCE: {{ .Values.config.oidc.audience | quote }}
+  {{- if .Values.config.oidc.jwksUrl }}
+  AEDST_OIDC_JWKS_URL: {{ .Values.config.oidc.jwksUrl | quote }}
+  {{- end }}
+  AEDST_OIDC_ALGORITHMS: {{ join "," .Values.config.oidc.algorithms | quote }}
+  AEDST_OIDC_ROLES_CLAIM: {{ .Values.config.oidc.rolesClaim | quote }}
+  AEDST_OIDC_CLOCK_SKEW_SECONDS: {{ .Values.config.oidc.clockSkewSeconds | int64 | quote }}
+  {{- end }}
+  {{- if .Values.config.otel.endpoint }}
+  OTEL_EXPORTER_OTLP_ENDPOINT: {{ .Values.config.otel.endpoint | quote }}
+  {{- end }}

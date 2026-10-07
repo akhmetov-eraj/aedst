@@ -21,13 +21,17 @@ const (
 	KindValidation
 	KindUnauthorized
 	KindForbidden
+	KindRateLimited
+	// KindFailedPrecondition: the system is not in a state that allows the
+	// operation (a feature not configured, an upload not finished yet).
+	KindFailedPrecondition
 )
 
 // Error is a domain error carrying a Kind so transport layers can map it to
 // the right status code without string-matching messages.
 type Error struct {
 	Kind    Kind
-	Op      string // the operation that failed, e.g. "profile.UpdateBio"
+	Op      string // the operation that failed, e.g. "tasks.Update"
 	Message string
 	Err     error // wrapped cause, never exposed to clients directly
 }
@@ -51,6 +55,10 @@ func Conflict(op, message string) *Error      { return newErr(KindConflict, op, 
 func Validation(op, message string) *Error    { return newErr(KindValidation, op, message, nil) }
 func Unauthorized(op, message string) *Error  { return newErr(KindUnauthorized, op, message, nil) }
 func Forbidden(op, message string) *Error     { return newErr(KindForbidden, op, message, nil) }
+func RateLimited(op, message string) *Error   { return newErr(KindRateLimited, op, message, nil) }
+func FailedPrecondition(op, message string) *Error {
+	return newErr(KindFailedPrecondition, op, message, nil)
+}
 
 // Wrap classifies an infrastructure error (e.g. a pgx error) as Unknown while
 // preserving it as the cause, so it's still visible in logs but never exposed
