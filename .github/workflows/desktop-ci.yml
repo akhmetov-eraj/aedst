@@ -205,7 +205,7 @@ jobs:
         if: matrix.kind == 'coverage'
         run: |
           cmake --build --preset coverage-report | tee coverage.log
-          { echo "### Coverage (gcovr, Modules/ + App/)"; echo; echo "```"; grep -E "^(lines|functions|branches):" coverage.log || true; echo "```"; } >> "$GITHUB_STEP_SUMMARY"
+          { echo "### Coverage (gcovr, Modules/ + App/)"; echo; echo '```'; grep -E "^(lines|functions|branches):" coverage.log || true; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         if: matrix.kind == 'coverage'
