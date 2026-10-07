@@ -1,0 +1,192 @@
+name: desktop-release
+
+# Tag desktop-vX.Y.Z (X.Y.Z = project VERSION in apps/desktop/CMakeLists.txt) builds the release flavour of the desktop
+# client and assembles everything the update channels need. Nothing is published from here: the bundle is a workflow
+# artifact that the release owner uploads to the hosts (docs/release-runbook.md). Rationale: docs/adr/0029-delivery-updates-signing.md.
+#
+# Repository VARIABLES used (public values): AEDST_UPDATE_PUBLIC_KEYS, AEDST_UPDATE_MANIFEST_URL, AEDST_UPDATE_FEED_URL,
+#   AEDST_DOWNLOAD_BASE_URL (https base the artifacts are served from).
+# Repository SECRETS used (optional; a missing one skips that step and says so):
+#   AEDST_UPDATE_SIGNING_KEY (Ed25519 PEM of the update manifest key), AEDST_GPG_PRIVATE_KEY / AEDST_GPG_PASSPHRASE
+#   (APT/RPM repository key), WINDOWS_CERT_PFX_BASE64 / WINDOWS_CERT_PASSWORD (Authenticode; used by desktop-ci's package job).
+
+on:
+  push:
+    tags: ["desktop-v*"]
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Update channel to publish to"
+        type: choice
+        options: [stable, beta]
+        default: beta
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build and package
+    uses: ./.github/workflows/desktop-ci.yml
+    with:
+      release: true
+    secrets: inherit
+
+  velopack:
+    name: velopack (${{ matrix.os }})
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, artifact: aedst-desktop-Windows, archive: "*.zip", rid: win, exe: aedst-desktop.exe }
+          - { os: ubuntu-latest, artifact: aedst-desktop-Linux, archive: "*.tar.gz", rid: linux, exe: aedst-desktop }
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      VELOPACK_VERSION: "1.2.161" # keep equal to AEDST_VELOPACK_VERSION in apps/desktop/cmake/AedstVelopack.cmake
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Version and channel
+        shell: bash
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#desktop-v}"
+            channel=stable
+            case "$version" in *-*) channel=beta ;; esac
+          else
+            version=$(sed -nE 's/^[[:space:]]*VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' apps/desktop/CMakeLists.txt | head -1)
+            channel="${{ inputs.channel }}"
+          fi
+          declared=$(sed -nE 's/^[[:space:]]*VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' apps/desktop/CMakeLists.txt | head -1)
+          if [ "${version%%-*}" != "$declared" ]; then
+            echo "::error::tag version $version does not match CMakeLists.txt VERSION $declared"; exit 1
+          fi
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+          echo "RELEASE_CHANNEL=$channel" >> "$GITHUB_ENV"
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: input
+
+      - uses: actions/setup-dotnet@67a3573c9a986a3f9c594539f4ab511d57bb3ce9 # v4
+        with:
+          dotnet-version: "9.0.x"
+
+      - name: Install vpk
+        run: dotnet tool install --global vpk --version "$VELOPACK_VERSION"
+
+      # The CPack archive holds the installed tree (bin/ + the Qt runtime): that is the pack directory.
+      - name: Unpack the installed tree
+        shell: bash
+        run: |
+          mkdir -p tree
+          archive=$(ls input/${{ matrix.archive }} | head -1)
+          case "$archive" in
+            *.zip) unzip -q "$archive" -d tree ;;
+            *) tar -xzf "$archive" -C tree ;;
+          esac
+          # CPack archives contain one top-level directory.
+          top=$(find tree -mindepth 1 -maxdepth 1 -type d | head -1)
+          echo "PACK_DIR=${top:-tree}" >> "$GITHUB_ENV"
+
+      - name: vpk pack
+        shell: bash
+        env:
+          WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
+          WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
+        run: |
+          mkdir -p velopack-out
+          args=(pack --packId com.aedst.Desktop --packTitle AEDST --packVersion "$RELEASE_VERSION"
+                --packDir "$PACK_DIR" --mainExe "$(cd "$PACK_DIR" && find . -name '${{ matrix.exe }}' | head -1 | sed 's|^\./||')"
+                --channel "$RELEASE_CHANNEL" --outputDir velopack-out)
+          if [ "${{ matrix.rid }}" = "win" ] && [ -n "$WINDOWS_CERT_PFX_BASE64" ]; then
+            echo "$WINDOWS_CERT_PFX_BASE64" | base64 -d > "$RUNNER_TEMP/cert.pfx"
+            # vpk runs signtool on every binary it packs (Authenticode, SHA-256, RFC 3161 timestamp).
+            args+=(--signParams "/f $RUNNER_TEMP/cert.pfx /p $WINDOWS_CERT_PASSWORD /fd SHA256 /tr http://timestamp.digicert.com /td SHA256")
+          else
+            echo "::warning::no Windows signing certificate: the Velopack package for ${{ matrix.rid }} is not Authenticode-signed"
+          fi
+          vpk "${args[@]}"
+          rm -f "$RUNNER_TEMP/cert.pfx"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: velopack-${{ matrix.rid }}
+          path: velopack-out/*
+          if-no-files-found: error
+
+  bundle:
+    name: signed manifest and repositories
+    needs: [build, velopack]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: parts
+
+      - name: Install repository tooling
+        run: sudo apt-get update && sudo apt-get install -y jq apt-utils createrepo-c rpm gnupg
+
+      - name: Assemble the bundle
+        shell: bash
+        env:
+          AEDST_UPDATE_SIGNING_KEY: ${{ secrets.AEDST_UPDATE_SIGNING_KEY }}
+          AEDST_GPG_PRIVATE_KEY: ${{ secrets.AEDST_GPG_PRIVATE_KEY }}
+          AEDST_GPG_PASSPHRASE: ${{ secrets.AEDST_GPG_PASSPHRASE }}
+          DOWNLOAD_BASE: ${{ vars.AEDST_DOWNLOAD_BASE_URL }}
+        run: |
+          set -euo pipefail
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            version="${GITHUB_REF_NAME#desktop-v}"; channel=stable; case "$version" in *-*) channel=beta ;; esac
+          else
+            version=$(sed -nE 's/^[[:space:]]*VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' apps/desktop/CMakeLists.txt | head -1)
+            channel="${{ inputs.channel }}"
+          fi
+          mkdir -p bundle
+          cp -r parts/velopack-win parts/velopack-linux bundle/ 2>/dev/null || true
+          cp parts/aedst-desktop-Windows/* parts/aedst-desktop-Linux/* bundle/ 2>/dev/null || true
+
+          # --- update manifest (Ed25519) -----------------------------------------------------------------
+          if [ -z "$AEDST_UPDATE_SIGNING_KEY" ] || [ -z "$DOWNLOAD_BASE" ]; then
+            echo "::warning::AEDST_UPDATE_SIGNING_KEY or AEDST_DOWNLOAD_BASE_URL missing: no update manifest was produced"
+          else
+            # The manifest names the exact package the Velopack feed serves (the full nupkg per OS): the app compares the
+            # feed's SHA-256 and size with these before it downloads anything (update_pipeline.cpp). The Setup.exe and the
+            # AppImage are first-install downloads for people and are not part of the manifest.
+            win_pkg=$(ls bundle/velopack-win/*-full.nupkg | head -1)
+            linux_pkg=$(ls bundle/velopack-linux/*-full.nupkg | head -1)
+            apps/desktop/scripts/release/sign-update-manifest.sh \
+              --version "$version" --channel "$channel" --min-supported "${MIN_SUPPORTED:-1.0.0}" \
+              --notes-url "https://aedst.com/releases/$version" \
+              --artifact "windows:x86_64:$DOWNLOAD_BASE/$version/$(basename "$win_pkg"):$win_pkg" \
+              --artifact "linux:x86_64:$DOWNLOAD_BASE/$version/$(basename "$linux_pkg"):$linux_pkg" \
+              --key-id "${UPDATE_KEY_ID:-k1}" --out "bundle/$channel.json"
+          fi
+
+          # --- APT / RPM repositories (GPG-signed) ---------------------------------------------------------
+          if [ -z "$AEDST_GPG_PRIVATE_KEY" ]; then
+            echo "::warning::AEDST_GPG_PRIVATE_KEY missing: the APT/RPM repositories were not built"
+          else
+            apps/desktop/scripts/release/build-linux-repos.sh \
+              $(for f in parts/aedst-desktop-Linux/*.deb; do echo --deb "$f"; done) \
+              $(for f in parts/aedst-desktop-Linux/*.rpm; do echo --rpm "$f"; done) \
+              --out bundle/repo --suite "$channel"
+          fi
+
+          (cd bundle && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: desktop-release-bundle
+          path: bundle
+          if-no-files-found: error

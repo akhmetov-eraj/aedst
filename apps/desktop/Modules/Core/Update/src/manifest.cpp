@@ -174,6 +174,14 @@ core::Outcome<UpdateManifest> parseManifest(std::string_view json) {
         manifest.minSupportedVersion = std::move(*minimum);
     }
 
+    if (root.contains(QStringLiteral("rollback"))) {
+        const QJsonValue rollback = root.value(QStringLiteral("rollback"));
+        if (!rollback.isBool()) {
+            return fail(Error::invalidArgument("manifest: rollback must be a boolean"));
+        }
+        manifest.rollback = rollback.toBool();
+    }
+
     const QJsonValue artifactsValue = root.value(QStringLiteral("artifacts"));
     if (!artifactsValue.isArray()) {
         return fail(Error::invalidArgument("manifest: artifacts must be an array"));

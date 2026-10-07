@@ -110,3 +110,19 @@ function(aedst_split_debug_symbols target)
             VERBATIM)
     endif()
 endfunction()
+
+# --- Reproducible builds ----------------------------------------------------------
+# The same sources, toolchain and dependency baseline must give the same binaries, so a release can be rebuilt and compared
+# (docs/adr/0029-delivery-updates-signing.md). Inputs are pinned elsewhere (vcpkg baseline in vcpkg.json (`builtin-baseline`),
+# toolchain versions in CI); this removes what the build itself injects:
+#   MSVC        /Brepro   - no timestamp in the PE header; the PDB GUID and age derive from the content
+#   GCC/Clang   -ffile-prefix-map - no absolute build paths in debug info or __FILE__; build ids are content hashes (above)
+# CI additionally exports SOURCE_DATE_EPOCH (the commit time) for the packagers (cpack, tar, dpkg-deb, rpmbuild).
+option(AEDST_REPRODUCIBLE_BUILD "Remove timestamps and build paths from the produced binaries" ON)
+if(AEDST_REPRODUCIBLE_BUILD)
+    if(MSVC)
+        add_link_options(/Brepro)
+    elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        add_compile_options("-ffile-prefix-map=${CMAKE_SOURCE_DIR}=." "-ffile-prefix-map=${CMAKE_BINARY_DIR}=build")
+    endif()
+endif()

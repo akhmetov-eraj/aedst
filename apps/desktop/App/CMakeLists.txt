@@ -7,6 +7,8 @@ qt_add_executable(aedst-desktop WIN32
     src/main.cpp
     src/app_dependencies.hpp
     src/app_dependencies.cpp
+    src/app_updater.hpp
+    src/app_updater.cpp
     src/session_info.hpp
     src/startup_trace.hpp
 )
@@ -28,7 +30,10 @@ target_compile_definitions(aedst-desktop PRIVATE
     AEDST_SENTRY_DSN_DEFAULT="${AEDST_SENTRY_DSN}"
     AEDST_SENTRY_ENVIRONMENT_DEFAULT="${AEDST_SENTRY_ENVIRONMENT}"
     AEDST_POSTHOG_KEY_DEFAULT="${AEDST_POSTHOG_KEY}"
-    AEDST_POSTHOG_HOST_DEFAULT="${AEDST_POSTHOG_HOST}")
+    AEDST_POSTHOG_HOST_DEFAULT="${AEDST_POSTHOG_HOST}"
+    AEDST_UPDATE_MANIFEST_URL_DEFAULT="${AEDST_UPDATE_MANIFEST_URL}"
+    AEDST_UPDATE_FEED_URL_DEFAULT="${AEDST_UPDATE_FEED_URL}"
+    AEDST_UPDATE_CHANNEL_DEFAULT="${AEDST_UPDATE_CHANNEL}")
 
 # sentry-native's crashpad backend runs crash capture in a separate process,
 # crashpad_handler(.exe), which must sit next to the executable (main.cpp passes
@@ -113,6 +118,7 @@ target_link_libraries(aedst-desktop PRIVATE
     Aedst::Platform
     Aedst::CrashReporting
     Aedst::Update
+    Aedst::Updater
     Aedst::Telemetry
     Aedst::Media
     Qt6::Core

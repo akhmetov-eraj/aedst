@@ -40,6 +40,11 @@ struct UpdateManifest {
     std::string minSupportedVersion{"0.0.0"};
     /// Unix time in seconds (integer). Used for replay/rollback protection.
     std::int64_t publishedAt{0};
+    /// A deliberate, signed rollback ("this release is bad, go back to `version`"). Only a manifest the
+    /// release key signed can say it, and it must still be NEWER (publishedAt) than anything seen before, so
+    /// an old manifest replayed by an attacker is rejected. Clients on a higher version treat it as a
+    /// mandatory downgrade; without the flag an older version is always refused.
+    bool rollback{false};
 
     friend bool operator==(const UpdateManifest&, const UpdateManifest&) = default;
 };
@@ -49,7 +54,7 @@ struct UpdateManifest {
 /// version (semver), channel ([a-z0-9-]{1,32}), releaseNotesUrl (https),
 /// publishedAt (positive integer), artifacts (1..32 entries, each with platform,
 /// arch, https url, 64-hex sha256, size in 1..kMaxArtifactBytes; no duplicate
-/// platform/arch pair). Optional: minSupportedVersion (semver). Unknown fields
+/// platform/arch pair). Optional: minSupportedVersion (semver), rollback (boolean). Unknown fields
 /// are ignored.
 ///
 /// NOTE: this does not check any signature; use ManifestVerifier::verify().

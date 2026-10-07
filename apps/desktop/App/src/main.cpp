@@ -1,4 +1,5 @@
 #include "app_dependencies.hpp"
+#include "app_updater.hpp"
 #include "startup_trace.hpp"
 #include "Presentation/admin_view_model.hpp"
 #include "Presentation/media_library_view_model.hpp"
@@ -23,6 +24,10 @@
 #include "aedst/platform/tray_notification_service.hpp"
 #include "aedst/telemetry/qt_log_bridge.hpp"
 #include "aedst/telemetry/sentry_reporter.hpp"
+
+#if defined(AEDST_HAS_VELOPACK)
+#include "velopack_installer.hpp"
+#endif
 
 #include <QApplication>
 #include <QCoreApplication>
@@ -194,6 +199,11 @@ int main(int argc, char* argv[]) {
         return EXIT_SUCCESS;
     }
 
+#if defined(AEDST_HAS_VELOPACK)
+    // Velopack install/update/uninstall hooks run before anything else and may end the process.
+    aedst::updater::velopackStartup();
+#endif
+
     const aedst::app::StartupTrace startup;
     // QApplication (not QGuiApplication): QSystemTrayIcon - native desktop
     // notifications on Windows - lives in Qt Widgets and requires it. The UI
@@ -260,6 +270,13 @@ int main(int argc, char* argv[]) {
         shutdownTelemetry();
         return EXIT_SUCCESS;
     }
+
+    // Self-update: signed manifest + the installer that fits this installation; off without a manifest URL or key.
+    aedst::app::AppUpdater appUpdater(
+        dataDirectory,
+        {.manifestUrl = configured("AEDST_UPDATE_MANIFEST_URL", AEDST_UPDATE_MANIFEST_URL_DEFAULT),
+         .feedUrl = configured("AEDST_UPDATE_FEED_URL", AEDST_UPDATE_FEED_URL_DEFAULT),
+         .channel = configured("AEDST_UPDATE_CHANNEL", AEDST_UPDATE_CHANNEL_DEFAULT)});
 
     aedst::app::AppConfig config{
         .apiBaseUrl = apiBaseUrl(),
@@ -357,7 +374,8 @@ int main(int argc, char* argv[]) {
                      [&engine]() { engine.retranslate(); });
 
     engine.setInitialProperties(
-        {{QStringLiteral("initialRoute"), QString::fromStdString(deps.initialRoute().name)}});
+        {{QStringLiteral("initialRoute"), QString::fromStdString(deps.initialRoute().name)},
+         {QStringLiteral("updater"), QVariant::fromValue(static_cast<QObject*>(appUpdater.service()))}});
     engine.loadFromModule("Aedst.App", "Main");
     startup.mark("QML loaded");
 
@@ -401,11 +419,13 @@ int main(int argc, char* argv[]) {
                          notificationsViewModel.setForeground(state == Qt::ApplicationActive);
                      });
 
+    appUpdater.start();
     deps.prewarmNetwork();
     deps.refreshSessionIfNeeded();
     deps.resumeSession();
 
     const int exitCode = QApplication::exec();
+    appUpdater.markHealthy();
     qCInfo(lcApp, "AEDST desktop exiting with code %d", exitCode);
     deps.analytics().flush();
     shutdownTelemetry();

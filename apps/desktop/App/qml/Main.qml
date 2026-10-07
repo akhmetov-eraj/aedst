@@ -28,6 +28,11 @@ ApplicationWindow {
     id: window
 
     required property string initialRoute
+    // aedst::updater::UpdateService (null when updates are off); State: 3 Downloading, 4 ReadyToInstall, 5 Available.
+    property var updater: null
+    readonly property bool updateBannerVisible: updater !== null && updater.availableVersion !== dismissedVersion && chromeVisible
+        && (updater.state === 4 || updater.state === 5 || (updater.mandatory && updater.state === 3))
+    property string dismissedVersion
 
     readonly property bool onLoginRoute: AppRouter.currentRoute === "auth/login"
     readonly property bool canGoBack: AppRouter.depth > 1
@@ -246,6 +251,42 @@ ApplicationWindow {
         anchors.margins: Theme.spacingMd
         variant: AedstAlert.Variant.Destructive
         MouseArea { anchors.fill: parent; onClicked: errorBanner.visible = false }
+    }
+
+    AedstAlert {
+        id: updateBanner
+        objectName: "updateBanner"
+        z: 9
+        visible: window.updateBannerVisible
+        anchors.top: parent.top
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.margins: Theme.spacingMd
+        variant: window.updater && window.updater.mandatory ? AedstAlert.Variant.Warning : AedstAlert.Variant.Info
+        title: !window.updater ? "" : window.updater.isRollback
+            ? qsTr("Returning to version %1").arg(window.updater.availableVersion)
+            : qsTr("Version %1 is available").arg(window.updater.availableVersion)
+        description: !window.updater ? "" : window.updater.state === 4
+            ? qsTr("Restart AEDST to finish updating.")
+            : qsTr("Update AEDST with your package manager.")
+        RowLayout {
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            anchors.rightMargin: Theme.spacingMd
+            AedstButton {
+                visible: window.updater && window.updater.state === 4
+                size: AedstButton.Size.Sm
+                text: qsTr("Restart to update")
+                onClicked: window.updater.installAndRestart()
+            }
+            AedstButton {
+                visible: window.updater && !window.updater.mandatory
+                variant: AedstButton.Variant.Ghost
+                size: AedstButton.Size.Sm
+                text: qsTr("Later")
+                onClicked: { window.dismissedVersion = window.updater.availableVersion; window.updater.dismiss() }
+            }
+        }
     }
 
     Column {

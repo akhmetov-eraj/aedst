@@ -34,9 +34,12 @@ struct UpdateOffer {
     /// The artifact for this platform/arch; its url/sha256/size were verified as
     /// part of the signed manifest but the file itself is NOT downloaded here.
     ArtifactInfo artifact;
-    /// installedVersion < manifest.minSupportedVersion.
+    /// installedVersion < manifest.minSupportedVersion, or a signed rollback away from a higher version.
     bool mandatory{false};
     bool isDowngrade{false};
+    /// The manifest is an explicit, signed rollback (manifest.rollback); isDowngrade is then true for
+    /// clients that run a higher version.
+    bool rollback{false};
 };
 
 /// Fetches, verifies and evaluates the update manifest. It never downloads or
@@ -47,7 +50,8 @@ struct UpdateOffer {
 /// capped), Ed25519 signature (ManifestVerifier), channel match, replay
 /// protection (publishedAt and version must not go backwards vs the persisted
 /// UpdateState), then persists the new state, then version comparison vs the
-/// installed build (== up to date, < rollback error unless allowDowngrade).
+/// installed build (== up to date, < rollback error unless allowDowngrade or the
+/// manifest itself is a signed rollback, see UpdateManifest::rollback).
 class UpdateChecker final {
 public:
     /// All references must outlive the checker.

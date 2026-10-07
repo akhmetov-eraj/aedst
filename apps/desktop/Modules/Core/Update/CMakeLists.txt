@@ -21,6 +21,7 @@ add_library(AedstUpdate STATIC
     include/aedst/update/manifest.hpp
     include/aedst/update/manifest_verifier.hpp
     include/aedst/update/semver.hpp
+    include/aedst/update/startup_health_guard.hpp
     include/aedst/update/update_checker.hpp
     include/aedst/update/update_state_store.hpp
     include/aedst/update/url_validation.hpp
@@ -29,6 +30,7 @@ add_library(AedstUpdate STATIC
     src/manifest.cpp
     src/manifest_verifier.cpp
     src/semver.cpp
+    src/startup_health_guard.cpp
     src/update_checker.cpp
     src/update_state_store.cpp
     src/url_validation.cpp

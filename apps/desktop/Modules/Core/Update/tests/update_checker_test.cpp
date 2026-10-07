@@ -120,6 +120,75 @@ TEST_F(UpdateCheckerTest, PrereleaseIsOlderThanItsRelease) {
     EXPECT_EQ((*result)->manifest.version, "2.0.0");
 }
 
+/// manifestJson() with "rollback":true spliced in.
+std::string rollbackManifest(const std::string& version, std::int64_t publishedAt, const std::string& channel = "stable") {
+    std::string json = manifestJson(version, channel, publishedAt, "1.0.0");
+    json.replace(json.find('{') + 1, 0, "\"rollback\":true,");
+    return json;
+}
+
+TEST_F(UpdateCheckerTest, ASignedRollbackMovesClientsBackAsAMandatoryDowngrade) {
+    config_.installedVersion = "1.6.0";
+    serve(manifestJson("1.6.0", "stable", 1'700'000'000, "1.0.0")); // the release that turned out bad
+    ASSERT_TRUE(check().has_value());
+
+    serve(rollbackManifest("1.5.0", 1'700'000'100));
+    const auto result = check();
+
+    ASSERT_TRUE(result.has_value()) << result.error().message;
+    ASSERT_TRUE(result->has_value());
+    const UpdateOffer& offer = **result;
+    EXPECT_EQ(offer.manifest.version, "1.5.0");
+    EXPECT_TRUE(offer.rollback);
+    EXPECT_TRUE(offer.isDowngrade);
+    EXPECT_TRUE(offer.mandatory) << "a withdrawn release is not something the user may keep running";
+}
+
+TEST_F(UpdateCheckerTest, ARollbackStillNeedsAFresherPublishedAtThanAnythingSeen) {
+    serve(manifestJson("1.6.0", "stable", 1'700'000'500, "1.0.0"));
+    config_.installedVersion = "1.6.0";
+    ASSERT_TRUE(check().has_value());
+
+    serve(rollbackManifest("1.5.0", 1'700'000'100)); // an old rollback manifest, replayed later
+    const auto result = check();
+
+    ASSERT_FALSE(result.has_value());
+    EXPECT_NE(result.error().message.find("replay"), std::string::npos);
+}
+
+TEST_F(UpdateCheckerTest, ARollbackToTheInstalledVersionIsUpToDate) {
+    config_.installedVersion = "1.5.0";
+    serve(rollbackManifest("1.5.0", 1'700'000'100));
+    const auto result = check();
+    ASSERT_TRUE(result.has_value());
+    EXPECT_FALSE(result->has_value());
+}
+
+TEST_F(UpdateCheckerTest, AfterARollbackNormalReleasesFlowAgain) {
+    config_.installedVersion = "1.6.0";
+    serve(manifestJson("1.6.0", "stable", 1'700'000'000, "1.0.0"));
+    ASSERT_TRUE(check().has_value());
+    serve(rollbackManifest("1.5.0", 1'700'000'100));
+    ASSERT_TRUE(check().has_value());
+
+    config_.installedVersion = "1.5.0";
+    serve(manifestJson("1.6.1", "stable", 1'700'000'200, "1.0.0")); // the fixed release
+    const auto result = check();
+
+    ASSERT_TRUE(result.has_value()) << result.error().message;
+    ASSERT_TRUE(result->has_value());
+    EXPECT_EQ((*result)->manifest.version, "1.6.1");
+    EXPECT_FALSE((*result)->isDowngrade);
+    EXPECT_FALSE((*result)->rollback);
+}
+
+TEST_F(UpdateCheckerTest, ARollbackOnAnotherChannelIsIgnored) {
+    config_.installedVersion = "1.6.0";
+    serve(rollbackManifest("1.5.0", 1'700'000'100, "beta"));
+    const auto result = check();
+    ASSERT_FALSE(result.has_value()) << "channel confusion must not let a beta rollback move stable clients";
+}
+
 TEST_F(UpdateCheckerTest, RejectsAnOlderManifestAsRollback) {
     serve(manifestJson("1.4.0"));
     const auto result = check();

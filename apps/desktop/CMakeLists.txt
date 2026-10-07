@@ -39,6 +39,11 @@ set(AEDST_SENTRY_DSN "" CACHE STRING "Sentry DSN baked into the build (env AEDST
 set(AEDST_SENTRY_ENVIRONMENT "production" CACHE STRING "Sentry environment tag")
 set(AEDST_POSTHOG_KEY "" CACHE STRING "PostHog project API key (env AEDST_POSTHOG_KEY overrides)")
 set(AEDST_POSTHOG_HOST "https://us.i.posthog.com" CACHE STRING "PostHog ingestion host, https only (env AEDST_POSTHOG_HOST overrides)")
+# Self-update sources (docs/adr/0029-delivery-updates-signing.md). Environment variables of the same name override them.
+# Empty manifest URL, or a build without AEDST_UPDATE_PUBLIC_KEYS = updates off.
+set(AEDST_UPDATE_MANIFEST_URL "" CACHE STRING "https URL of the signed update manifest (env AEDST_UPDATE_MANIFEST_URL overrides)")
+set(AEDST_UPDATE_FEED_URL "" CACHE STRING "Base https URL of the Velopack release feed (env AEDST_UPDATE_FEED_URL overrides)")
+set(AEDST_UPDATE_CHANNEL "stable" CACHE STRING "Update channel: stable or beta (env AEDST_UPDATE_CHANNEL overrides)")
 # Flatpak builds against org.kde.Platform, which already ships Qt — bundling
 # Qt libraries into the install tree there would be wrong.
 option(AEDST_DEPLOY_QT "Install Qt runtime libraries/plugins alongside the executable" ON)
@@ -103,6 +108,7 @@ add_subdirectory(Modules/Core/Contract)
 add_subdirectory(Modules/Core/Connectivity)    # Aedst::Connectivity
 add_subdirectory(Modules/Core/CrashReporting)  # Aedst::CrashReporting
 add_subdirectory(Modules/Core/Update)          # Aedst::Update
+add_subdirectory(Modules/Core/Updater)         # Aedst::Updater (self-update orchestration, Velopack adapter)
 add_subdirectory(Modules/Core/Persistence)
 add_subdirectory(Modules/Core/Navigation)
 add_subdirectory(Modules/Core/Analytics)

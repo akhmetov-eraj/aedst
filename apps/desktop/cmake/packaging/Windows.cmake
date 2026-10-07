@@ -103,3 +103,28 @@ if(AEDST_MSIX_SIGN AND TARGET package_msix)
         COMMENT "Signing the MSIX (publisher in AppxManifest must match the certificate subject)"
         VERBATIM)
 endif()
+
+# --- MSI (package_msi) ---------------------------------------------------------------
+# Enterprise deployment (GPO, Intune, SCCM) wants an MSI next to the NSIS setup: per-machine, silent
+# (`msiexec /i aedst.msi /qn`), upgradable in place. CPack's WIX generator builds it (WiX Toolset: candle/light v3 or the
+# `wix` CLI v4+; whichever is on PATH). The MSI is not the self-updating channel (that is the Velopack setup); it is
+# updated by the management tool that deployed it, with a newer MSI sharing this UpgradeCode.
+# Sign the produced .msi with packaging/windows/sign.ps1.
+# CPACK_WIX_UPGRADE_GUID identifies the product line for ever: never change it, or upgrades install side by side.
+set(CPACK_WIX_UPGRADE_GUID "7668C1B6-78CD-4AE9-ADA2-B6CF0F06507C")
+set(CPACK_WIX_PROGRAM_MENU_FOLDER "${AEDST_DISPLAY_NAME}")
+set(CPACK_WIX_CMAKE_PACKAGE_REGISTRY "AEDST")
+find_program(AEDST_WIX_CANDLE candle PATHS "$ENV{WIX}/bin")
+find_program(AEDST_WIX_CLI wix)
+if(AEDST_WIX_CANDLE OR AEDST_WIX_CLI)
+    add_custom_target(package_msi
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${CMAKE_BINARY_DIR}/packages"
+        COMMAND "${CMAKE_CPACK_COMMAND}" -G WIX -C $<CONFIG> --config "${CMAKE_BINARY_DIR}/CPackConfig.cmake"
+                -B "${CMAKE_BINARY_DIR}/packages"
+        DEPENDS aedst-desktop
+        USES_TERMINAL
+        COMMENT "Building the MSI with CPack WIX"
+        VERBATIM)
+else()
+    message(STATUS "AEDST: WiX Toolset not found; package_msi target disabled")
+endif()

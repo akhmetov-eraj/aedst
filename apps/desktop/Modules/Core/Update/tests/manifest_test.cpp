@@ -44,6 +44,22 @@ TEST(ManifestTest, ParsesAValidManifest) {
     EXPECT_EQ(findArtifact(*manifest, "windows", "arm64"), nullptr);
 }
 
+TEST(ManifestTest, RollbackDefaultsToFalseAndMustBeABoolean) {
+    const auto plain = parseManifest(test_support::manifestJson());
+    ASSERT_TRUE(plain.has_value());
+    EXPECT_FALSE(plain->rollback);
+
+    std::string withRollback = test_support::manifestJson();
+    withRollback.replace(withRollback.find('{') + 1, 0, "\"rollback\":true,");
+    const auto parsed = parseManifest(withRollback);
+    ASSERT_TRUE(parsed.has_value()) << parsed.error().message;
+    EXPECT_TRUE(parsed->rollback);
+
+    std::string notBool = test_support::manifestJson();
+    notBool.replace(notBool.find('{') + 1, 0, "\"rollback\":\"yes\",");
+    EXPECT_FALSE(parseManifest(notBool).has_value());
+}
+
 TEST(ManifestTest, MinSupportedVersionIsOptional) {
     const std::string json = replaceFirst(manifestJson(), "\"minSupportedVersion\":\"1.0.0\",", "");
     const auto manifest = parseManifest(json);

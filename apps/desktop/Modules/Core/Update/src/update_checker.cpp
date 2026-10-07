@@ -61,7 +61,8 @@ core::Outcome<std::optional<UpdateOffer>> UpdateChecker::check() {
     }
     if (!state->lastSeenVersion.empty()) {
         const auto lastSeen = parseSemVer(state->lastSeenVersion);
-        if (lastSeen && compareSemVer(*offered, *lastSeen) < 0) {
+        // A signed rollback may move the version backwards; its publishedAt is still checked above.
+        if (!manifest->rollback && lastSeen && compareSemVer(*offered, *lastSeen) < 0) {
             return fail(Error::invalidArgument("update: manifest version is older than one already seen (rollback)"));
         }
     }
@@ -75,7 +76,7 @@ core::Outcome<std::optional<UpdateOffer>> UpdateChecker::check() {
         return std::optional<UpdateOffer>{};
     }
     const bool isDowngrade = order < 0;
-    if (isDowngrade && !config_.allowDowngrade) {
+    if (isDowngrade && !config_.allowDowngrade && !manifest->rollback) {
         return fail(Error::invalidArgument("update: manifest is older than the installed version (rollback rejected)"));
     }
 
@@ -86,8 +87,10 @@ core::Outcome<std::optional<UpdateOffer>> UpdateChecker::check() {
 
     UpdateOffer offer;
     offer.artifact = *artifact;
-    offer.mandatory = compareSemVer(*installed, *minimum) < 0;
+    offer.rollback = manifest->rollback;
     offer.isDowngrade = isDowngrade;
+    // Moving away from a release the publisher withdrew is not optional.
+    offer.mandatory = compareSemVer(*installed, *minimum) < 0 || (manifest->rollback && isDowngrade);
     offer.manifest = std::move(*manifest);
     return std::optional<UpdateOffer>{std::move(offer)};
 }

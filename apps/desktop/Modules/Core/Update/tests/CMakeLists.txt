@@ -10,6 +10,7 @@ add_executable(AedstUpdateTests
     manifest_test.cpp
     manifest_verifier_test.cpp
     semver_test.cpp
+    startup_health_guard_test.cpp
     update_checker_test.cpp
     url_validation_test.cpp
 )

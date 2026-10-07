@@ -30,5 +30,6 @@ Q_DECLARE_LOGGING_CATEGORY(lcPlatform)  // aedst.platform  single instance, auto
 Q_DECLARE_LOGGING_CATEGORY(lcMedia)     // aedst.media     uploads, image cache, video
 Q_DECLARE_LOGGING_CATEGORY(lcNavigation) // aedst.navigation router
 Q_DECLARE_LOGGING_CATEGORY(lcTelemetry) // aedst.telemetry Sentry, PostHog, consent
+Q_DECLARE_LOGGING_CATEGORY(lcUpdater)     // aedst.updater   update checks, feed binding, install
 Q_DECLARE_LOGGING_CATEGORY(lcNotifications) // aedst.notifications stream, polling, native notifications
 Q_DECLARE_LOGGING_CATEGORY(lcAuth)      // aedst.auth      OIDC sign-in, refresh, keychain (never tokens)

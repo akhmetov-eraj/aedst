@@ -12,7 +12,15 @@ include_guard(GLOBAL)
 # is linked statically (no extra shared library to ship or to replace).
 #
 # Provides AEDST_QTKEYCHAIN_TARGET (a CMake target) and AEDST_QTKEYCHAIN_INCLUDE_DIRS.
+option(AEDST_SYSTEM_QTKEYCHAIN "Use an installed QtKeychain (find_package(Qt6Keychain)) instead of fetching it; for sandboxed builds without network (Flatpak)" OFF)
+
 function(aedst_fetch_qtkeychain)
+    if(AEDST_SYSTEM_QTKEYCHAIN)
+        find_package(Qt6Keychain CONFIG REQUIRED)
+        set(AEDST_QTKEYCHAIN_TARGET Qt6Keychain::Qt6Keychain PARENT_SCOPE)
+        set(AEDST_QTKEYCHAIN_INCLUDE_DIRS "" PARENT_SCOPE) # the imported target carries its include directory
+        return()
+    endif()
     include(FetchContent)
     if(POLICY CMP0169)
         cmake_policy(SET CMP0169 OLD) # single-argument FetchContent_Populate: needed for EXCLUDE_FROM_ALL on 3.25

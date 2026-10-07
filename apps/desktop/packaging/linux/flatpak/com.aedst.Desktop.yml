@@ -13,8 +13,12 @@
 # protobuf must be the version vcpkg.json resolves to (see docs/adr/0002) - the
 # generated C++ is compiled against it at build time.
 #
-# Git sources are pinned by tag only. Before publishing to Flathub, pin each
-# one to its `commit:` as Flathub requires.
+# Git sources carry both the tag (readable) and the commit it resolved to when this file was last updated
+# (`git ls-remote <url> refs/tags/<tag>^{}`; annotated tags point at their target commit). Flathub requires the commit;
+# bump both together.
+#
+# Qt modules: QtNetworkAuth (OIDC) is expected in org.kde.Platform, and so are libsecret and libcurl. UNVERIFIED: confirm
+# with `flatpak run --command=ls org.kde.Platform//6.12 /usr/lib/x86_64-linux-gnu | grep -i networkauth` on the first build.
 app-id: com.aedst.Desktop
 runtime: org.kde.Platform
 # 6.12 matches qt-version.txt. As of 2026-10-07 Flathub publishes org.kde.Platform up to 6.11;
@@ -25,18 +29,20 @@ sdk: org.kde.Sdk
 command: aedst-desktop
 
 finish-args:
-  - --share=ipc
-  - --share=network
+  # The smallest set the app uses. Anything not listed is not reachable from the sandbox: no home or host filesystem,
+  # no session-bus access beyond what is named here, no devices other than the GPU.
+  - --share=ipc            # X11 shared memory (needed by Qt on X11; harmless on Wayland)
+  - --share=network        # API, OIDC (also the loopback redirect listener), updates
   - --socket=wayland
-  - --socket=fallback-x11
-  - --device=dri
-  # Secret storage (AedstPlatform -> libsecret): the Secret Service API on the session bus.
+  - --socket=fallback-x11  # X11 only when there is no Wayland
+  - --device=dri           # GPU rendering for Qt Quick
+  - --socket=pulseaudio    # audio of Aedst.Media (PipeWire serves the PulseAudio socket)
+  # Refresh token in the Secret Service (QtKeychain -> libsecret).
   - --talk-name=org.freedesktop.secrets
-  # Desktop notifications (org.freedesktop.Notifications via QDBus / QSystemTrayIcon).
-  - --talk-name=org.freedesktop.Notifications
-  # Autostart: the Background portal (org.freedesktop.portal.Background) is reached through
-  # the portal bus name; no host filesystem access to ~/.config/autostart is needed.
-  - --talk-name=org.freedesktop.portal.Desktop
+  # Tray icon (QSystemTrayIcon -> StatusNotifierItem). Without the watcher name the icon is silently missing.
+  - --talk-name=org.kde.StatusNotifierWatcher
+  # Not requested on purpose: org.freedesktop.Notifications and org.freedesktop.portal.* are reachable from every
+  # sandbox by default (notifications, OpenURI for the OIDC browser, Background for autostart).
 
 cleanup:
   - /include
@@ -56,6 +62,7 @@ modules:
       - type: git
         url: https://github.com/fmtlib/fmt.git
         tag: "12.2.0"
+        commit: 1be298e1bd68957e4cd352e1f676f00e07dcfb57
 
   - name: spdlog
     buildsystem: cmake-ninja
@@ -68,6 +75,7 @@ modules:
       - type: git
         url: https://github.com/gabime/spdlog.git
         tag: v1.17.0
+        commit: 79524ddd08a4ec981b7fea76afd08ee05f83755d
 
   - name: abseil-cpp
     buildsystem: cmake-ninja
@@ -81,6 +89,7 @@ modules:
       - type: git
         url: https://github.com/abseil/abseil-cpp.git
         tag: "20260107.1"
+        commit: 255c84dadd029fd8ad25c5efb5933e47beaa00c7
 
   - name: protobuf
     buildsystem: cmake-ninja
@@ -93,6 +102,7 @@ modules:
       - type: git
         url: https://github.com/protocolbuffers/protobuf.git
         tag: v33.4
+        commit: edaa823d8b36a8656d7b2b9241b7d0bfe50af878
 
   # Crash/error reporting (Aedst::Telemetry). Same version as the vcpkg baseline's
   # sentry-native port. libcurl and zlib come from the runtime; crashpad and its
@@ -110,6 +120,23 @@ modules:
       - type: git
         url: https://github.com/getsentry/sentry-native.git
         tag: "0.17.1"
+        commit: 620f6afda74c32a7c1468200a2578f62a8006277
+
+  # Refresh-token storage (Aedst::Oidc). Native builds fetch it with FetchContent; the sandbox has no network during the
+  # build, so it is built here and found with find_package (-DAEDST_SYSTEM_QTKEYCHAIN=ON below).
+  - name: qtkeychain
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=Release
+      - -DBUILD_WITH_QT6=ON
+      - -DBUILD_TEST_APPLICATION=OFF
+      - -DBUILD_TRANSLATIONS=OFF
+      - -DBUILD_SHARED_LIBS=ON
+    sources:
+      - type: git
+        url: https://github.com/frankosterfeld/qtkeychain.git
+        tag: 0.17.0
+        commit: 875f77d9f61bd97fd84cca47ce3bc71186dfbd09
 
   - name: aedst-desktop
     buildsystem: cmake-ninja
@@ -117,6 +144,8 @@ modules:
       - -DCMAKE_BUILD_TYPE=Release
       - -DBUILD_TESTING=OFF
       - -DAEDST_DEPLOY_QT=OFF
+      - -DAEDST_SYSTEM_QTKEYCHAIN=ON
+      - -DAEDST_REPRODUCIBLE_BUILD=ON
       - -DAEDST_PROTO_ROOT=/run/build/aedst-desktop/proto
     sources:
       - type: dir

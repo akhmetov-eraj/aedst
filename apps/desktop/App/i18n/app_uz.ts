@@ -4,6 +4,30 @@
 <context>
     <name>Main</name>
     <message>
+        <source>Returning to version %1</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Version %1 is available</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restart AEDST to finish updating.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Update AEDST with your package manager.</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Restart to update</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
+        <source>Later</source>
+        <translation type="unfinished"></translation>
+    </message>
+    <message>
         <source>AEDST</source>
         <translation>AEDST</translation>
     </message>
