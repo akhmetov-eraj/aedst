@@ -38,9 +38,8 @@ namespace aedst::persistence::detail {
 /// cannot defeat copy-on-write filesystems or SSD wear levelling.
 [[nodiscard]] core::VoidOutcome secureDeleteFile(const std::filesystem::path& file);
 
-// Platform keyring backends, defined in their own translation units. Return
+// Platform keyring backend, defined in its own translation unit. Returns
 // nullptr when the platform/build has no such backend.
-[[nodiscard]] std::unique_ptr<KeyringBackend> makeKeychainBackend();
 [[nodiscard]] std::unique_ptr<KeyringBackend> makeLibsecretBackend();
 
 } // namespace aedst::persistence::detail

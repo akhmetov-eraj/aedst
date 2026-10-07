@@ -14,7 +14,7 @@ inline constexpr std::uint64_t kMaxArtifactBytes = 4ULL * 1024ULL * 1024ULL * 10
 inline constexpr std::size_t kMaxManifestArtifacts = 32;
 
 struct ArtifactInfo {
-    /// "windows" | "macos" | "linux" (lowercase [a-z0-9_], at most 16 characters).
+    /// "windows" | "linux" (lowercase [a-z0-9_], at most 16 characters).
     std::string platform;
     /// "x86_64" | "arm64" | ...
     std::string arch;

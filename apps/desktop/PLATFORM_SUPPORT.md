@@ -1,19 +1,28 @@
 # Platform support — AEDST Desktop
 
+Targets: **Windows and Linux only** ([ADR-0023](docs/adr/0023-windows-and-linux-only.md)).
+macOS is served by the native app in [`apps/apple`](../apple); this tree refuses to
+configure on macOS.
+
 Qt is pinned in [`qt-version.txt`](qt-version.txt) (single source of truth). All
 status below is **design + CI configuration; nothing has been built yet.**
 
-| Criterion | Windows | macOS | Linux |
-|---|---|---|---|
-| Minimum OS | Windows 10 1809+ (Qt 6.12 requirement; Qt 6.12 is the last Qt release supporting Windows 10) | macOS 14.4 (`CMAKE_OSX_DEPLOYMENT_TARGET`, Qt 6.12 minimum) | glibc distros with GL/xkbcommon (Qt binaries built on Ubuntu 24.04, glibc 2.39); Flatpak `org.kde.Platform` 6.12 |
-| Toolchain | MSVC 19.37+ (VS 2022 17.7) | AppleClang (arm64 + x86_64 presets) | GCC 13+, Clang 17+ with libstdc++ 13+ |
-| Presets | `msvc-debug/release`, `msvc-asan` | `macos-debug/release`, `macos-x64-*`, `macos-asan` | `gcc-*`, `clang-*`, `*-asan`, `clang-tsan`, `coverage` |
-| Secret store | DPAPI-wrapped master key | Keychain (Security.framework) | Secret Service (libsecret, optional) → `0600` key file fallback |
-| Notifications | in-app only (native toast not implemented) | in-app only (`UserNotifications` not implemented) | `org.freedesktop.Notifications` via QtDBus, else in-app |
-| Autostart | `HKCU\...\Run` | LaunchAgent plist (`SMAppService` documented only) | XDG autostart; Flatpak portal documented only |
-| Installer | NSIS `.exe`, `.zip`, MSIX (unsigned unless configured) | `.dmg`, `.pkg` | `.deb`, `.rpm`, `.tar.gz`, Flatpak, AppImage (manual) |
-| Signing | Authenticode via `signtool` (needs secrets) | Developer ID + notarization (needs secrets) | detached GPG `.asc` (needs secret) |
-| CI runner | `windows-latest` | `macos-latest` (behaviour of the label: UNVERIFIED) | `ubuntu-latest` |
+## Minimum supported versions
+
+| | Windows | Linux |
+|---|---|---|
+| Operating system | Windows 10 22H2 (build 19045) and later, Windows 11 (all supported feature releases). Qt 6.12 itself needs Windows 10 1809+; 22H2 is the product floor because earlier Windows 10 releases are out of servicing. | Distributions with glibc ≥ 2.39 (Qt's official binaries are built on Ubuntu 24.04), GL/EGL and xkbcommon, Wayland or X11. |
+| Distributions we test and support | — | Ubuntu 24.04 LTS and newer, Debian 13 and newer, Fedora (current and previous release). **UNVERIFIED:** cross-check against the "Supported Platforms" page of Qt 6.12 before the first release; CI currently runs only on `ubuntu-latest`. |
+| Sandboxed delivery | MSIX (optional) | Flatpak on `org.kde.Platform` 6.12 (runtime not yet on Flathub — see packaging), AppImage (manual) |
+| Architectures | x86-64 | x86-64 (arm64 not built) |
+| Toolchain | MSVC 19.37+ (VS 2022 17.7) | GCC 13+, Clang 17+ with libstdc++ 13+ |
+| Presets | `msvc-debug/release`, `msvc-asan` | `gcc-*`, `clang-*`, `*-asan`, `clang-tsan`, `coverage` |
+| Secret store | DPAPI-wrapped master key | Secret Service (libsecret, optional) → `0600` key file fallback |
+| Notifications | `QSystemTrayIcon` toast (native WinRT toast not implemented) | `org.freedesktop.Notifications` via QtDBus, else tray, else in-app |
+| Autostart | `HKCU\...\Run` | XDG autostart; Flatpak portal documented only |
+| Installer | NSIS `.exe`, `.zip`, MSIX (unsigned unless configured) | `.deb`, `.rpm`, `.tar.gz`, Flatpak, AppImage (manual) |
+| Signing | Authenticode via `signtool` (needs secrets) | detached GPG `.asc` (needs secret) |
+| CI runner | `windows-latest` | `ubuntu-latest` |
 
 ## Capability checks and fallbacks
 
@@ -30,7 +39,6 @@ Every platform capability has a runtime availability check and a fallback:
 
 ## Known gaps
 
-- No universal macOS binary (build both presets, merge with `lipo`).
 - AppImage/Flatpak are not built in CI (need real icons, linuxdeploy,
   flatpak-builder).
-- Native Windows/macOS notifications, `SMAppService`, portal autostart.
+- Native Windows toast (WinRT), portal autostart.

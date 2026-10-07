@@ -31,7 +31,7 @@ compliance (custom code needs a documented technical reason).
 | Aspect | Assessment |
 |---|---|
 | Event loop | gRPC owns its threads and completion queues / callback executor. Every completion must be marshalled back to the GUI thread (`QMetaObject::invokeMethod(..., Qt::QueuedConnection)`); cancellation and lifetime across two runtimes is where the bugs live. |
-| TLS / certificates | Own TLS stack (BoringSSL, bundled) with its own root store. It does not use Schannel / the Windows or macOS trust store; enterprise TLS-inspection roots and pinned corporate CAs need extra plumbing (`GRPC_DEFAULT_SSL_ROOTS_FILE_PATH`, custom `SslCredentialsOptions`). Qt Network would still be needed for everything else, so two trust configurations to keep aligned. |
+| TLS / certificates | Own TLS stack (BoringSSL, bundled) with its own root store. It does not use Schannel / the Windows or system trust store; enterprise TLS-inspection roots and pinned corporate CAs need extra plumbing (`GRPC_DEFAULT_SSL_ROOTS_FILE_PATH`, custom `SslCredentialsOptions`). Qt Network would still be needed for everything else, so two trust configurations to keep aligned. |
 | Proxies | Env-var based HTTP CONNECT only; no OS/PAC proxy configuration. |
 | Transport | Requires end-to-end HTTP/2 with trailers. Corporate proxies, some CDNs and load balancers break this; Connect unary is plain POST and survives HTTP/1.1. |
 | Streaming | All four shapes. |

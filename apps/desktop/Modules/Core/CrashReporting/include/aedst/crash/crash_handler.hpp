@@ -24,7 +24,7 @@ namespace aedst::crash {
 /// - Windows: SetUnhandledExceptionFilter + MiniDumpWriteDump (dbghelp) writes
 ///   `crash-<utc>-<pid>.dmp`. MiniDumpNormal keeps stacks and the module list but
 ///   no heap; stacks can still hold user data, so treat dumps as sensitive.
-/// - Linux/macOS: sigaction (SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL) on an
+/// - Linux: sigaction (SIGSEGV, SIGABRT, SIGBUS, SIGFPE, SIGILL) on an
 ///   alternate stack. The handler uses only async-signal-safe calls (write,
 ///   fsync, close, time, raise, sigaction, and backtrace_symbols_fd, after
 ///   backtrace() was warmed up at install time) and writes a small text report

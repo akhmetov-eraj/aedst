@@ -7,7 +7,7 @@
 ## Prerequisites (all platforms)
 
 - CMake ≥ 3.25, Ninja, git, a C++23 compiler (MSVC 19.37+, GCC 13+, Clang 17+
-  with libstdc++ 13+, AppleClang from a recent Xcode).
+  with libstdc++ 13+).
 - [vcpkg](https://github.com/microsoft/vcpkg) with `VCPKG_ROOT` set. Packages come
   from `vcpkg.json` (pinned `builtin-baseline`); Qt does **not** come from vcpkg.
 - Qt at the version in `qt-version.txt`, with modules: Core, Gui, Qml, Quick,
@@ -33,19 +33,11 @@ export VCPKG_ROOT=~/vcpkg QT_ROOT_DIR=~/Qt/$(cat qt-version.txt)/gcc_64
 cmake --preset gcc-debug && cmake --build --preset gcc-debug && ctest --preset gcc-debug
 ```
 
-### macOS
-
-```bash
-export VCPKG_ROOT=~/vcpkg QT_ROOT_DIR=~/Qt/$(cat qt-version.txt)/macos
-cmake --preset macos-debug && cmake --build --preset macos-debug && ctest --preset macos-debug
-```
-`macos-x64-*` presets target Intel; universal binaries are merged with `lipo`.
-
 ## Presets
 
-`debug` / `release` (host compiler), `<msvc|gcc|clang|macos>-<debug|release>`,
-`bench`, sanitizers (`gcc-asan`, `clang-asan`, `clang-tsan`, `msvc-asan`,
-`macos-asan`), `coverage`; `wf-*` workflow presets chain configure→build→test.
+`debug` / `release` (host compiler), `<msvc|gcc|clang>-<debug|release>`,
+`bench`, sanitizers (`gcc-asan`, `clang-asan`, `clang-tsan`, `msvc-asan`),
+`coverage`; `wf-*` workflow presets chain configure→build→test.
 CI adds `-DAEDST_WARNINGS_AS_ERRORS=ON`.
 
 `scripts/verify-desktop-local.sh <preset>` runs configure + build + test and checks

@@ -64,21 +64,13 @@ TEST(PlatformInfoTest, NonLinuxIgnoresLinuxSpecificSignals) {
     EXPECT_EQ(winInfo.desktopEnvironment, "windows");
     EXPECT_FALSE(winInfo.isFlatpak);
     EXPECT_FALSE(winInfo.isSandboxed);
-
-    PlatformProbe mac;
-    mac.os = OperatingSystem::MacOs;
-    mac.environment = {{"APP_SANDBOX_CONTAINER_ID", "com.aedst.Desktop"}};
-    const PlatformInfo macInfo = describePlatform(mac);
-    EXPECT_EQ(macInfo.displayServer, "cocoa");
-    EXPECT_TRUE(macInfo.isSandboxed);
 }
 
 TEST(PlatformInfoTest, CurrentProbeOnlyCopiesAllowListedVariables) {
     const PlatformProbe probe = currentPlatformProbe();
     for (const auto& entry : probe.environment) {
         const bool allowed = entry.first == "XDG_SESSION_TYPE" || entry.first == "XDG_CURRENT_DESKTOP" ||
-                             entry.first == "WAYLAND_DISPLAY" || entry.first == "DISPLAY" || entry.first == "SNAP" ||
-                             entry.first == "APP_SANDBOX_CONTAINER_ID";
+                             entry.first == "WAYLAND_DISPLAY" || entry.first == "DISPLAY" || entry.first == "SNAP";
         EXPECT_TRUE(allowed) << entry.first;
     }
     EXPECT_FALSE(probe.architecture.empty());

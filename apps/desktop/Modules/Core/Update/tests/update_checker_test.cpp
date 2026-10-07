@@ -223,7 +223,7 @@ TEST_F(UpdateCheckerTest, RejectsOversizeResponses) {
 }
 
 TEST_F(UpdateCheckerTest, ReportsMissingArtifactForThisPlatform) {
-    config_.platform = "macos";
+    config_.platform = "linux";
     config_.arch = "arm64";
     serve(manifestJson("2.0.0"));
     const auto result = check();

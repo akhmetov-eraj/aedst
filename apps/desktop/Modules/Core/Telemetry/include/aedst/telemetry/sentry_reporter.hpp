@@ -28,7 +28,7 @@ struct SentryConfig {
 };
 
 /// Thin facade over sentry-native (crashpad backend: out-of-process minidumps on
-/// Windows, macOS and Linux). Process-wide, GUI-thread-agnostic (sentry-native is
+/// Windows and Linux). Process-wide, GUI-thread-agnostic (sentry-native is
 /// thread-safe). Compiled to no-ops when the build has no sentry-native
 /// (-DAEDST_ENABLE_SENTRY=OFF), so callers never #ifdef.
 ///

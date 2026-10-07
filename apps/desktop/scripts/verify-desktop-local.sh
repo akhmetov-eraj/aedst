@@ -5,7 +5,7 @@
 #   ./scripts/verify-desktop-local.sh gcc-asan
 #   ./scripts/verify-desktop-local.sh --lint         # only the fast static checks
 #
-# Presets: msvc-debug gcc-debug clang-debug macos-debug (+ -asan/-tsan variants,
+# Presets: msvc-debug gcc-debug clang-debug (+ -asan/-tsan variants,
 # coverage). See CMakePresets.json. Checks that the required tools exist first and
 # says how to get each missing one, instead of failing 30 seconds into cmake.
 set -euo pipefail
@@ -34,7 +34,6 @@ preset="${1:-}"
 if [ -z "$preset" ]; then
   case "$(uname -s)" in
     Linux)   preset=gcc-debug ;;
-    Darwin)  preset=macos-debug ;;
     MINGW*|MSYS*|CYGWIN*) preset=msvc-debug ;;
     *) echo "unknown host; pass a preset explicitly" >&2; exit 2 ;;
   esac
@@ -42,13 +41,12 @@ fi
 
 need cmake  "https://cmake.org/download, >= 3.25 (CI uses 3.30.5)"
 need ctest  "ships with cmake"
-need ninja  "apt install ninja-build | brew install ninja | VS installs one"
+need ninja  "apt install ninja-build | VS installs one"
 
 case "$preset" in
   gcc-*|coverage)  need g++ "apt install g++-13 or newer" ;;
   clang-*)         need clang++ "apt install clang-17 or newer" ;;
   msvc-*)          need cl "run from a VS 2022 Developer prompt (or vcvars64.bat) so Ninja finds cl.exe" ;;
-  macos-*)         need clang++ "xcode-select --install" ;;
 esac
 case "$preset" in
   coverage) need gcovr "pip install gcovr" ;;

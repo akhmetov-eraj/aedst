@@ -15,12 +15,11 @@ per-OS implementation and a runtime availability check:
 - Deep links: pure allow-list parser `parseDeepLink` (length limits, percent
   decoding validation, control characters rejected).
 - Autostart: Windows `HKCU\...\Run`, Linux XDG autostart `.desktop` (atomic
-  `QSaveFile`), macOS LaunchAgent plist. Flatpak: portal documented, not
-  implemented (`UnsupportedAutostartManager`). `SMAppService` needs Objective-C
-  and is documented only.
+  `QSaveFile`). Flatpak: portal documented, not
+  implemented (`UnsupportedAutostartManager`).
 - Notifications: `QtDBus` (`org.freedesktop.Notifications`) on Linux when
   available, otherwise an in-app signal for `AedstToast`. Native Windows toast
-  (WinRT) and macOS `UserNotifications` are **not implemented**; `QSystemTrayIcon`
+  (WinRT) is **not implemented**; `QSystemTrayIcon`
   was rejected because it forces `QApplication`/Qt Widgets on a Qt Quick app.
 
 **Crash reporting (`Aedst::CrashReporting`)** — local capture only (Windows
@@ -46,6 +45,6 @@ reports `Local` or `Unknown`).
 
 ## Revisit when
 
-Windows/macOS native notifications are required (add an Objective-C++/WinRT
+Windows native notifications are required (add a WinRT
 backend behind `NotificationService`), or an auto-updater is wanted (then add a
 download+install stage after `ArtifactVerifier`, with OS-level signature checks).

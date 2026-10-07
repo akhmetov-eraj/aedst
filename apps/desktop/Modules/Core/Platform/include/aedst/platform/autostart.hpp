@@ -13,7 +13,7 @@ namespace aedst::platform {
 
 /// What gets launched at login.
 struct AutostartConfig {
-    /// Reverse-DNS id; also the .desktop / LaunchAgent file name and the
+    /// Reverse-DNS id; also the .desktop file name and the
     /// Windows Run value name. Validated by isValidAutostartId().
     std::string appId{"com.aedst.Desktop"};
     std::string displayName{"AEDST"};
@@ -50,15 +50,8 @@ public:
 [[nodiscard]] core::Outcome<std::filesystem::path> xdgAutostartFilePath(const EnvironmentMap& env,
                                                                          std::string_view appId);
 
-/// `$HOME/Library/LaunchAgents/<appId>.plist`.
-[[nodiscard]] core::Outcome<std::filesystem::path> launchAgentFilePath(const EnvironmentMap& env,
-                                                                        std::string_view appId);
-
 /// Freedesktop Desktop Entry with a correctly quoted/escaped Exec line.
 [[nodiscard]] core::Outcome<std::string> renderDesktopEntry(const AutostartConfig& config);
-
-/// launchd property list (RunAtLoad).
-[[nodiscard]] core::Outcome<std::string> renderLaunchAgentPlist(const AutostartConfig& config);
 
 /// Command line stored under HKCU\...\Run: quoted exe followed by the args.
 [[nodiscard]] core::Outcome<std::string> renderWindowsRunCommand(const AutostartConfig& config);
@@ -73,22 +66,6 @@ public:
 class XdgAutostartManager final : public AutostartManager {
 public:
     XdgAutostartManager(AutostartConfig config, std::filesystem::path filePath);
-
-    [[nodiscard]] bool isAvailable() const override;
-    [[nodiscard]] bool isEnabled() const override;
-    [[nodiscard]] core::VoidOutcome setEnabled(bool enabled) override;
-
-private:
-    AutostartConfig config_;
-    std::filesystem::path filePath_;
-};
-
-/// macOS: a per-user LaunchAgent plist (loaded by launchd at the next login).
-/// The modern API is SMAppService.mainApp.register() (macOS 13+), which needs
-/// Objective-C/Swift and is scoped out; the plist keeps macOS 12 working too.
-class LaunchAgentAutostartManager final : public AutostartManager {
-public:
-    LaunchAgentAutostartManager(AutostartConfig config, std::filesystem::path filePath);
 
     [[nodiscard]] bool isAvailable() const override;
     [[nodiscard]] bool isEnabled() const override;
@@ -128,7 +105,7 @@ private:
     std::string reason_;
 };
 
-/// Picks the implementation at compile time (_WIN32 / __APPLE__ / else) and
+/// Picks the implementation at compile time (_WIN32 / else) and
 /// degrades to UnsupportedAutostartManager at runtime when unusable (Flatpak,
 /// missing HOME, invalid config).
 [[nodiscard]] std::unique_ptr<AutostartManager> makeAutostartManager(AutostartConfig config);

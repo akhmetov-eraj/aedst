@@ -100,7 +100,7 @@ private:
 };
 #endif
 
-/// Minimal operations a platform keyring (macOS Keychain, Secret Service) must
+/// Minimal operations a platform keyring (Secret Service) must
 /// offer. Kept separate from MasterKeyProvider so migration/generation logic is
 /// shared and testable with a fake backend.
 class KeyringBackend {
@@ -136,7 +136,6 @@ private:
 
 /// Picks the best provider for this host and logs (never the key) which one:
 ///   Windows: DPAPI                      (`<dataDirectory>/secure.key.dpapi`)
-///   macOS:   Keychain                   (falls back to file if unavailable)
 ///   Linux:   Secret Service (libsecret; only when built with
 ///            AEDST_HAVE_LIBSECRET)      (falls back to file if unavailable)
 ///   other/fallback: FileMasterKeyProvider (`<dataDirectory>/secure.key`)

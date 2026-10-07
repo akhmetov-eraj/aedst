@@ -18,31 +18,40 @@ mediav1::Media readyImage() {
     media.set_kind(mediav1::MEDIA_KIND_IMAGE);
     media.set_status(mediav1::MEDIA_STATUS_READY);
     media.set_url("https://storage.example/original.jpg?X-Amz-Signature=abc&x=1");
-    auto* small = media.add_variants();
-    small->set_kind(mediav1::VARIANT_KIND_THUMBNAIL);
-    small->set_url("https://storage.example/thumb-128.jpg?sig=1");
-    small->set_width(128);
-    small->set_height(96);
-    auto* large = media.add_variants();
-    large->set_kind(mediav1::VARIANT_KIND_THUMBNAIL);
-    large->set_url("https://storage.example/thumb-512.jpg?sig=2");
-    large->set_width(512);
-    large->set_height(384);
-    auto* preview = media.add_variants();
-    preview->set_kind(mediav1::VARIANT_KIND_PREVIEW);
-    preview->set_url("https://storage.example/preview.jpg?sig=3");
-    preview->set_width(1600);
-    preview->set_height(1200);
+    auto* avatar = media.add_variants();
+    avatar->set_kind(mediav1::VARIANT_KIND_AVATAR_256);
+    avatar->set_url("https://img.example/avatar_256?sig=1");
+    avatar->set_width(256);
+    avatar->set_height(256);
+    auto* card = media.add_variants();
+    card->set_kind(mediav1::VARIANT_KIND_CARD_400);
+    card->set_url("https://img.example/card_400?sig=2");
+    card->set_width(400);
+    auto* feed = media.add_variants();
+    feed->set_kind(mediav1::VARIANT_KIND_FEED_800X600);
+    feed->set_url("https://img.example/feed_800x600?sig=3");
+    feed->set_width(800);
+    feed->set_height(600);
     return media;
 }
 
-TEST(MediaSourcesTest, PicksTheSmallestVariantCoveringTheTarget) {
+TEST(MediaSourcesTest, PicksThePresetForThePurpose) {
     const auto media = readyImage();
-    EXPECT_EQ(selectVariant(media, DisplayPurpose::Thumbnail, 100)->width(), 128);
-    EXPECT_EQ(selectVariant(media, DisplayPurpose::Thumbnail, 256)->width(), 512);
-    // Nothing covers 4000 px: the largest of the preferred kind wins.
-    EXPECT_EQ(selectVariant(media, DisplayPurpose::Thumbnail, 4000)->width(), 512);
-    EXPECT_EQ(selectVariant(media, DisplayPurpose::Preview, 800)->kind(), mediav1::VARIANT_KIND_PREVIEW);
+    EXPECT_EQ(selectVariant(media, DisplayPurpose::Thumbnail, 256)->kind(), mediav1::VARIANT_KIND_AVATAR_256);
+    EXPECT_EQ(selectVariant(media, DisplayPurpose::Preview, 800)->kind(), mediav1::VARIANT_KIND_FEED_800X600);
+    EXPECT_EQ(selectVariant(media, DisplayPurpose::Playback, 800), nullptr);
+}
+
+TEST(MediaSourcesTest, ImagePreviewIsTheUncroppedOriginal) {
+    const auto media = readyImage();
+    EXPECT_EQ(urlFor(media, DisplayPurpose::Preview, 1600), QUrl(QString::fromStdString(media.url())));
+}
+
+TEST(MediaSourcesTest, FallsBackToTheOriginalOnlyWithoutVariants) {
+    auto media = readyImage();
+    media.clear_variants();
+    EXPECT_EQ(selectVariant(media, DisplayPurpose::Thumbnail, 128), nullptr);
+    EXPECT_EQ(urlFor(media, DisplayPurpose::Thumbnail, 128), QUrl(QString::fromStdString(media.url())));
 }
 
 TEST(MediaSourcesTest, NotReadyMeansNothingToShow) {
@@ -57,8 +66,8 @@ TEST(MediaSourcesTest, ImageIdRoundTripsThePresignedUrl) {
     const QString source = imageSourceFor(media, DisplayPurpose::Thumbnail, 100);
     ASSERT_TRUE(source.startsWith(QStringLiteral("image://media/")));
     const ImageRequest request = parseImageId(source.mid(QStringLiteral("image://media/").size()));
-    EXPECT_EQ(request.cacheKey, QStringLiteral("11111111-1111-4111-8111-111111111111/thumbnail"));
-    EXPECT_EQ(request.url, QUrl(QStringLiteral("https://storage.example/thumb-128.jpg?sig=1")));
+    EXPECT_EQ(request.cacheKey, QStringLiteral("11111111-1111-4111-8111-111111111111/avatar_256"));
+    EXPECT_EQ(request.url, QUrl(QStringLiteral("https://img.example/avatar_256?sig=1")));
 }
 
 TEST(MediaSourcesTest, ImageIdNeverResolvesToLocalFiles) {

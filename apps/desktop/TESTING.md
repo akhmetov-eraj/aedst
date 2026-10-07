@@ -16,7 +16,7 @@
 | Performance | `Network/bench` (QBENCHMARK, `bench` preset); `PerformanceBudget` test in Persistence | Qt Test / GoogleTest | `bench` / `unit` |
 | Security | secrets (tamper/wrong-key/legacy-migration), transport policy table, redaction, deep-link allow-list, update signature/rollback/hash, crash-upload consent | GoogleTest | `unit` |
 | Regression | every fixed bug gets a test named after the failure (`TEST(Area, Regression_<what>)`) in the module it lives in | any | as above |
-| Cross-platform | CI matrix: Windows (MSVC), Linux (GCC, Clang), macOS (AppleClang) | — | all labels |
+| Cross-platform | CI matrix: Windows (MSVC), Linux (GCC, Clang) | — | all labels |
 
 The crash-signal handlers and Windows minidump filter are process-fatal code and
 are **manually verified** (checklist in `Modules/Core/CrashReporting/CMakeLists.txt`);
@@ -31,7 +31,7 @@ ctest --preset gcc-debug -L unit            # or qttest / qmltest
 ```
 
 Sanitizers (`AEDST_SANITIZER`): presets `gcc-asan`, `clang-asan`, `clang-tsan`,
-`msvc-asan`, `macos-asan`; the test presets export `ASAN_OPTIONS`, `UBSAN_OPTIONS`,
+`msvc-asan`; the test presets export `ASAN_OPTIONS`, `UBSAN_OPTIONS`,
 `TSAN_OPTIONS` and suppression files from `cmake/sanitizers/`. Suppressions are
 empty until a real run justifies one — each entry needs a comment and an issue.
 

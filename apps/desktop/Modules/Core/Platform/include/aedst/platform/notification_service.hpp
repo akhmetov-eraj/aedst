@@ -64,14 +64,13 @@ signals:
 ///    server: a native desktop notification (falling back to `inAppFallback` if
 ///    the call cannot be sent);
 ///  - otherwise `nativeDesktop` when given and available - the app passes its
-///    TrayNotificationService (QSystemTrayIcon::showMessage: Windows toast/balloon,
-///    macOS Notification Center, Linux tray), see tray_notification_service.hpp;
+///    TrayNotificationService (QSystemTrayIcon::showMessage: Windows toast/balloon, Linux tray), see tray_notification_service.hpp;
 ///  - otherwise forwards to `inAppFallback` (AedstToast).
 /// `inAppFallback` and `nativeDesktop` must outlive the returned service.
 ///
 /// Still not implemented: WinRT ToastNotificationManager (actions, history;
-/// needs an AppUserModelID shortcut) and UNUserNotificationCenter (Objective-C++,
-/// signed bundle). The tray path covers "show a native notification" without them.
+/// needs an AppUserModelID shortcut). The tray path covers "show a native notification"
+/// without it.
 [[nodiscard]] std::unique_ptr<NotificationService> makeNotificationService(NotificationService& inAppFallback,
                                                                            NotificationService* nativeDesktop = nullptr);
 

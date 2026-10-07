@@ -66,7 +66,7 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
     }
     deps->database_ = std::make_shared<persistence::SqliteConnection>(std::move(*database));
     // Master key lives in the OS credential store (DPAPI-wrapped file on Windows,
-    // Keychain on macOS, Secret Service on Linux) with a 0600 key file only as fallback.
+    // Secret Service on Linux) with a 0600 key file only as fallback.
     std::shared_ptr<persistence::MasterKeyProvider> keyProvider(
         persistence::createPlatformMasterKeyProvider(config.dataDirectory));
     deps->secureStorage_ = std::make_shared<persistence::SecureStorage>(std::move(keyProvider));

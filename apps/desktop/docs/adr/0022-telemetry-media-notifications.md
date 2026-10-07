@@ -47,7 +47,7 @@ once, at most 3 per poll plus one summary, honouring the server preferences
 (`push_enabled` = "desktop notifications"). Native display goes through
 `platform::NotificationService`: D-Bus on Linux when available, otherwise
 **`TrayNotificationService` (`QSystemTrayIcon::showMessage`)** - Windows toast/balloon,
-macOS Notification Center - with the in-app `AedstToast` as the fallback.
+Linux tray - with the in-app `AedstToast` as the fallback.
 
 This reverses ADR-0006's rejection of `QSystemTrayIcon`: it requires `QApplication`
 (Qt Widgets) instead of `QGuiApplication`. Accepted cost: Qt6::Widgets is linked and
@@ -58,7 +58,7 @@ server-streaming "watch unread" RPC would replace polling without UI changes.
 ### 4. Crash and error reporting: sentry-native (crashpad)
 
 `SentryReporter` (`Modules/Core/Telemetry`) wraps vcpkg `sentry-native` (default
-features: platform backend = crashpad on Windows/macOS/Linux, + transport).
+features: platform backend = crashpad on Windows/Linux, + transport).
 `crashpad_handler` is copied next to the executable (`App/CMakeLists.txt`).
 
 - Consent-gated: `require_user_consent`; nothing leaves the machine until the user
@@ -119,8 +119,8 @@ an "Access denied" state without signing out.
   baseline: protobuf 6.33.4, abseil 20260107.1, spdlog 1.17.0, fmt 12.2.0,
   sqlite3 3.53.4, openssl 3.6.5, gtest 1.18.0, sentry-native 0.17.1, boost-asio 1.92.0.
 - Qt **6.12.0** (latest in download.qt.io/official_releases/qt/, released
-  2026-09-30). Its documented minimums: macOS 14.4 (deployment target raised from
-  12.0), Windows 10 1809 (6.12 is the last release supporting Windows 10).
+  2026-09-30). Its documented minimums (the macOS 14.4 floor is moot: Desktop no longer targets macOS, ADR-0023):
+  Windows 10 1809 (6.12 is the last release supporting Windows 10).
   Whether 6.12 is an LTS release: UNVERIFIED. Flathub's `org.kde.Platform` had no
   6.12 branch yet (latest 6.11) - the Flatpak manifest targets 6.12 and needs that
   runtime (or a temporary 6.11.x pin).
@@ -142,5 +142,5 @@ and consent granted, and confirm the event is symbolicated.
 
 A streaming unread RPC exists (drop polling); WinRT/UN notifications with actions are
 required; Qt adds a Quick-native tray API (drop Qt Widgets); PostHog's `/flags`
-response shape changes; the macOS 14.4 floor is unacceptable for a product (pin the
-newest Qt LTS that still supports the needed macOS instead).
+response shape changes; Qt drops Windows 10 support and the product floor must stay there (pin the
+newest Qt LTS that still supports Windows 10 instead).

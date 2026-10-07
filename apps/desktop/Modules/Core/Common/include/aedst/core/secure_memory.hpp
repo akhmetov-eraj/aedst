@@ -34,7 +34,7 @@ inline void secureWipe(void* data, std::size_t size) noexcept {
 #elif defined(__linux__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
     explicit_bzero(data, size); // glibc >= 2.25 (g++ defines _GNU_SOURCE), musl >= 1.1.20, BSDs
 #else
-    // macOS and anything else: memset_s is only declared under optional feature macros,
+    // Anything else (no explicit_bzero / SecureZeroMemory): memset_s is only declared under optional feature macros,
     // so call memset through a volatile function pointer the optimiser cannot see through.
     static void* (*const volatile wipe)(void*, int, std::size_t) = std::memset;
     wipe(data, 0, size);

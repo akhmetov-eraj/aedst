@@ -68,34 +68,6 @@
       }
     },
     {
-      "name": "macos-base",
-      "hidden": true,
-      "inherits": "base",
-      "description": "macOS 14.4+ (Qt 6.12 minimum target per doc.qt.io/qt-6/supported-platforms.html), AppleClang (Xcode 16+ / macOS 15 SDK); the host default compiler (xcode-select) is used. Universal (arm64+x86_64) binaries: vcpkg builds one triplet per tree, so build the arm64 and x64 presets separately and merge with lipo -create (not automated).",
-      "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" },
-      "cacheVariables": {
-        "CMAKE_OSX_DEPLOYMENT_TARGET": "14.4"
-      }
-    },
-    {
-      "name": "macos-arm64-base",
-      "hidden": true,
-      "inherits": "macos-base",
-      "cacheVariables": {
-        "CMAKE_OSX_ARCHITECTURES": "arm64",
-        "VCPKG_TARGET_TRIPLET": "arm64-osx"
-      }
-    },
-    {
-      "name": "macos-x64-base",
-      "hidden": true,
-      "inherits": "macos-base",
-      "cacheVariables": {
-        "CMAKE_OSX_ARCHITECTURES": "x86_64",
-        "VCPKG_TARGET_TRIPLET": "x64-osx"
-      }
-    },
-    {
       "name": "san-asan",
       "hidden": true,
       "description": "AddressSanitizer + UBSan (MSVC: ASan only). Debug, LTO off. See cmake/AedstSanitizers.cmake.",
@@ -139,15 +111,10 @@
     { "name": "gcc-release", "displayName": "Release (GCC)", "inherits": ["gcc-base", "config-release"] },
     { "name": "clang-debug", "displayName": "Debug (Clang)", "inherits": ["clang-base", "config-debug"] },
     { "name": "clang-release", "displayName": "Release (Clang)", "inherits": ["clang-base", "config-release"] },
-    { "name": "macos-debug", "displayName": "Debug (AppleClang, arm64)", "inherits": ["macos-arm64-base", "config-debug"] },
-    { "name": "macos-release", "displayName": "Release (AppleClang, arm64)", "inherits": ["macos-arm64-base", "config-release"] },
-    { "name": "macos-x64-debug", "displayName": "Debug (AppleClang, x86_64)", "inherits": ["macos-x64-base", "config-debug"] },
-    { "name": "macos-x64-release", "displayName": "Release (AppleClang, x86_64)", "inherits": ["macos-x64-base", "config-release"] },
     { "name": "gcc-asan", "displayName": "Debug + ASan/UBSan (GCC)", "inherits": ["gcc-base", "config-debug", "san-asan"] },
     { "name": "clang-asan", "displayName": "Debug + ASan/UBSan (Clang)", "inherits": ["clang-base", "config-debug", "san-asan"] },
     { "name": "clang-tsan", "displayName": "Debug + TSan (Clang)", "inherits": ["clang-base", "config-debug", "san-tsan"] },
     { "name": "msvc-asan", "displayName": "Debug + ASan (MSVC)", "inherits": ["msvc-base", "config-debug", "san-asan"] },
-    { "name": "macos-asan", "displayName": "Debug + ASan/UBSan (AppleClang, arm64)", "inherits": ["macos-arm64-base", "config-debug", "san-asan"] },
     {
       "name": "coverage",
       "displayName": "Debug + gcov coverage (GCC); report via the coverage target",
@@ -167,15 +134,10 @@
     { "name": "gcc-release", "configurePreset": "gcc-release" },
     { "name": "clang-debug", "configurePreset": "clang-debug" },
     { "name": "clang-release", "configurePreset": "clang-release" },
-    { "name": "macos-debug", "configurePreset": "macos-debug" },
-    { "name": "macos-release", "configurePreset": "macos-release" },
-    { "name": "macos-x64-debug", "configurePreset": "macos-x64-debug" },
-    { "name": "macos-x64-release", "configurePreset": "macos-x64-release" },
     { "name": "gcc-asan", "configurePreset": "gcc-asan" },
     { "name": "clang-asan", "configurePreset": "clang-asan" },
     { "name": "clang-tsan", "configurePreset": "clang-tsan" },
     { "name": "msvc-asan", "configurePreset": "msvc-asan" },
-    { "name": "macos-asan", "configurePreset": "macos-asan" },
     { "name": "coverage", "configurePreset": "coverage" },
     { "name": "coverage-report", "configurePreset": "coverage", "targets": ["coverage"] }
   ],
@@ -195,16 +157,6 @@
       "environment": {
         "ASAN_OPTIONS": "detect_leaks=1:strict_string_checks=1:detect_stack_use_after_return=1",
         "LSAN_OPTIONS": "suppressions=${sourceDir}/cmake/sanitizers/lsan.supp:print_suppressions=0",
-        "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1:suppressions=${sourceDir}/cmake/sanitizers/ubsan.supp"
-      }
-    },
-    {
-      "name": "test-asan-macos",
-      "hidden": true,
-      "inherits": "test-base",
-      "description": "As test-asan-unix but LeakSanitizer is unavailable on macOS.",
-      "environment": {
-        "ASAN_OPTIONS": "detect_leaks=0:strict_string_checks=1:detect_stack_use_after_return=1",
         "UBSAN_OPTIONS": "print_stacktrace=1:halt_on_error=1:suppressions=${sourceDir}/cmake/sanitizers/ubsan.supp"
       }
     },
@@ -229,13 +181,10 @@
     { "name": "msvc-debug", "inherits": "test-base", "configurePreset": "msvc-debug" },
     { "name": "gcc-debug", "inherits": "test-base", "configurePreset": "gcc-debug" },
     { "name": "clang-debug", "inherits": "test-base", "configurePreset": "clang-debug" },
-    { "name": "macos-debug", "inherits": "test-base", "configurePreset": "macos-debug" },
-    { "name": "macos-x64-debug", "inherits": "test-base", "configurePreset": "macos-x64-debug" },
     { "name": "gcc-asan", "inherits": "test-asan-unix", "configurePreset": "gcc-asan" },
     { "name": "clang-asan", "inherits": "test-asan-unix", "configurePreset": "clang-asan" },
     { "name": "clang-tsan", "inherits": "test-tsan", "configurePreset": "clang-tsan" },
     { "name": "msvc-asan", "inherits": "test-asan-msvc", "configurePreset": "msvc-asan" },
-    { "name": "macos-asan", "inherits": "test-asan-macos", "configurePreset": "macos-asan" },
     { "name": "coverage", "inherits": "test-base", "configurePreset": "coverage" },
     {
       "name": "debug-unit",
@@ -255,7 +204,6 @@
     { "name": "msvc-debug-qmltest", "inherits": "msvc-debug", "filter": { "include": { "label": "qmltest" } } },
     { "name": "gcc-debug-qmltest", "inherits": "gcc-debug", "filter": { "include": { "label": "qmltest" } } },
     { "name": "clang-debug-qmltest", "inherits": "clang-debug", "filter": { "include": { "label": "qmltest" } } },
-    { "name": "macos-debug-qmltest", "inherits": "macos-debug", "filter": { "include": { "label": "qmltest" } } },
     {
       "name": "bench",
       "inherits": "test-base",
@@ -287,14 +235,6 @@
         { "type": "configure", "name": "clang-debug" },
         { "type": "build", "name": "clang-debug" },
         { "type": "test", "name": "clang-debug" }
-      ]
-    },
-    {
-      "name": "wf-macos-debug",
-      "steps": [
-        { "type": "configure", "name": "macos-debug" },
-        { "type": "build", "name": "macos-debug" },
-        { "type": "test", "name": "macos-debug" }
       ]
     },
     {

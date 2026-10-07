@@ -118,8 +118,7 @@ std::unique_ptr<MasterKeyProvider> createPlatformMasterKeyProvider(const std::fi
                                 probe.error().message);
     }
 #else
-    std::array<std::unique_ptr<KeyringBackend>, 2> backends{detail::makeKeychainBackend(),
-                                                           detail::makeLibsecretBackend()};
+    std::array<std::unique_ptr<KeyringBackend>, 1> backends{detail::makeLibsecretBackend()};
     for (auto& backend : backends) {
         if (!backend) {
             continue;

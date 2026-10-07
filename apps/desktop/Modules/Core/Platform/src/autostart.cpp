@@ -211,17 +211,6 @@ core::Outcome<std::filesystem::path> xdgAutostartFilePath(const EnvironmentMap& 
     return base / "autostart" / (std::string{appId} + ".desktop");
 }
 
-core::Outcome<std::filesystem::path> launchAgentFilePath(const EnvironmentMap& env, std::string_view appId) {
-    if (!isValidAutostartId(appId)) {
-        return fail(Error::invalidArgument("autostart: invalid app id"));
-    }
-    const std::string_view home = envValue(env, "HOME");
-    if (!isAbsoluteLike(home)) {
-        return fail(Error::notFound("autostart: HOME is not usable"));
-    }
-    return std::filesystem::path{home} / "Library" / "LaunchAgents" / (std::string{appId} + ".plist");
-}
-
 core::Outcome<std::string> renderDesktopEntry(const AutostartConfig& config) {
     auto exe = validatedExecutable(config);
     if (!exe) {
@@ -243,32 +232,6 @@ core::Outcome<std::string> renderDesktopEntry(const AutostartConfig& config) {
     out += "Exec=" + exec + "\n";
     out += "Terminal=false\n";
     out += "X-GNOME-Autostart-enabled=true\n";
-    return out;
-}
-
-core::Outcome<std::string> renderLaunchAgentPlist(const AutostartConfig& config) {
-    auto exe = validatedExecutable(config);
-    if (!exe) {
-        return fail(exe.error());
-    }
-    if (auto args = validateArguments(config); !args) {
-        return fail(args.error());
-    }
-    std::string out;
-    out += "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n";
-    out += "<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" "
-           "\"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n";
-    out += "<plist version=\"1.0\">\n<dict>\n";
-    out += "    <key>Label</key>\n    <string>" + xmlEscape(config.appId) + "</string>\n";
-    out += "    <key>ProgramArguments</key>\n    <array>\n";
-    out += "        <string>" + xmlEscape(*exe) + "</string>\n";
-    for (const std::string& arg : config.arguments) {
-        out += "        <string>" + xmlEscape(arg) + "</string>\n";
-    }
-    out += "    </array>\n";
-    out += "    <key>RunAtLoad</key>\n    <true/>\n";
-    out += "    <key>ProcessType</key>\n    <string>Interactive</string>\n";
-    out += "</dict>\n</plist>\n";
     return out;
 }
 
@@ -314,33 +277,6 @@ core::VoidOutcome XdgAutostartManager::setEnabled(bool enabled) {
         return removeIfPresent(filePath_);
     }
     auto content = renderDesktopEntry(config_);
-    if (!content) {
-        return fail(content.error());
-    }
-    return writeFileAtomically(filePath_, *content);
-}
-
-// ---- LaunchAgentAutostartManager -------------------------------------------
-
-LaunchAgentAutostartManager::LaunchAgentAutostartManager(AutostartConfig config, std::filesystem::path filePath)
-    : config_(std::move(config)), filePath_(std::move(filePath)) {}
-
-bool LaunchAgentAutostartManager::isAvailable() const {
-    return !filePath_.empty() && isValidAutostartId(config_.appId);
-}
-
-bool LaunchAgentAutostartManager::isEnabled() const {
-    return isAvailable() && fileExists(filePath_);
-}
-
-core::VoidOutcome LaunchAgentAutostartManager::setEnabled(bool enabled) {
-    if (!isAvailable()) {
-        return fail(Error::invalidArgument("autostart: not available"));
-    }
-    if (!enabled) {
-        return removeIfPresent(filePath_);
-    }
-    auto content = renderLaunchAgentPlist(config_);
     if (!content) {
         return fail(content.error());
     }
@@ -414,12 +350,6 @@ std::unique_ptr<AutostartManager> makeAutostartManager(AutostartConfig config, c
 #if defined(_WIN32)
     static_cast<void>(probe);
     return std::make_unique<WindowsRunKeyAutostartManager>(std::move(config));
-#elif defined(__APPLE__)
-    auto path = launchAgentFilePath(probe.environment, config.appId);
-    if (!path) {
-        return std::make_unique<UnsupportedAutostartManager>(path.error().message);
-    }
-    return std::make_unique<LaunchAgentAutostartManager>(std::move(config), std::move(*path));
 #else
     if (probe.flatpakInfoExists) {
         return std::make_unique<UnsupportedAutostartManager>(

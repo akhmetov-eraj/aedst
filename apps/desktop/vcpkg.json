@@ -9,7 +9,7 @@
     "openssl",
     "protobuf",
     {
-      "$comment": "Crash/error reporting (Aedst::Telemetry). Default features = platform backend (crashpad on Windows/macOS/Linux) + transport. Runtime-disabled while AEDST_SENTRY_DSN is empty or crash-report consent is not granted. See docs/adr/0022-telemetry-media-notifications.md.",
+      "$comment": "Crash/error reporting (Aedst::Telemetry). Default features = platform backend (crashpad on Windows/Linux) + transport. Runtime-disabled while AEDST_SENTRY_DSN is empty or crash-report consent is not granted. See docs/adr/0022-telemetry-media-notifications.md.",
       "name": "sentry-native",
       "platform": "!uwp"
     },

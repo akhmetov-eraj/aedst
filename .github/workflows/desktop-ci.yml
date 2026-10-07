@@ -110,10 +110,6 @@ jobs:
           - { preset: msvc-debug, os: windows-latest, kind: test }
           - { preset: gcc-debug, os: ubuntu-latest, kind: test }
           - { preset: clang-debug, os: ubuntu-latest, kind: test }
-          # UNVERIFIED: `macos-latest` moves between macOS versions/architectures over time
-          # (currently Apple Silicon); the macos-debug preset assumes arm64. Pin an explicit
-          # label (e.g. macos-13 for x86_64) once the runner policy is decided.
-          - { preset: macos-debug, os: macos-latest, kind: test }
           - { preset: gcc-asan, os: ubuntu-latest, kind: sanitize }
           - { preset: clang-asan, os: ubuntu-latest, kind: sanitize }
           - { preset: clang-tsan, os: ubuntu-latest, kind: sanitize }
@@ -227,7 +223,6 @@ jobs:
         include:
           - { preset: msvc-release, os: windows-latest, cpack: "NSIS;ZIP" }
           - { preset: gcc-release, os: ubuntu-latest, cpack: "DEB;RPM;TGZ" }
-          - { preset: macos-release, os: macos-latest, cpack: "DragNDrop;productbuild" }
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -273,45 +268,17 @@ jobs:
         env:
           WINDOWS_CERT_PFX_BASE64: ${{ secrets.WINDOWS_CERT_PFX_BASE64 }}
           WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
-          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
-          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_INSTALLER_IDENTITY: ${{ secrets.APPLE_INSTALLER_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
         run: |
           has=false
           case "$RUNNER_OS" in
             Windows)
               if [ -n "$WINDOWS_CERT_PFX_BASE64" ] && [ -n "$WINDOWS_CERT_PASSWORD" ]; then has=true; fi ;;
-            macOS)
-              if [ -n "$APPLE_CERT_P12_BASE64" ] && [ -n "$APPLE_CERT_PASSWORD" ] && [ -n "$APPLE_SIGNING_IDENTITY" ] \
-                 && [ -n "$APPLE_INSTALLER_IDENTITY" ] && [ -n "$APPLE_ID" ] && [ -n "$APPLE_TEAM_ID" ] \
-                 && [ -n "$APPLE_APP_SPECIFIC_PASSWORD" ]; then has=true; fi ;;
             Linux)
               if [ -n "$GPG_PRIVATE_KEY" ]; then has=true; fi ;;
           esac
           echo "HAS_SIGNING_SECRETS=$has" >> "$GITHUB_ENV"
           echo "Signing secrets present for $RUNNER_OS: $has"
-
-      - name: Import Apple certificates into a temporary keychain
-        if: runner.os == 'macOS' && env.HAS_SIGNING_SECRETS == 'true'
-        env:
-          APPLE_CERT_P12_BASE64: ${{ secrets.APPLE_CERT_P12_BASE64 }}
-          APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
-        run: |
-          keychain="$RUNNER_TEMP/aedst-signing.keychain-db"
-          kc_password="$(uuidgen)"
-          security create-keychain -p "$kc_password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$kc_password" "$keychain"
-          echo "$APPLE_CERT_P12_BASE64" | base64 --decode > "$RUNNER_TEMP/aedst-cert.p12"
-          security import "$RUNNER_TEMP/aedst-cert.p12" -P "$APPLE_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$keychain"
-          rm -f "$RUNNER_TEMP/aedst-cert.p12"
-          security set-key-partition-list -S apple-tool:,apple: -k "$kc_password" "$keychain" >/dev/null
-          security list-keychains -d user -s "$keychain" login.keychain-db
 
       # Telemetry keys are baked into release builds from repository secrets (empty on
       # forks: Sentry and PostHog then stay off at runtime). Neither is a credential
@@ -337,14 +304,9 @@ jobs:
           WINDOWS_CERT_PASSWORD: ${{ secrets.WINDOWS_CERT_PASSWORD }}
         run: ./packaging/windows/sign.ps1 -Files build/${{ matrix.preset }}/App/aedst-desktop.exe
 
-      # macOS: cmake/packaging/MacOSPreBuild.cmake signs the staged .app inside CPack when
-      # APPLE_SIGNING_IDENTITY is set; CPACK_PRODUCTBUILD_IDENTITY_NAME signs the .pkg.
       - name: Package (cpack)
         working-directory: apps/desktop/build/${{ matrix.preset }}
         run: cpack -G "${{ matrix.cpack }}"
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ env.HAS_SIGNING_SECRETS == 'true' && secrets.APPLE_SIGNING_IDENTITY || '' }}
-          APPLE_INSTALLER_IDENTITY: ${{ env.HAS_SIGNING_SECRETS == 'true' && secrets.APPLE_INSTALLER_IDENTITY || '' }}
 
       - name: Sign the Windows installer
         if: runner.os == 'Windows' && env.HAS_SIGNING_SECRETS == 'true'
@@ -355,24 +317,6 @@ jobs:
         run: |
           $installers = Get-ChildItem build/${{ matrix.preset }}/packages -Filter *.exe | ForEach-Object { $_.FullName }
           ./packaging/windows/sign.ps1 -Files $installers
-
-      - name: Sign and notarize the macOS DMG and PKG
-        if: runner.os == 'macOS' && env.HAS_SIGNING_SECRETS == 'true'
-        env:
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-        run: |
-          shopt -s nullglob
-          for dmg in build/${{ matrix.preset }}/packages/*.dmg; do
-            bash ./packaging/macos/sign-and-notarize.sh sign-file "$dmg"
-            bash ./packaging/macos/sign-and-notarize.sh notarize "$dmg"
-          done
-          # The .pkg was signed by productbuild (CPACK_PRODUCTBUILD_IDENTITY_NAME).
-          for pkg in build/${{ matrix.preset }}/packages/*.pkg; do
-            bash ./packaging/macos/sign-and-notarize.sh notarize "$pkg"
-          done
 
       # Detached GPG signatures next to the .deb/.rpm/.tar.gz (verify: gpg --verify x.asc x).
       - name: Sign Linux packages (detached GPG)
@@ -393,7 +337,7 @@ jobs:
           path: apps/desktop/build/${{ matrix.preset }}/packages/*
           if-no-files-found: error
 
-      # PDB (Windows), .debug split by build-id (Linux), .dSYM (macOS): produced by the
+      # PDB (Windows), .debug split by build-id (Linux): produced by the
       # aedst_split_debug_symbols target (cmake/AedstBuildOptions.cmake). Keep them: a
       # release crash dump is unreadable without the symbols of THAT build.
       - uses: actions/upload-artifact@v4
@@ -403,7 +347,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-      # Sentry symbolication: upload this build's PDB / .debug / .dSYM so crashpad
+      # Sentry symbolication: upload this build's PDB / .debug so crashpad
       # minidumps resolve to functions and lines. The release name must match
       # SentryConfig.release ("aedst-desktop@<version>", App/src/main.cpp). Skipped
       # when the secrets are absent (forks, template users without Sentry).
@@ -442,7 +386,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [windows-latest, ubuntu-latest, macos-latest]
+        os: [windows-latest, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -462,13 +406,6 @@ jobs:
       - name: Verify (Linux .deb)
         if: runner.os == 'Linux'
         run: bash ./scripts/verify-install-linux.sh verify-pkg/*.deb "$AEDST_VERSION"
-
-      - name: Verify (macOS .dmg and .pkg)
-        if: runner.os == 'macOS'
-        run: |
-          for f in verify-pkg/*.dmg verify-pkg/*.pkg; do
-            bash ./scripts/verify-install-macos.sh "$f" "$AEDST_VERSION"
-          done
 
       - name: Verify (Windows NSIS installer)
         if: runner.os == 'Windows'

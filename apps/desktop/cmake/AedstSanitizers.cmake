@@ -11,7 +11,6 @@ include_guard(GLOBAL)
 #            (ASan and TSan are mutually exclusive by design).
 # MSVC:      only AddressSanitizer exists (/fsanitize=address, VS 2019 16.9+);
 #            both `asan-ubsan` and `asan` request it, UBSan is not available.
-# AppleClang: same as Clang (asan-ubsan / tsan work on macOS).
 #
 # Instrumented vcpkg dependencies are NOT rebuilt with the sanitizer; only this
 # tree is instrumented. Third-party noise goes through cmake/sanitizers/*.supp.
@@ -61,7 +60,7 @@ elseif(MSVC)
     add_link_options(/INCREMENTAL:NO)
     # Windows ASan: no LeakSanitizer; suppressions unsupported. Keep options minimal.
     list(APPEND AEDST_SANITIZER_RUN_ENV "ASAN_OPTIONS=strict_string_checks=1")
-elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     if(AEDST_SANITIZER MATCHES "^(asan-ubsan|asan)$")
         set(aedst_san_flags -fsanitize=address,undefined)
         if(AEDST_SANITIZER_NO_RECOVER)
@@ -73,12 +72,6 @@ elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|AppleClang")
             "ASAN_OPTIONS=detect_leaks=1:strict_string_checks=1:detect_stack_use_after_return=1"
             "LSAN_OPTIONS=${aedst_lsan}"
             "UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1:suppressions=${AEDST_SANITIZER_SUPP_DIR}/ubsan.supp")
-        if(APPLE)
-            # LeakSanitizer is not supported on macOS: ASan aborts at startup on detect_leaks=1.
-            list(FILTER AEDST_SANITIZER_RUN_ENV EXCLUDE REGEX "^(ASAN|LSAN)_OPTIONS=")
-            list(APPEND AEDST_SANITIZER_RUN_ENV
-                "ASAN_OPTIONS=detect_leaks=0:strict_string_checks=1:detect_stack_use_after_return=1")
-        endif()
     else() # tsan
         set(aedst_san_flags -fsanitize=thread)
         list(APPEND AEDST_SANITIZER_RUN_ENV

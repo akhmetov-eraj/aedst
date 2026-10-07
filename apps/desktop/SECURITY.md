@@ -19,7 +19,7 @@ issue).
 | Logs / telemetry | Secrets or PII leaking into support bundles | Redaction layer on every sink (`Aedst::Core`), no bodies/headers logged, analytics is a no-op port by default |
 | Updates | Malicious manifest / rollback / tampered installer | Ed25519-signed manifest, key rotation, rollback protection, https-only URLs, SHA-256 + size check ([ADR-0006](docs/adr/0006-platform-services-and-updates.md)) |
 | Deep links / second-launch arguments | Injection through `aedst://` URLs or argv | Strict allow-list parser (`parseDeepLink`), length limits, control characters stripped |
-| Release artifacts | Tampered build | Authenticode / notarization / detached GPG signatures in CI when secrets exist (unsigned otherwise) |
+| Release artifacts | Tampered build | Authenticode / detached GPG signatures in CI when secrets exist (unsigned otherwise) |
 
 ## Rules for contributors
 
@@ -35,8 +35,7 @@ issue).
    manifests: `update::ManifestVerifier`. Server data: Protovalidate on the
    server plus Domain validation here.
 5. **Minimum OS permissions.** The Flatpak manifest requests only network, the
-   Secret Service and Notifications bus names; macOS uses the hardened runtime
-   with `com.apple.security.network.client` only (`packaging/macos/entitlements.plist`).
+   Secret Service and Notifications bus names.
 6. **Dependencies:** vcpkg baseline pinned (`vcpkg.json`); Qt pinned
    (`qt-version.txt`). Adding a dependency requires updating
    `docs/content/library-first.md` in the same change.
@@ -62,7 +61,7 @@ issue).
   readable and users sign in once again.
 - Linux without a Secret Service (headless, Flatpak without portal): the master
   key falls back to a `0600` file next to the database — weaker, and logged.
-- Native Windows toast / macOS `UserNotifications` are not implemented; those
-  platforms use in-app notifications only.
-- Signing/notarization steps exist in CI but have never run against real
+- Native Windows toast (WinRT) is not implemented; Windows
+  uses the tray notification and in-app notifications only.
+- Signing steps exist in CI but have never run against real
   credentials.

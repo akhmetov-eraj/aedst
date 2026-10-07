@@ -40,7 +40,7 @@ TEST(ManifestTest, ParsesAValidManifest) {
     const ArtifactInfo* linuxArtifact = findArtifact(*manifest, "linux", "x86_64");
     ASSERT_NE(linuxArtifact, nullptr);
     EXPECT_TRUE(linuxArtifact->signature.empty());
-    EXPECT_EQ(findArtifact(*manifest, "macos", "arm64"), nullptr);
+    EXPECT_EQ(findArtifact(*manifest, "linux", "arm64"), nullptr);
     EXPECT_EQ(findArtifact(*manifest, "windows", "arm64"), nullptr);
 }
 

@@ -69,6 +69,6 @@ function(aedst_set_warnings target)
     target_compile_options(${target} ${scope}
         "$<$<CXX_COMPILER_ID:MSVC>:${msvc_warnings}>"
         "$<$<CXX_COMPILER_ID:GNU>:${gcc_warnings}>"
-        "$<$<CXX_COMPILER_ID:Clang,AppleClang>:${clang_warnings}>"
+        "$<$<CXX_COMPILER_ID:Clang>:${clang_warnings}>"
     )
 endfunction()

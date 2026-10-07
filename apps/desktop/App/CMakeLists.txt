@@ -3,7 +3,7 @@ include(AedstCompilerWarnings)
 # Widgets: QApplication + QSystemTrayIcon (native notifications); Multimedia: Aedst.Media players.
 find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Core Gui Qml Quick QuickControls2 Widgets Multimedia)
 
-qt_add_executable(aedst-desktop WIN32 MACOSX_BUNDLE
+qt_add_executable(aedst-desktop WIN32
     src/main.cpp
     src/app_dependencies.hpp
     src/app_dependencies.cpp
@@ -46,12 +46,7 @@ if(AEDST_ENABLE_SENTRY)
             COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${AEDST_CRASHPAD_HANDLER}" "$<TARGET_FILE_DIR:aedst-desktop>"
             COMMENT "Copying crashpad_handler next to aedst-desktop"
             VERBATIM)
-        if(APPLE)
-            set(aedst_crashpad_destination "aedst-desktop.app/Contents/MacOS")
-        else()
-            set(aedst_crashpad_destination "${CMAKE_INSTALL_BINDIR}")
-        endif()
-        install(PROGRAMS "${AEDST_CRASHPAD_HANDLER}" DESTINATION "${aedst_crashpad_destination}")
+        install(PROGRAMS "${AEDST_CRASHPAD_HANDLER}" DESTINATION "${CMAKE_INSTALL_BINDIR}")
     else()
         message(WARNING "AEDST: crashpad_handler not found; Sentry crash capture will not start "
                         "(sentry_init fails without it and the local CrashHandler is used instead).")
@@ -130,24 +125,7 @@ target_link_libraries(aedst-desktop PRIVATE
 set_target_properties(aedst-desktop PROPERTIES
     OUTPUT_NAME "aedst-desktop"
     WIN32_EXECUTABLE ON
-    MACOSX_BUNDLE ON
-    MACOSX_BUNDLE_GUI_IDENTIFIER "com.aedst.Desktop"
-    MACOSX_BUNDLE_BUNDLE_NAME "AEDST"
-    MACOSX_BUNDLE_BUNDLE_VERSION "${PROJECT_VERSION}"
-    MACOSX_BUNDLE_SHORT_VERSION_STRING "${PROJECT_VERSION}"
-    MACOSX_BUNDLE_COPYRIGHT "Copyright (C) AEDST"
 )
-
-# macOS bundle Info.plist (NSHighResolutionCapable, LSMinimumSystemVersion,
-# NSSupportsAutomaticGraphicsSwitching). @AEDST_MACOS_MIN_VERSION@ is substituted by CMake.
-# Icon hook: add App/resources/icons/aedst.icns and set MACOSX_BUNDLE_ICON_FILE + the
-# file as a MACOSX_PACKAGE_LOCATION Resources source once it exists.
-if(APPLE)
-    set(AEDST_MACOS_MIN_VERSION "14.4")
-    set(aedst_plist "${CMAKE_CURRENT_BINARY_DIR}/Info.plist.in")
-    configure_file("${PROJECT_SOURCE_DIR}/packaging/macos/Info.plist.in" "${aedst_plist}" @ONLY)
-    set_target_properties(aedst-desktop PROPERTIES MACOSX_BUNDLE_INFO_PLIST "${aedst_plist}")
-endif()
 
 aedst_set_warnings(aedst-desktop)
 
@@ -155,12 +133,11 @@ aedst_set_warnings(aedst-desktop)
 aedst_split_debug_symbols(aedst-desktop)
 
 install(TARGETS aedst-desktop
-    BUNDLE DESTINATION .
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 
 if(AEDST_DEPLOY_QT)
-    # windeployqt / macdeployqt / Qt's Linux deploy, driven by the QML imports it finds.
+    # windeployqt / Qt's Linux deploy, driven by the QML imports it finds.
     qt_generate_deploy_qml_app_script(
         TARGET aedst-desktop
         OUTPUT_SCRIPT aedst_deploy_script

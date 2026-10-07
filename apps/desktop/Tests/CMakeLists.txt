@@ -33,8 +33,8 @@ add_custom_target(check-qmltest
     COMMENT "Running QtQuickTest (label: qmltest)")
 
 # --- Sanitizers -----------------------------------------------------------------
-# Configure with a sanitizer preset (gcc-asan, clang-asan, clang-tsan, msvc-asan,
-# macos-asan) and prefer `ctest --preset <name>`: the test presets export the same
+# Configure with a sanitizer preset (gcc-asan, clang-asan, clang-tsan, msvc-asan)
+# and prefer `ctest --preset <name>`: the test presets export the same
 # environment. This target does the equivalent for a hand-configured tree.
 if(NOT AEDST_SANITIZER STREQUAL "none")
     add_custom_target(check-sanitize
@@ -46,7 +46,7 @@ if(NOT AEDST_SANITIZER STREQUAL "none")
 else()
     add_custom_target(check-sanitize
         COMMAND "${CMAKE_COMMAND}" -E echo
-                "check-sanitize: this tree is not sanitized. Configure with a preset such as gcc-asan, clang-asan, clang-tsan, msvc-asan or macos-asan (or -DAEDST_SANITIZER=asan-ubsan|tsan)."
+                "check-sanitize: this tree is not sanitized. Configure with a preset such as gcc-asan, clang-asan, clang-tsan, msvc-asan (or -DAEDST_SANITIZER=asan-ubsan|tsan)."
         COMMENT "check-sanitize hint"
         VERBATIM)
 endif()

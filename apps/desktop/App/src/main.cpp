@@ -169,7 +169,7 @@ int main(int argc, char* argv[]) {
 
     const aedst::app::StartupTrace startup;
     // QApplication (not QGuiApplication): QSystemTrayIcon - native desktop
-    // notifications on Windows/macOS - lives in Qt Widgets and requires it. The UI
+    // notifications on Windows - lives in Qt Widgets and requires it. The UI
     // stays 100% Qt Quick; see docs/adr/0022-telemetry-media-notifications.md.
     QApplication app(argc, argv);
     // Honour the OS proxy configuration (corporate/PAC proxies) for all Qt Network traffic.

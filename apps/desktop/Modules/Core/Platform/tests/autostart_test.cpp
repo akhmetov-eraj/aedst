@@ -59,13 +59,6 @@ TEST(AutostartPathTest, RelativeXdgConfigHomeFallsBackToHome) {
 
 TEST(AutostartPathTest, MissingHomeIsAnError) {
     EXPECT_FALSE(xdgAutostartFilePath({}, "com.aedst.Desktop").has_value());
-    EXPECT_FALSE(launchAgentFilePath({}, "com.aedst.Desktop").has_value());
-}
-
-TEST(AutostartPathTest, LaunchAgentPathUsesLibraryLaunchAgents) {
-    const auto path = launchAgentFilePath({{"HOME", "/Users/u"}}, "com.aedst.Desktop");
-    ASSERT_TRUE(path.has_value());
-    EXPECT_EQ(*path, fs::path{"/Users/u"} / "Library" / "LaunchAgents" / "com.aedst.Desktop.plist");
 }
 
 TEST(AutostartPathTest, RejectsUnsafeAppIds) {
@@ -94,18 +87,7 @@ TEST_F(AutostartTest, RejectsRelativeExecutableAndControlCharacters) {
     AutostartConfig injected = config();
     injected.arguments = {"--x\nExec=evil"};
     EXPECT_FALSE(renderDesktopEntry(injected).has_value());
-    EXPECT_FALSE(renderLaunchAgentPlist(injected).has_value());
     EXPECT_FALSE(renderWindowsRunCommand(injected).has_value());
-}
-
-TEST_F(AutostartTest, LaunchAgentPlistEscapesXml) {
-    AutostartConfig cfg = config();
-    cfg.arguments = {"<&>"};
-    const auto plist = renderLaunchAgentPlist(cfg);
-    ASSERT_TRUE(plist.has_value());
-    EXPECT_NE(plist->find("<string>&lt;&amp;&gt;</string>"), std::string::npos);
-    EXPECT_NE(plist->find("<key>RunAtLoad</key>\n    <true/>"), std::string::npos);
-    EXPECT_NE(plist->find("<string>com.aedst.Desktop</string>"), std::string::npos);
 }
 
 TEST_F(AutostartTest, WindowsRunCommandQuotesExecutable) {
@@ -139,17 +121,7 @@ TEST_F(AutostartTest, XdgManagerWritesAndRemovesEntry) {
     EXPECT_TRUE(manager.setEnabled(false).has_value());
 }
 
-TEST_F(AutostartTest, LaunchAgentManagerWritesAndRemovesPlist) {
-    const fs::path file = root_ / "Library" / "LaunchAgents" / "com.aedst.Desktop.plist";
-    LaunchAgentAutostartManager manager{config(), file};
-    ASSERT_TRUE(manager.setEnabled(true).has_value());
-    EXPECT_TRUE(manager.isEnabled());
-    EXPECT_NE(readFile(file).find("<plist"), std::string::npos);
-    ASSERT_TRUE(manager.setEnabled(false).has_value());
-    EXPECT_FALSE(manager.isEnabled());
-}
-
-#if !defined(_WIN32) && !defined(__APPLE__)
+#if !defined(_WIN32)
 TEST_F(AutostartTest, FactoryDegradesInsideFlatpak) {
     PlatformProbe probe;
     probe.os = OperatingSystem::Linux;

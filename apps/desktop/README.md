@@ -1,8 +1,8 @@
 # AEDST Desktop
 
-Qt 6 / QML desktop client for Windows, macOS and Linux. Same "monolith first, boundaries first" module architecture as
+Qt 6 / QML desktop client for Windows and Linux (macOS is served by `apps/apple`). Same "monolith first, boundaries first" module architecture as
 `apps/android` and `apps/apple` — see
-[`docs/content/architecture-desktop.md`](../../docs/content/architecture-desktop.md) for how
+[`docs/content/desktop/architecture.md`](../../docs/content/desktop/architecture.md) for how
 the server's modules map onto CMake targets and why features never link each
 other.
 
@@ -19,12 +19,12 @@ other.
 | Language | C++23 (`std::expected`, designated initializers) |
 | UI | Qt 6.12 Qt Quick / QML, Qt Quick Controls (Basic style) |
 | Architecture | Module Architecture (Core libraries + Feature libraries + App composition root); MVVM + Clean Architecture (Domain / Data / Presentation / Navigation) per feature |
-| Build | CMake ≥ 3.25 with `CMakePresets.json` (`msvc-*`, `gcc-*`, `clang-*`, `macos-*`, sanitizer presets `*-asan`/`clang-tsan`, `coverage`, plus host-default `debug`/`release`/`bench`), Ninja; LTO, sccache/ccache, mold/lld auto-enabled — [performance.md](docs/performance.md) |
+| Build | CMake ≥ 3.25 with `CMakePresets.json` (`msvc-*`, `gcc-*`, `clang-*`, sanitizer presets `*-asan`/`clang-tsan`, `coverage`, plus host-default `debug`/`release`/`bench`), Ninja; LTO, sccache/ccache, mold/lld auto-enabled — [performance.md](docs/performance.md) |
 | Packages | vcpkg manifest mode (`vcpkg.json`) for everything except Qt — [ADR-0002](docs/adr/0002-dependency-management.md) |
 | Qt itself | Official binaries (Qt installer / [aqtinstall](https://github.com/miurahr/aqtinstall)) at the version in `qt-version.txt` (single source of truth; CMake enforces it); found via `$QT_ROOT_DIR` |
 | API contract | Generated Protobuf C++ messages (protoc at build time from `apps/server/api/proto`) + a thin Connect-protocol client on Qt Network (unary + server streaming, retries, deadlines, cancellation) — [ADR-0001](docs/adr/0001-api-contract-client.md); Boost.Asio optional for future low-level I/O |
 | Database | SQLite (vcpkg `sqlite3`) behind a thin RAII wrapper (`AedstPersistence`) |
-| Crypto / secrets | AES-256-GCM (OpenSSL) envelope; master key in DPAPI (Windows) / Keychain (macOS) / Secret Service via libsecret (Linux), `0600` key file only as fallback — [ADR-0003](docs/adr/0003-secret-storage.md) |
+| Crypto / secrets | AES-256-GCM (OpenSSL) envelope; master key in DPAPI (Windows) / Secret Service via libsecret (Linux), `0600` key file only as fallback — [ADR-0003](docs/adr/0003-secret-storage.md) |
 | Transport security | https required, TLS ≥ 1.2, optional SPKI pinning — [ADR-0004](docs/adr/0004-transport-policy.md) |
 | Platform services | single instance, deep links, autostart, notifications, crash capture, signed-update verification, connectivity — [ADR-0006](docs/adr/0006-platform-services-and-updates.md) |
 | Logging | spdlog (`AedstLogger`: console + rotating file) for app code; Qt `QLoggingCategory` reserved for Qt/QML framework messages |
@@ -32,7 +32,7 @@ other.
 | Static analysis | clang-tidy (blocking in CI with a baseline), clang-format, qmllint, warnings-as-errors in CI, ASan/UBSan/TSan; PVS-Studio (local, licensed) |
 | Docs | Doxygen (`Doxyfile` → `docs/generated/`) |
 | IDE | Qt Creator (opens `CMakeLists.txt` / `CMakePresets.json` directly — no `.pro` files) |
-| Packaging | Windows: NSIS/ZIP (CPack) + MSIX; macOS: DMG + PKG; Linux: DEB/RPM/TGZ (CPack), Flatpak, AppImage — signing when CI secrets exist — [packaging/README.md](packaging/README.md) |
+| Packaging | Windows: NSIS/ZIP (CPack) + MSIX; Linux: DEB/RPM/TGZ (CPack), Flatpak, AppImage — signing when CI secrets exist — [packaging/README.md](packaging/README.md) |
 
 ## Layout
 
@@ -49,7 +49,7 @@ cmake/, packaging/                -> warnings, CPack, NSIS/MSIX/Flatpak/AppImage
 ## Getting started
 
 Full instructions per OS: [BUILDING.md](BUILDING.md). Prerequisites: a C++23 compiler (MSVC 19.37+ / VS 2022 17.7, GCC 13+, Clang 17+
-with libstdc++ 13+, AppleClang), CMake ≥ 3.25, Ninja, git, [vcpkg](https://github.com/microsoft/vcpkg),
+with libstdc++ 13+), CMake ≥ 3.25, Ninja, git, [vcpkg](https://github.com/microsoft/vcpkg),
 and Qt at the version pinned in `qt-version.txt`. Configure fails early, with a
 message, if the compiler or Qt version is wrong.
 

@@ -2,7 +2,7 @@
 
 Module Architecture + MVVM + Clean Architecture. The cross-platform rationale
 and mapping to the server modules is in
-[docs/content/architecture-desktop.md](../../docs/content/architecture-desktop.md);
+[docs/content/desktop/architecture.md](../../docs/content/desktop/architecture.md);
 this file states the boundaries and rules for this app.
 
 ## Module graph

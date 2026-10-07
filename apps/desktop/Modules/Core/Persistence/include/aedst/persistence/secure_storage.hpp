@@ -18,7 +18,7 @@ namespace aedst::persistence {
 ///
 /// One algorithm on every platform: AES-256-GCM (OpenSSL EVP) under a 32-byte
 /// master key obtained from a MasterKeyProvider (DPAPI-wrapped file on Windows,
-/// Keychain on macOS, Secret Service on Linux, key file as fallback — see
+/// Secret Service on Linux, key file as fallback — see
 /// createPlatformMasterKeyProvider()).
 ///
 /// Blob layout: [1-byte format version][12-byte IV][ciphertext][16-byte GCM tag].

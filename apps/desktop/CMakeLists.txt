@@ -5,13 +5,9 @@ list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
 # Must run before project(): sets the compiler launcher (sccache/ccache).
 include(AedstToolchainHints)
 
-# macOS: the deployment target must be known before project() (it feeds the
-# compiler/SDK probe). The macos-* presets set it explicitly; this is the fallback
-# for a plain `cmake -S . -B build` on a Mac. Keep in sync with LSMinimumSystemVersion
-# (App/CMakeLists.txt). 14.4 is the minimum target Qt 6.12 supports (doc.qt.io/qt-6/supported-platforms.html);
-# docs/content/library-first.md still says macOS 12 for Desktop and must follow this pin.
-if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "14.4" CACHE STRING "Minimum macOS version")
+# Desktop targets Windows and Linux only; macOS is served by apps/apple (ADR-0023).
+if(APPLE)
+    message(FATAL_ERROR "AEDST Desktop supports Windows and Linux only. macOS is served by the native app in apps/apple.")
 endif()
 
 project(Aedst

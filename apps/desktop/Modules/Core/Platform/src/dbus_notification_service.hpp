@@ -1,7 +1,7 @@
 #pragma once
 
 // Private to AedstPlatform; compiled only when Qt6::DBus was found on a
-// non-Apple Unix (AEDST_PLATFORM_HAS_DBUS).
+// Linux (AEDST_PLATFORM_HAS_DBUS).
 
 #include "aedst/platform/notification_service.hpp"
 

@@ -49,7 +49,7 @@ change that.
   `SOURCES` of a `qt_add_qml_module`. Lets `qmlcachegen`/`qmllint` see the types
   and removes registration code from `main()`.
 - **RHI/scene graph:** keep Qt's defaults (Direct3D 11 on Windows, OpenGL on
-  Linux, Metal on macOS; threaded render loop). Override only via
+  Linux; threaded render loop). Override only via
   `QSG_RHI_BACKEND` while diagnosing; do not hard-code a backend in code.
 - **Models:** expose collections as `QAbstractItemModel`/`QAbstractListModel`
   subclasses with named roles and fine-grained `dataChanged`/`rowsInserted`

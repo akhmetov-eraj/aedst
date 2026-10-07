@@ -1,6 +1,6 @@
 #include "key_file.hpp"
 
-#if defined(AEDST_HAVE_LIBSECRET) && !defined(_WIN32) && !defined(__APPLE__)
+#if defined(AEDST_HAVE_LIBSECRET) && !defined(_WIN32)
 
 #include <libsecret/secret.h>
 

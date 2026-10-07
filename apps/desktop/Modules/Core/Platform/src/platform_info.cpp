@@ -17,8 +17,8 @@ namespace {
 
 constexpr std::size_t kMaxDesktopLength = 64;
 
-constexpr std::array<const char*, 6> kAllowedEnvironmentKeys{
-    "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "WAYLAND_DISPLAY", "DISPLAY", "SNAP", "APP_SANDBOX_CONTAINER_ID",
+constexpr std::array<const char*, 5> kAllowedEnvironmentKeys{
+    "XDG_SESSION_TYPE", "XDG_CURRENT_DESKTOP", "WAYLAND_DISPLAY", "DISPLAY", "SNAP",
 };
 
 char asciiLower(char c) {
@@ -66,8 +66,6 @@ std::string detectDisplayServer(const PlatformProbe& probe) {
     switch (probe.os) {
     case OperatingSystem::Windows:
         return "win32";
-    case OperatingSystem::MacOs:
-        return "cocoa";
     case OperatingSystem::Linux:
         break;
     case OperatingSystem::Other:
@@ -90,8 +88,6 @@ std::string detectDesktop(const PlatformProbe& probe) {
     switch (probe.os) {
     case OperatingSystem::Windows:
         return "windows";
-    case OperatingSystem::MacOs:
-        return "aqua";
     case OperatingSystem::Linux:
         return sanitizeDesktop(lookup(probe.environment, "XDG_CURRENT_DESKTOP"));
     case OperatingSystem::Other:
@@ -111,9 +107,7 @@ PlatformInfo describePlatform(const PlatformProbe& probe) {
     info.desktopEnvironment = detectDesktop(probe);
     info.isFlatpak = probe.os == OperatingSystem::Linux && probe.flatpakInfoExists;
     const bool snap = probe.os == OperatingSystem::Linux && !lookup(probe.environment, "SNAP").empty();
-    const bool appSandbox =
-        probe.os == OperatingSystem::MacOs && !lookup(probe.environment, "APP_SANDBOX_CONTAINER_ID").empty();
-    info.isSandboxed = info.isFlatpak || snap || appSandbox;
+    info.isSandboxed = info.isFlatpak || snap;
     return info;
 }
 
@@ -121,8 +115,6 @@ PlatformProbe currentPlatformProbe() {
     PlatformProbe probe;
 #if defined(_WIN32)
     probe.os = OperatingSystem::Windows;
-#elif defined(__APPLE__)
-    probe.os = OperatingSystem::MacOs;
 #elif defined(__linux__)
     probe.os = OperatingSystem::Linux;
 #else

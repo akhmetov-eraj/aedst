@@ -22,7 +22,6 @@ chosen at startup by `createPlatformMasterKeyProvider()`:
 | OS | Provider | Storage |
 |---|---|---|
 | Windows | `DpapiMasterKeyProvider` | random 32-byte key wrapped by `CryptProtectData` (fixed optional entropy), file `secure.key.dpapi` |
-| macOS | `KeyringMasterKeyProvider` + Keychain backend | Security.framework `SecItemAdd/CopyMatching`, generic password, service `com.aedst.Desktop` |
 | Linux | `KeyringMasterKeyProvider` + libsecret backend | Secret Service via synchronous `libsecret` calls (optional, `AEDST_ENABLE_LIBSECRET`) |
 | fallback | `FileMasterKeyProvider` | key file created atomically with `open(O_CREAT|O_EXCL, 0600)` — used when no keyring is reachable (headless, Flatpak without portal) |
 

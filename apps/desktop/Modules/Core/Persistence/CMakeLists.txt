@@ -8,7 +8,7 @@ find_package(OpenSSL REQUIRED)
 # (Debian/Ubuntu: libsecret-1-dev, Fedora: libsecret-devel) at build time.
 option(AEDST_ENABLE_LIBSECRET "Use libsecret (Secret Service) for the master key on Linux when available" ON)
 set(AEDST_HAVE_LIBSECRET_TARGET FALSE)
-if(AEDST_ENABLE_LIBSECRET AND UNIX AND NOT APPLE)
+if(AEDST_ENABLE_LIBSECRET AND UNIX)
     find_package(PkgConfig QUIET)
     if(PKG_CONFIG_FOUND)
         pkg_check_modules(LIBSECRET IMPORTED_TARGET libsecret-1)
@@ -35,7 +35,6 @@ add_library(AedstPersistence STATIC
     src/key_file.cpp
     src/master_key_provider.cpp
     src/dpapi_master_key_provider.cpp
-    src/keychain_backend_apple.cpp
     src/libsecret_backend.cpp
     src/migrator.cpp
     src/sqlite_connection.cpp
@@ -62,15 +61,6 @@ target_link_libraries(AedstPersistence
 if(WIN32)
     # DPAPI (CryptProtectData / CryptUnprotectData)
     target_link_libraries(AedstPersistence PRIVATE Crypt32)
-endif()
-
-if(APPLE)
-    # Keychain (SecItem*) master key provider.
-    find_library(AEDST_SECURITY_FRAMEWORK Security REQUIRED)
-    find_library(AEDST_COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
-    target_link_libraries(AedstPersistence PRIVATE
-        ${AEDST_SECURITY_FRAMEWORK}
-        ${AEDST_COREFOUNDATION_FRAMEWORK})
 endif()
 
 if(AEDST_HAVE_LIBSECRET_TARGET)

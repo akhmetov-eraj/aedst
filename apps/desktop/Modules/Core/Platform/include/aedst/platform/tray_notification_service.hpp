@@ -15,7 +15,6 @@ namespace aedst::platform {
 /// Native desktop notifications through QSystemTrayIcon::showMessage:
 ///  - Windows: a toast/balloon from the tray icon (no AppUserModelID shortcut or
 ///    WinRT code needed);
-///  - macOS: a Notification Center banner through the status-bar item;
 ///  - Linux: the StatusNotifier/XEmbed tray; on Linux the D-Bus service in
 ///    makeNotificationService() is preferred when available.
 ///

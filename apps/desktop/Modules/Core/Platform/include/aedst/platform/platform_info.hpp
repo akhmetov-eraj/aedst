@@ -9,7 +9,6 @@ namespace aedst::platform {
 
 enum class OperatingSystem {
     Windows,
-    MacOs,
     Linux,
     Other,
 };
@@ -18,8 +17,6 @@ enum class OperatingSystem {
     switch (os) {
     case OperatingSystem::Windows:
         return "windows";
-    case OperatingSystem::MacOs:
-        return "macos";
     case OperatingSystem::Linux:
         return "linux";
     case OperatingSystem::Other:
@@ -48,12 +45,12 @@ struct PlatformInfo {
     OperatingSystem os{OperatingSystem::Other};
     std::string osVersion;
     std::string architecture;
-    /// "wayland" | "x11" | "tty" | "mir" | "win32" | "cocoa" | "unknown".
+    /// "wayland" | "x11" | "tty" | "mir" | "win32" | "unknown".
     std::string displayServer;
-    /// Sanitised XDG_CURRENT_DESKTOP (e.g. "ubuntu:GNOME"); "windows"/"aqua" elsewhere.
+    /// Sanitised XDG_CURRENT_DESKTOP (e.g. "ubuntu:GNOME"); "windows" on Windows.
     std::string desktopEnvironment;
     bool isFlatpak{false};
-    /// Flatpak, Snap or the macOS App Sandbox: the app cannot freely touch the
+    /// Flatpak or Snap: the app cannot freely touch the
     /// user's home directory or the session bus.
     bool isSandboxed{false};
 

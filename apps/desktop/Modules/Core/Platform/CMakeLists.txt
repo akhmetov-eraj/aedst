@@ -8,7 +8,7 @@ find_package(Qt6 ${AEDST_QT_MINIMUM} QUIET OPTIONAL_COMPONENTS DBus)
 
 # Per-OS capabilities behind interfaces (single instance, autostart,
 # notifications, platform info). Selection is compile-time (#if _WIN32 /
-# __APPLE__ / else) plus a runtime availability check. Pure logic (deep-link
+# else) plus a runtime availability check. Pure logic (deep-link
 # validation, path/format rendering, platform detection) is Qt-free.
 add_library(AedstPlatform STATIC
     include/aedst/platform/autostart.hpp
@@ -34,14 +34,14 @@ target_compile_features(AedstPlatform PUBLIC cxx_std_23)
 # guard uses QLocalServer (Qt6::Network); Outcome comes from Aedst::Core.
 target_link_libraries(AedstPlatform PUBLIC Aedst::Core Qt6::Core Qt6::Network PRIVATE Qt6::Gui Qt6::Widgets)
 
-if(UNIX AND NOT APPLE AND TARGET Qt6::DBus)
+if(UNIX AND TARGET Qt6::DBus)
     target_sources(AedstPlatform PRIVATE
         src/dbus_notification_service.hpp
         src/dbus_notification_service.cpp)
     target_link_libraries(AedstPlatform PRIVATE Qt6::DBus)
     target_compile_definitions(AedstPlatform PRIVATE AEDST_PLATFORM_HAS_DBUS)
     message(STATUS "AedstPlatform: native Linux notifications enabled (Qt6::DBus)")
-elseif(UNIX AND NOT APPLE)
+elseif(UNIX)
     message(STATUS "AedstPlatform: Qt6::DBus not found; notifications use the in-app fallback only")
 endif()
 
