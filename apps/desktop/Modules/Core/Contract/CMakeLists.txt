@@ -12,7 +12,8 @@ aedst_add_proto_library(AedstContractProto
         "${PROJECT_SOURCE_DIR}/third_party/protovalidate")
 
 add_library(AedstContract INTERFACE
-    include/aedst/contract/methods.hpp)
+    include/aedst/contract/methods.hpp
+    include/aedst/contract/timestamps.hpp)
 add_library(Aedst::Contract ALIAS AedstContract)
 
 target_include_directories(AedstContract INTERFACE

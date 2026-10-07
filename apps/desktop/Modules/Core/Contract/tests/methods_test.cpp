@@ -66,6 +66,28 @@ TEST(MethodTableTest, EveryEntryMatchesTheGeneratedDescriptors) {
     expectMatchesDescriptor(kTasksCompleteTask);
     expectMatchesDescriptor(kTasksReopenTask);
     expectMatchesDescriptor(kTasksGetTaskStats);
+    expectMatchesDescriptor(kNotificationsListNotifications);
+    expectMatchesDescriptor(kNotificationsGetUnreadCount);
+    expectMatchesDescriptor(kNotificationsMarkRead);
+    expectMatchesDescriptor(kNotificationsMarkAllRead);
+    expectMatchesDescriptor(kNotificationsRegisterPushDevice);
+    expectMatchesDescriptor(kNotificationsUnregisterPushDevice);
+    expectMatchesDescriptor(kNotificationsGetWebPushConfig);
+    expectMatchesDescriptor(kNotificationsGetPreferences);
+    expectMatchesDescriptor(kNotificationsUpdatePreferences);
+    expectMatchesDescriptor(kSearchSearch);
+    expectMatchesDescriptor(kSearchSuggest);
+    expectMatchesDescriptor(kMediaCreateUpload);
+    expectMatchesDescriptor(kMediaCompleteUpload);
+    expectMatchesDescriptor(kMediaGetMedia);
+    expectMatchesDescriptor(kMediaListMedia);
+    expectMatchesDescriptor(kMediaDeleteMedia);
+    expectMatchesDescriptor(kAdminGetOverview);
+    expectMatchesDescriptor(kAdminListUsers);
+    expectMatchesDescriptor(kAdminListTasks);
+    expectMatchesDescriptor(kAdminDeleteTask);
+    expectMatchesDescriptor(kAdminBroadcastNotification);
+    expectMatchesDescriptor(kAdminListAuditLog);
 }
 
 TEST(MethodTableTest, EveryRpcInTheProtosHasAnEntry) {
@@ -103,6 +125,25 @@ TEST(MethodTableTest, PublicProceduresMatchTheServersPublicEdge) {
     EXPECT_EQ(kAuthLogout.info.auth, AuthRequirement::Public);
     EXPECT_EQ(kAuthGetCurrentUser.info.auth, AuthRequirement::Required);
     EXPECT_EQ(kTasksCreateTask.info.auth, AuthRequirement::Required);
+    // Only the four auth RPCs are public; everything added since needs a bearer token.
+    EXPECT_EQ(kSearchSearch.info.auth, AuthRequirement::Required);
+    EXPECT_EQ(kMediaCreateUpload.info.auth, AuthRequirement::Required);
+    EXPECT_EQ(kNotificationsGetUnreadCount.info.auth, AuthRequirement::Required);
+    EXPECT_EQ(kAdminGetOverview.info.auth, AuthRequirement::Required);
+}
+
+TEST(MethodTableTest, UploadsAndAdminMutationsAreNeverRetried) {
+    using network::Idempotency;
+    // A replayed CreateUpload issues a second presigned URL and an orphan media row;
+    // a replayed admin mutation writes a second audit entry.
+    EXPECT_EQ(kMediaCreateUpload.info.idempotency, Idempotency::Unknown);
+    EXPECT_EQ(kMediaCompleteUpload.info.idempotency, Idempotency::Unknown);
+    EXPECT_EQ(kMediaDeleteMedia.info.idempotency, Idempotency::Unknown);
+    EXPECT_EQ(kAdminDeleteTask.info.idempotency, Idempotency::Unknown);
+    EXPECT_EQ(kAdminBroadcastNotification.info.idempotency, Idempotency::Unknown);
+    EXPECT_EQ(kNotificationsMarkAllRead.info.idempotency, Idempotency::Unknown);
+    EXPECT_EQ(kSearchSearch.info.idempotency, Idempotency::Idempotent);
+    EXPECT_EQ(kNotificationsGetUnreadCount.info.idempotency, Idempotency::Idempotent);
 }
 
 TEST(MethodTableTest, OnlySideEffectFreeReadsAreRetriedAutomatically) {

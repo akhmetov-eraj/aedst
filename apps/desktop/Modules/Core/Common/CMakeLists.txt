@@ -7,6 +7,7 @@ find_package(fmt REQUIRED)
 # and nothing else, which keeps use cases testable with plain GoogleTest.
 add_library(AedstCore STATIC
     include/aedst/core/error.hpp
+    include/aedst/core/error_sink.hpp
     include/aedst/core/outcome.hpp
     include/aedst/core/use_case.hpp
     include/aedst/core/clock.hpp

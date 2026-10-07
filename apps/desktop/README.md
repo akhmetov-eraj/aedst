@@ -17,7 +17,7 @@ other.
 | Concern | Choice |
 |---|---|
 | Language | C++23 (`std::expected`, designated initializers) |
-| UI | Qt 6.8+ Qt Quick / QML, Qt Quick Controls (Basic style) |
+| UI | Qt 6.12 Qt Quick / QML, Qt Quick Controls (Basic style) |
 | Architecture | Module Architecture (Core libraries + Feature libraries + App composition root); MVVM + Clean Architecture (Domain / Data / Presentation / Navigation) per feature |
 | Build | CMake ≥ 3.25 with `CMakePresets.json` (`msvc-*`, `gcc-*`, `clang-*`, `macos-*`, sanitizer presets `*-asan`/`clang-tsan`, `coverage`, plus host-default `debug`/`release`/`bench`), Ninja; LTO, sccache/ccache, mold/lld auto-enabled — [performance.md](docs/performance.md) |
 | Packages | vcpkg manifest mode (`vcpkg.json`) for everything except Qt — [ADR-0002](docs/adr/0002-dependency-management.md) |
@@ -61,7 +61,7 @@ export VCPKG_ROOT=~/vcpkg                                       # PowerShell: $e
 # Qt via aqtinstall (or the official online installer) - version from qt-version.txt
 pip install aqtinstall
 aqt install-qt linux desktop "$(cat qt-version.txt)" linux_gcc_64 -O ~/Qt   # Windows: windows desktop <ver> win64_msvc2022_64
-export QT_ROOT_DIR=~/Qt/$(cat qt-version.txt)/gcc_64                        # PowerShell: $env:QT_ROOT_DIR="C:\Qt\6.8.3\msvc2022_64"
+export QT_ROOT_DIR=~/Qt/$(cat qt-version.txt)/gcc_64                        # PowerShell: $env:QT_ROOT_DIR="C:\Qt\6.12.0\msvc2022_64"
 ```
 
 Optional but recommended for build speed: `sccache` (or `ccache`), and `mold`
@@ -172,7 +172,7 @@ From a configured **release** tree (`<release-preset>` = `msvc-release`, `gcc-re
 | `cmake --build --preset <release-preset> --target package_nsis` | NSIS from `packaging/windows/installer.nsi.in` | needs `makensis` |
 | `cmake --build --preset <release-preset> --target package_msix` | unsigned `.msix` | needs Windows SDK `makeappx`/`makepri`; signing is a scope cut |
 | `cmake --build --preset <release-preset> --target package_appimage` | `.AppImage` | configure with `-DAEDST_DEPLOY_QT=OFF`; needs `linuxdeploy` + Qt plugin and a real icon |
-| `cmake --build --preset <release-preset> --target package_flatpak` | `.flatpak` bundle | needs `flatpak-builder`; builds against `org.kde.Platform` 6.8 |
+| `cmake --build --preset <release-preset> --target package_flatpak` | `.flatpak` bundle | needs `flatpak-builder`; builds against `org.kde.Platform` 6.12 |
 
 Artifacts land in `build/<preset>/packages/`. Icons are placeholders — see
 `App/resources/icons/README.md`.

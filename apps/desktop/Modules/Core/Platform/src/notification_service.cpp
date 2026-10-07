@@ -46,13 +46,17 @@ void InAppNotificationService::show(std::string_view title, std::string_view bod
                             QString::fromUtf8(severityName.data(), static_cast<qsizetype>(severityName.size())));
 }
 
-std::unique_ptr<NotificationService> makeNotificationService(NotificationService& inAppFallback) {
+std::unique_ptr<NotificationService> makeNotificationService(NotificationService& inAppFallback,
+                                                             NotificationService* nativeDesktop) {
 #if defined(AEDST_PLATFORM_HAS_DBUS)
     auto native = std::make_unique<DBusNotificationService>(inAppFallback);
     if (native->isAvailable()) {
         return native;
     }
 #endif
+    if (nativeDesktop != nullptr && nativeDesktop->isAvailable()) {
+        return std::make_unique<ForwardingNotificationService>(*nativeDesktop);
+    }
     return std::make_unique<ForwardingNotificationService>(inAppFallback);
 }
 

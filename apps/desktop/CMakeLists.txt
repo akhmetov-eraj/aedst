@@ -8,9 +8,10 @@ include(AedstToolchainHints)
 # macOS: the deployment target must be known before project() (it feeds the
 # compiler/SDK probe). The macos-* presets set it explicitly; this is the fallback
 # for a plain `cmake -S . -B build` on a Mac. Keep in sync with LSMinimumSystemVersion
-# (App/CMakeLists.txt) and the macOS 12 minimum in docs/content/library-first.md.
+# (App/CMakeLists.txt). 14.4 is the minimum target Qt 6.12 supports (doc.qt.io/qt-6/supported-platforms.html);
+# docs/content/library-first.md still says macOS 12 for Desktop and must follow this pin.
 if(APPLE AND NOT CMAKE_OSX_DEPLOYMENT_TARGET)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "12.0" CACHE STRING "Minimum macOS version")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "14.4" CACHE STRING "Minimum macOS version")
 endif()
 
 project(Aedst
@@ -34,6 +35,15 @@ option(AEDST_BUILD_BENCHMARKS "Build the Qt Test (QBENCHMARK) benchmarks; requir
 option(AEDST_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(AEDST_ENABLE_CLANG_TIDY "Run clang-tidy as part of the build (slow; CI runs it separately)" OFF)
 option(AEDST_ENABLE_ASIO "Make Boost.Asio available to AedstNetwork (see asio_support.hpp)" OFF)
+option(AEDST_ENABLE_SENTRY "Link sentry-native (crashpad backend) into Aedst::Telemetry; inert at runtime without a DSN" ON)
+# Build-time telemetry keys. The environment variables of the same name override them at
+# runtime. Empty = that integration is disabled. Neither is a secret in the cryptographic
+# sense (both end up inside the binary), but keep them out of the repo: CI passes them
+# from repository secrets.
+set(AEDST_SENTRY_DSN "" CACHE STRING "Sentry DSN baked into the build (env AEDST_SENTRY_DSN overrides)")
+set(AEDST_SENTRY_ENVIRONMENT "production" CACHE STRING "Sentry environment tag")
+set(AEDST_POSTHOG_KEY "" CACHE STRING "PostHog project API key (env AEDST_POSTHOG_KEY overrides)")
+set(AEDST_POSTHOG_HOST "https://us.i.posthog.com" CACHE STRING "PostHog ingestion host, https only (env AEDST_POSTHOG_HOST overrides)")
 # Flatpak builds against org.kde.Platform, which already ships Qt — bundling
 # Qt libraries into the install tree there would be wrong.
 option(AEDST_DEPLOY_QT "Install Qt runtime libraries/plugins alongside the executable" ON)
@@ -60,7 +70,11 @@ include(AedstCompilerWarnings)
 # system + app. Test / QuickTest: Qt Test and QtQuickTest suites (BUILD_TESTING
 # only). DBus is optional (Linux secret service / notifications / autostart in
 # AedstPlatform); modules test `TARGET Qt6::DBus` before using it.
-set(aedst_qt_components Core Gui Qml Quick QuickControls2 Network LinguistTools)
+# Multimedia: Aedst::Media (MediaPlayer/VideoOutput, QVideoSink frame grabs) - an
+# add-on module: `aqt install-qt ... -m qtmultimedia` (CI passes `modules: qtmultimedia`).
+# Widgets: QApplication + QSystemTrayIcon for native desktop notifications
+# (docs/adr/0022-telemetry-media-notifications.md); no Qt Widgets UI is built.
+set(aedst_qt_components Core Gui Qml Quick QuickControls2 Network Multimedia Widgets LinguistTools)
 if(BUILD_TESTING)
     list(APPEND aedst_qt_components Test QuickTest)
 endif()
@@ -95,10 +109,17 @@ add_subdirectory(Modules/Core/Update)          # Aedst::Update
 add_subdirectory(Modules/Core/Persistence)
 add_subdirectory(Modules/Core/Navigation)
 add_subdirectory(Modules/Core/Analytics)
+add_subdirectory(Modules/Core/Telemetry)       # Aedst::Telemetry (Sentry, PostHog, Qt log bridge, ErrorCenter)
 add_subdirectory(Modules/Core/DesignSystem)
+add_subdirectory(Modules/Core/Media)           # Aedst::Media (upload, image cache, video, thumbnails, compression)
 
 # Features: depend on Core only, never on each other (see each feature's CMakeLists.txt).
 add_subdirectory(Modules/Features/Auth)
+add_subdirectory(Modules/Features/Tasks)
+add_subdirectory(Modules/Features/Search)
+add_subdirectory(Modules/Features/Notifications)
+add_subdirectory(Modules/Features/Media)
+add_subdirectory(Modules/Features/Admin)
 
 # Composition root: the only target that links every feature. Also pulls in
 # AedstPackaging.cmake (CPack) since packaging is about the executable.

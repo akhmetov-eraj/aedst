@@ -8,6 +8,68 @@ namespace aedst::navigation {
 
 using core::AedstLogger;
 
+namespace {
+
+/// Ids in links are server UUIDs; accept the UUID alphabet only (no '/', '?', '%').
+[[nodiscard]] bool isSafeId(std::string_view id) {
+    if (id.empty() || id.size() > 64) {
+        return false;
+    }
+    for (const char c : id) {
+        const bool ok = (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F') || c == '-';
+        if (!ok) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/// "/<prefix>/<id>" -> id, or empty.
+[[nodiscard]] std::string_view idAfter(std::string_view link, std::string_view prefix) {
+    if (!link.starts_with(prefix)) {
+        return {};
+    }
+    std::string_view id = link.substr(prefix.size());
+    if (id.ends_with('/')) {
+        id.remove_suffix(1);
+    }
+    return isSafeId(id) ? id : std::string_view{};
+}
+
+} // namespace
+
+std::optional<Route> routeForLink(std::string_view link) {
+    if (link.size() < 2 || link.front() != '/' || link[1] == '/') {
+        return std::nullopt; // absolute, scheme-relative or empty
+    }
+    if (link == "/tasks" || link == "/tasks/") {
+        return Route{.name = std::string(routes::kTasks), .params = {}};
+    }
+    if (const auto id = idAfter(link, "/tasks/"); !id.empty()) {
+        return Route{.name = std::string(routes::kTaskDetail), .params = {{std::string(params::kTaskId), std::string(id)}}};
+    }
+    if (const auto id = idAfter(link, "/media/"); !id.empty()) {
+        return Route{.name = std::string(routes::kMediaViewer),
+                     .params = {{std::string(params::kMediaId), std::string(id)}}};
+    }
+    if (link == "/media" || link == "/media/") {
+        return Route{.name = std::string(routes::kMedia), .params = {}};
+    }
+    if (link == "/notifications" || link == "/notifications/") {
+        return Route{.name = std::string(routes::kNotifications), .params = {}};
+    }
+    return std::nullopt;
+}
+
+bool Router::openLink(const QString& link) {
+    const auto route = routeForLink(link.toStdString());
+    if (!route) {
+        AedstLogger::warn("Router: ignoring unsupported in-app link");
+        return false;
+    }
+    return push(*route);
+}
+
 Router::Router(std::shared_ptr<const NavGraph> graph, QObject* parent) : QObject(parent), graph_(std::move(graph)) {}
 
 bool Router::push(const Route& route) {

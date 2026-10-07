@@ -103,8 +103,8 @@ struct ApiError {
                 .connectCode = std::string(connectCode)};
     }
 
-    /// Only failures where the same request might succeed later. The offline
-    /// cache fallback in Features/Profile keys off this.
+    /// Only failures where the same request might succeed later. Background
+    /// polling loops (Features/Notifications) back off on these instead of surfacing them.
     [[nodiscard]] constexpr bool isRetryable() const noexcept {
         return kind == ApiErrorKind::Transport || kind == ApiErrorKind::Timeout || kind == ApiErrorKind::Unavailable;
     }
@@ -116,8 +116,10 @@ struct ApiError {
         case ApiErrorKind::Unavailable:
             return core::Error::network(message);
         case ApiErrorKind::Unauthenticated:
-        case ApiErrorKind::PermissionDenied:
             return core::Error::unauthenticated(message);
+        case ApiErrorKind::PermissionDenied:
+            // Not "signed out": the session is valid but lacks a role (e.g. admin RPCs).
+            return core::Error::permissionDenied(message);
         case ApiErrorKind::NotFound:
             return core::Error::notFound(message);
         case ApiErrorKind::InvalidArgument:

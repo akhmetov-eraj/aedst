@@ -17,7 +17,10 @@
 # one to its `commit:` as Flathub requires.
 app-id: com.aedst.Desktop
 runtime: org.kde.Platform
-runtime-version: "6.8"
+# 6.12 matches qt-version.txt. As of 2026-10-07 Flathub publishes org.kde.Platform up to 6.11;
+# KDE's flatpak-kde-runtime has a qt6.12 branch. Until 6.12 is on Flathub, a Flatpak build
+# needs a locally built runtime (or a temporary qt-version.txt pin to 6.11.x).
+runtime-version: "6.12"
 sdk: org.kde.Sdk
 command: aedst-desktop
 
@@ -52,7 +55,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/fmtlib/fmt.git
-        tag: "10.2.1"
+        tag: "12.2.0"
 
   - name: spdlog
     buildsystem: cmake-ninja
@@ -64,7 +67,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/gabime/spdlog.git
-        tag: v1.14.1
+        tag: v1.17.0
 
   - name: abseil-cpp
     buildsystem: cmake-ninja
@@ -77,7 +80,7 @@ modules:
     sources:
       - type: git
         url: https://github.com/abseil/abseil-cpp.git
-        tag: "20250814.1"
+        tag: "20260107.1"
 
   - name: protobuf
     buildsystem: cmake-ninja
@@ -90,6 +93,23 @@ modules:
       - type: git
         url: https://github.com/protocolbuffers/protobuf.git
         tag: v33.4
+
+  # Crash/error reporting (Aedst::Telemetry). Same version as the vcpkg baseline's
+  # sentry-native port. libcurl and zlib come from the runtime; crashpad and its
+  # third-party code are git submodules of the tag (fetched by flatpak-builder).
+  - name: sentry-native
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DCMAKE_BUILD_TYPE=RelWithDebInfo
+      - -DSENTRY_BACKEND=crashpad
+      - -DSENTRY_TRANSPORT=curl
+      - -DSENTRY_BUILD_TESTS=OFF
+      - -DSENTRY_BUILD_EXAMPLES=OFF
+      - -DCRASHPAD_ZLIB_SYSTEM=ON
+    sources:
+      - type: git
+        url: https://github.com/getsentry/sentry-native.git
+        tag: "0.17.1"
 
   - name: aedst-desktop
     buildsystem: cmake-ninja

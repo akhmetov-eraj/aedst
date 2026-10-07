@@ -63,15 +63,16 @@ signals:
 ///  - Linux with the optional Qt6::DBus and a running org.freedesktop.Notifications
 ///    server: a native desktop notification (falling back to `inAppFallback` if
 ///    the call cannot be sent);
-///  - everything else (Windows, macOS, Linux without DBus/server): forwards to
-///    `inAppFallback`.
-/// `inAppFallback` must outlive the returned service.
+///  - otherwise `nativeDesktop` when given and available - the app passes its
+///    TrayNotificationService (QSystemTrayIcon::showMessage: Windows toast/balloon,
+///    macOS Notification Center, Linux tray), see tray_notification_service.hpp;
+///  - otherwise forwards to `inAppFallback` (AedstToast).
+/// `inAppFallback` and `nativeDesktop` must outlive the returned service.
 ///
-/// Not implemented (scoped out, see README of this module): native Windows
-/// toasts (WinRT ToastNotificationManager, needs an AppUserModelID shortcut) and
-/// macOS UNUserNotificationCenter (Objective-C++, needs a signed bundle). Qt
-/// Quick offers no notification API; QSystemTrayIcon::showMessage needs
-/// QApplication (Qt Widgets), which the app deliberately does not use.
-[[nodiscard]] std::unique_ptr<NotificationService> makeNotificationService(NotificationService& inAppFallback);
+/// Still not implemented: WinRT ToastNotificationManager (actions, history;
+/// needs an AppUserModelID shortcut) and UNUserNotificationCenter (Objective-C++,
+/// signed bundle). The tray path covers "show a native notification" without them.
+[[nodiscard]] std::unique_ptr<NotificationService> makeNotificationService(NotificationService& inAppFallback,
+                                                                           NotificationService* nativeDesktop = nullptr);
 
 } // namespace aedst::platform

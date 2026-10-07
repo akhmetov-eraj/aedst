@@ -8,6 +8,7 @@ find_package(Protobuf CONFIG REQUIRED)
 # libprotobuf's MessageLite. Concrete messages and the method table live in
 # Aedst::Contract, which depends on this target - never the reverse.
 add_library(AedstNetwork STATIC
+    include/aedst/network/access_token_claims.hpp
     include/aedst/network/api_error.hpp
     include/aedst/network/asio_support.hpp
     include/aedst/network/auth_interceptor.hpp
@@ -17,6 +18,7 @@ add_library(AedstNetwork STATIC
     include/aedst/network/connect_error.hpp
     include/aedst/network/method.hpp
     include/aedst/network/transport_policy.hpp
+    src/access_token_claims.cpp
     src/auth_interceptor.cpp
     src/connect_client.cpp
     src/connect_envelope.cpp

@@ -3,11 +3,16 @@
   "name": "aedst-desktop",
   "version-string": "0.1.0",
   "description": "Third-party C++ dependencies for apps/desktop. Qt is NOT listed: it comes from the official binaries (see qt-version.txt).",
-  "builtin-baseline": "9e593bb18ea69cc5095e012465dcd675a822ed0d",
+  "builtin-baseline": "2cfff9c458d9dcf642e9fa09ba624f9931bb5358",
   "dependencies": [
     "fmt",
     "openssl",
     "protobuf",
+    {
+      "$comment": "Crash/error reporting (Aedst::Telemetry). Default features = platform backend (crashpad on Windows/macOS/Linux) + transport. Runtime-disabled while AEDST_SENTRY_DSN is empty or crash-report consent is not granted. See docs/adr/0022-telemetry-media-notifications.md.",
+      "name": "sentry-native",
+      "platform": "!uwp"
+    },
     "spdlog",
     "sqlite3"
   ],

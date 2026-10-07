@@ -2,6 +2,7 @@
 
 - Status: accepted (not compiled in the authoring environment)
 - Scope: `apps/desktop` (`Aedst::Platform`, `Aedst::CrashReporting`, `Aedst::Update`, `Aedst::Connectivity`)
+- Superseded in part by: ADR-0022 (native notifications now use `QSystemTrayIcon` under a `QApplication`; crash upload goes through sentry-native when a DSN is configured)
 
 ## Decisions
 

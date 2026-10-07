@@ -5,10 +5,10 @@
 //
 // Boost.Asio is available as an opt-in dependency (vcpkg feature `asio`,
 // CMake option AEDST_ENABLE_ASIO) for the first need Qt Network covers
-// poorly — e.g. a raw TCP/UDP or custom-framed socket for a future realtime
-// module (see docs/modules.md: messenger), or bulk async I/O kept off the GUI
-// event loop. When that lands, own one io_context on a dedicated thread here
-// and hand results back to QObjects with
+// poorly - e.g. a raw TCP/UDP or custom-framed socket for a realtime/streaming
+// module (live updates over a long-lived socket, media streaming), or bulk
+// async I/O kept off the GUI event loop. When that lands, own one io_context on
+// a dedicated thread here and hand results back to QObjects with
 // QMetaObject::invokeMethod(target, ..., Qt::QueuedConnection); never block
 // the Qt event loop on Asio or vice versa.
 

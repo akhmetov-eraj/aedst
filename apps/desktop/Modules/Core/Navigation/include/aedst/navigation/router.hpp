@@ -31,6 +31,9 @@ public:
     Q_INVOKABLE bool navigate(const QString& routeName, const QVariantMap& params = {});
     Q_INVOKABLE bool replaceAll(const QString& routeName, const QVariantMap& params = {});
     Q_INVOKABLE bool goBack();
+    /// Pushes the route for a server-provided relative link (see routeForLink);
+    /// returns false and does nothing for anything outside the allow-list.
+    Q_INVOKABLE bool openLink(const QString& link);
 
     [[nodiscard]] QString currentRoute() const;
     [[nodiscard]] int depth() const;

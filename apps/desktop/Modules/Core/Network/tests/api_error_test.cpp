@@ -85,7 +85,7 @@ TEST(ApiErrorTest, ConvertsToCoreErrorCodes) {
     EXPECT_EQ((ApiError{.kind = ApiErrorKind::PermissionDenied, .httpStatus = 403, .message = "no"})
                   .toCoreError()
                   .code,
-              core::ErrorCode::Unauthenticated);
+              core::ErrorCode::PermissionDenied);
     EXPECT_EQ((ApiError{.kind = ApiErrorKind::Decoding, .httpStatus = 200, .message = "bad"}).toCoreError().code,
               core::ErrorCode::Unknown);
 }

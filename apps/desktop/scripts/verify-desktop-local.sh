@@ -62,7 +62,7 @@ elif [ ! -f "$VCPKG_ROOT/scripts/buildsystems/vcpkg.cmake" ]; then
   missing=1
 fi
 if [ -z "${QT_ROOT_DIR:-}" ]; then
-  echo "missing: QT_ROOT_DIR is not set (Qt $(tr -d '[:space:]' < qt-version.txt) from the official installer/aqtinstall, e.g. .../6.8.3/gcc_64)" >&2
+  echo "missing: QT_ROOT_DIR is not set (Qt $(tr -d '[:space:]' < qt-version.txt) from the official installer/aqtinstall, e.g. .../6.12.0/gcc_64)" >&2
   missing=1
 fi
 [ "$(uname -s)" = Linux ] && ! pkg-config --exists libsecret-1 2>/dev/null \

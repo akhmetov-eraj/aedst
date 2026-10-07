@@ -1,6 +1,6 @@
 include_guard(GLOBAL)
 
-# Single source of truth for the Qt version: qt-version.txt (e.g. "6.8.3").
+# Single source of truth for the Qt version: qt-version.txt (e.g. "6.12.0").
 # Consumers:
 #   - this file  -> AEDST_QT_VERSION / AEDST_QT_MINIMUM (find_package minimum, major.minor)
 #   - CI / dev   -> `aqt install-qt ... "$(cat apps/desktop/qt-version.txt)" ...`

@@ -3,6 +3,7 @@ include(GoogleTest)
 
 # Pure logic (error model, envelope codec, retry schedule, interceptor): no event loop.
 add_executable(AedstNetworkTests
+    access_token_claims_test.cpp
     api_error_test.cpp
     call_options_test.cpp
     connect_envelope_test.cpp

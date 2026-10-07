@@ -1,6 +1,7 @@
 include(AedstCompilerWarnings)
 
-find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Core Network)
+# Widgets: QSystemTrayIcon (TrayNotificationService); needs a QApplication at runtime.
+find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Core Gui Network Widgets)
 # Optional: only used for native Linux desktop notifications
 # (org.freedesktop.Notifications). Without it the in-app fallback is used.
 find_package(Qt6 ${AEDST_QT_MINIMUM} QUIET OPTIONAL_COMPONENTS DBus)
@@ -15,11 +16,13 @@ add_library(AedstPlatform STATIC
     include/aedst/platform/notification_service.hpp
     include/aedst/platform/platform_info.hpp
     include/aedst/platform/single_instance_guard.hpp
+    include/aedst/platform/tray_notification_service.hpp
     src/autostart.cpp
     src/deep_link.cpp
     src/notification_service.cpp
     src/platform_info.cpp
     src/single_instance_guard.cpp
+    src/tray_notification_service.cpp
 )
 add_library(Aedst::Platform ALIAS AedstPlatform)
 
@@ -29,7 +32,7 @@ target_compile_features(AedstPlatform PUBLIC cxx_std_23)
 
 # PUBLIC: SingleInstanceGuard / InAppNotificationService are QObjects and the
 # guard uses QLocalServer (Qt6::Network); Outcome comes from Aedst::Core.
-target_link_libraries(AedstPlatform PUBLIC Aedst::Core Qt6::Core Qt6::Network)
+target_link_libraries(AedstPlatform PUBLIC Aedst::Core Qt6::Core Qt6::Network PRIVATE Qt6::Gui Qt6::Widgets)
 
 if(UNIX AND NOT APPLE AND TARGET Qt6::DBus)
     target_sources(AedstPlatform PRIVATE

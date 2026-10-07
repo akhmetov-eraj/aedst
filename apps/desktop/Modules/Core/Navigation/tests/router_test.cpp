@@ -100,6 +100,25 @@ TEST_F(RouterTest, ResetToClearsBackStack) {
     EXPECT_EQ(replaced_.back(), kLoginView);
 }
 
+TEST(RouteForLinkTest, MapsKnownRelativeLinks) {
+    const auto task = routeForLink("/tasks/3f2b8c1e-0000-4000-8000-000000000001");
+    ASSERT_TRUE(task.has_value());
+    EXPECT_EQ(task->name, routes::kTaskDetail);
+    EXPECT_EQ(task->params.at(std::string(params::kTaskId)), "3f2b8c1e-0000-4000-8000-000000000001");
+    EXPECT_EQ(routeForLink("/tasks")->name, routes::kTasks);
+    EXPECT_EQ(routeForLink("/notifications")->name, routes::kNotifications);
+    EXPECT_EQ(routeForLink("/media/abc-123")->name, routes::kMediaViewer);
+}
+
+TEST(RouteForLinkTest, RejectsAnythingOutsideTheAllowList) {
+    EXPECT_FALSE(routeForLink("").has_value());
+    EXPECT_FALSE(routeForLink("https://evil.example/tasks/1").has_value());
+    EXPECT_FALSE(routeForLink("//evil.example/tasks/1").has_value());
+    EXPECT_FALSE(routeForLink("/tasks/../admin").has_value());
+    EXPECT_FALSE(routeForLink("/tasks/1?x=y").has_value());
+    EXPECT_FALSE(routeForLink("/admin").has_value());
+}
+
 } // namespace
 } // namespace aedst::navigation
 

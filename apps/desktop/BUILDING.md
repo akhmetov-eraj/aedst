@@ -19,7 +19,7 @@
 
 ```powershell
 # from an "x64 Native Tools Command Prompt for VS 2022"
-$env:VCPKG_ROOT = "C:\vcpkg"; $env:QT_ROOT_DIR = "C:\Qt\6.8.3\msvc2022_64"
+$env:VCPKG_ROOT = "C:\vcpkg"; $env:QT_ROOT_DIR = "C:\Qt\6.12.0\msvc2022_64"
 cmake --preset msvc-debug; cmake --build --preset msvc-debug; ctest --preset msvc-debug
 ```
 Put `%QT_ROOT_DIR%\bin` on `PATH` (or run `windeployqt`) before running from the build tree.

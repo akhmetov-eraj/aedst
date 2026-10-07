@@ -13,6 +13,9 @@ enum class ErrorCode {
     Unknown,
     InvalidArgument,
     Unauthenticated,
+    /// Signed in, but the server refused the call for this identity (missing role).
+    /// Distinct from Unauthenticated so a forbidden admin call never signs the user out.
+    PermissionDenied,
     NotFound,
     Network,
     Storage,
@@ -25,6 +28,8 @@ enum class ErrorCode {
         return "invalid_argument";
     case ErrorCode::Unauthenticated:
         return "unauthenticated";
+    case ErrorCode::PermissionDenied:
+        return "permission_denied";
     case ErrorCode::NotFound:
         return "not_found";
     case ErrorCode::Network:
@@ -49,6 +54,10 @@ struct Error {
 
     [[nodiscard]] static Error unauthenticated(std::string text) {
         return {ErrorCode::Unauthenticated, std::move(text)};
+    }
+
+    [[nodiscard]] static Error permissionDenied(std::string text) {
+        return {ErrorCode::PermissionDenied, std::move(text)};
     }
 
     [[nodiscard]] static Error notFound(std::string text) { return {ErrorCode::NotFound, std::move(text)}; }

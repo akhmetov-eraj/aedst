@@ -5,7 +5,7 @@ status below is **design + CI configuration; nothing has been built yet.**
 
 | Criterion | Windows | macOS | Linux |
 |---|---|---|---|
-| Minimum OS | Windows 10 (Qt 6.8 requirement) | macOS 12 (`CMAKE_OSX_DEPLOYMENT_TARGET`) | glibc distros with GL/xkbcommon; Flatpak `org.kde.Platform` 6.8 |
+| Minimum OS | Windows 10 1809+ (Qt 6.12 requirement; Qt 6.12 is the last Qt release supporting Windows 10) | macOS 14.4 (`CMAKE_OSX_DEPLOYMENT_TARGET`, Qt 6.12 minimum) | glibc distros with GL/xkbcommon (Qt binaries built on Ubuntu 24.04, glibc 2.39); Flatpak `org.kde.Platform` 6.12 |
 | Toolchain | MSVC 19.37+ (VS 2022 17.7) | AppleClang (arm64 + x86_64 presets) | GCC 13+, Clang 17+ with libstdc++ 13+ |
 | Presets | `msvc-debug/release`, `msvc-asan` | `macos-debug/release`, `macos-x64-*`, `macos-asan` | `gcc-*`, `clang-*`, `*-asan`, `clang-tsan`, `coverage` |
 | Secret store | DPAPI-wrapped master key | Keychain (Security.framework) | Secret Service (libsecret, optional) → `0600` key file fallback |

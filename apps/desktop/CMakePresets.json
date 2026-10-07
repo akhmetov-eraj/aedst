@@ -71,10 +71,10 @@
       "name": "macos-base",
       "hidden": true,
       "inherits": "base",
-      "description": "macOS 12+, AppleClang (Xcode 15+); the host default compiler (xcode-select) is used. Universal (arm64+x86_64) binaries: vcpkg builds one triplet per tree, so build the arm64 and x64 presets separately and merge with lipo -create (not automated).",
+      "description": "macOS 14.4+ (Qt 6.12 minimum target per doc.qt.io/qt-6/supported-platforms.html), AppleClang (Xcode 16+ / macOS 15 SDK); the host default compiler (xcode-select) is used. Universal (arm64+x86_64) binaries: vcpkg builds one triplet per tree, so build the arm64 and x64 presets separately and merge with lipo -create (not automated).",
       "condition": { "type": "equals", "lhs": "${hostSystemName}", "rhs": "Darwin" },
       "cacheVariables": {
-        "CMAKE_OSX_DEPLOYMENT_TARGET": "12.0"
+        "CMAKE_OSX_DEPLOYMENT_TARGET": "14.4"
       }
     },
     {

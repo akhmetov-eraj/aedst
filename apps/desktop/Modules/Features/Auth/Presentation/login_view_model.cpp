@@ -111,10 +111,9 @@ void LoginViewModel::login() {
                              guard->analytics_->identify(result->userId);
                              guard->analytics_->track(analytics::events::kLoginSucceeded, {});
                          }
-                         // No post-login destination exists yet now that
-                         // Users/Profile are gone (a future "tasks" module will
-                         // eventually provide one), so we only signal success;
-                         // the QML layer/AppDependencies own routing from here.
+                         // Auth never names another feature's screen: App/
+                         // (AppDependencies::onSignedIn) routes to the signed-in
+                         // home (Tasks) and starts per-user background work.
                          emit guard->loginSucceeded(QString::fromStdString(result->userId));
                      });
 }
