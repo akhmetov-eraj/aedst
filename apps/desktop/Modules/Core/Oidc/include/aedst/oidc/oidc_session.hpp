@@ -42,8 +42,9 @@ namespace aedst::oidc {
 ///    provider offers it, the browser SSO session is ended (RP-initiated logout).
 ///
 /// Not thread-safe: use on the thread that owns the QNetworkAccessManager (the GUI thread).
-/// Implements network::TokenProvider so ConnectClient reads the bearer token from here.
-class OidcSession final : public QObject, public network::TokenProvider {
+/// Implements network::TokenProvider (ConnectClient reads the bearer token from here) and
+/// network::TokenRefresher (the interceptor refreshes before sending and once after a rejection).
+class OidcSession final : public QObject, public network::TokenProvider, public network::TokenRefresher {
     Q_OBJECT
 
 public:
@@ -79,10 +80,10 @@ public:
     void restore(core::Completion<std::optional<OidcUser>> done);
 
     /// A token valid for at least the configured skew, refreshing first when needed.
-    void ensureFreshAccessToken(core::Completion<std::string> done);
+    void ensureFreshAccessToken(core::Completion<std::string> done) override;
     /// Called after the API rejected `rejectedToken` with Unauthenticated. If another caller already
     /// replaced that token the current one is returned without a second refresh.
-    void refreshAfterRejection(const std::string& rejectedToken, core::Completion<std::string> done);
+    void refreshAfterRejection(const std::string& rejectedToken, core::Completion<std::string> done) override;
 
     /// Always ends signed out locally. The completion reports the keychain result only; failures
     /// to reach the provider (revocation, end_session) are logged, not surfaced.

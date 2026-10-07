@@ -73,7 +73,12 @@ TEST(ApiErrorTest, OnlyTransientFailuresAreRetryable) {
     EXPECT_TRUE((ApiError{.kind = ApiErrorKind::Transport}).isRetryable());
     EXPECT_TRUE((ApiError{.kind = ApiErrorKind::Timeout}).isRetryable());
     EXPECT_TRUE((ApiError{.kind = ApiErrorKind::Unavailable, .httpStatus = 503}).isRetryable());
+    EXPECT_FALSE((ApiError{.kind = ApiErrorKind::Unavailable, .httpStatus = 429, .connectCode = "resource_exhausted"}).isRetryable());
+    EXPECT_TRUE((ApiError{.kind = ApiErrorKind::Unavailable, .httpStatus = 503, .connectCode = "unavailable"}).isRetryable());
+    EXPECT_TRUE((ApiError{.kind = ApiErrorKind::Timeout, .httpStatus = 408, .connectCode = "deadline_exceeded"}).isRetryable());
     EXPECT_FALSE((ApiError{.kind = ApiErrorKind::Unauthenticated, .httpStatus = 401}).isRetryable());
+    EXPECT_FALSE((ApiError{.kind = ApiErrorKind::InvalidArgument, .httpStatus = 400}).isRetryable());
+    EXPECT_FALSE((ApiError{.kind = ApiErrorKind::Internal, .httpStatus = 500}).isRetryable());
     EXPECT_FALSE((ApiError{.kind = ApiErrorKind::NotFound, .httpStatus = 404}).isRetryable());
     EXPECT_FALSE((ApiError{.kind = ApiErrorKind::Cancelled}).isRetryable());
     EXPECT_FALSE((ApiError{.kind = ApiErrorKind::Decoding}).isRetryable());

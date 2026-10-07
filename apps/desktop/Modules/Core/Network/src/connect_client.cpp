@@ -18,6 +18,8 @@
 #include <QString>
 #include <QTimer>
 
+#include <algorithm>
+#include <exception>
 #include <limits>
 #include <string>
 #include <string_view>
@@ -31,6 +33,8 @@ namespace detail {
 struct CallState {
     bool cancelled{false};
     bool finished{false};
+    /// Cancelled by an owner that is going away: the completion must not run at all.
+    bool silent{false};
     /// The request currently on the wire, if any (empty while backing off).
     QPointer<QNetworkReply> reply;
     /// Completes the call with an error at most once. Used to cancel while no
@@ -47,6 +51,10 @@ struct UnaryCall {
     std::chrono::milliseconds timeout{0};
     std::string correlationId;
     RawCompletion done;
+    /// The bearer token this call sent last, handed back to the refresher on a rejection.
+    std::string sentToken;
+    /// A rejected call is replayed after a refresh at most once.
+    bool refreshedAfterRejection{false};
 };
 
 struct StreamCall {
@@ -54,6 +62,16 @@ struct StreamCall {
     RawMessageHandler onMessage;
     ApiCompletion<void> onDone;
     bool contentTypeChecked{false};
+
+    // Everything needed to (re)open the request after a token refresh.
+    std::string path;
+    QUrl url;
+    QByteArray body;
+    AuthRequirement auth{AuthRequirement::Required};
+    std::chrono::milliseconds timeout{0};
+    std::string correlationId;
+    std::string sentToken;
+    bool refreshedAfterRejection{false};
 };
 
 std::optional<QByteArray> serialize(const google::protobuf::MessageLite& message) {
@@ -299,13 +317,29 @@ void armDeadline(QNetworkReply* reply, std::chrono::milliseconds timeout) {
     return payload;
 }
 
+/// Qt does not support exceptions leaving a slot (the event loop would terminate the process), so
+/// every call into caller-supplied code goes through here: an exception is logged and swallowed.
+template <typename Fn>
+void invokeGuarded(const char* what, Fn&& fn) noexcept {
+    try {
+        std::forward<Fn>(fn)();
+    } catch (const std::exception& e) {
+        qCCritical(lcNetwork, "%s threw an exception: %s", what, e.what());
+    } catch (...) {
+        qCCritical(lcNetwork, "%s threw a non-standard exception", what);
+    }
+}
+
 void completeUnary(const std::shared_ptr<detail::CallState>& state, detail::UnaryCall& call, RawResult result) {
     if (state->finished) {
         return;
     }
     state->finished = true;
     state->fail = nullptr;
-    call.done(std::move(result));
+    if (state->silent) {
+        return;
+    }
+    invokeGuarded("call completion", [&] { call.done(std::move(result)); });
 }
 
 void completeStream(const std::shared_ptr<detail::CallState>& state, detail::StreamCall& stream,
@@ -315,7 +349,10 @@ void completeStream(const std::shared_ptr<detail::CallState>& state, detail::Str
     }
     state->finished = true;
     state->fail = nullptr;
-    stream.onDone(std::move(result));
+    if (state->silent) {
+        return;
+    }
+    invokeGuarded("stream completion", [&] { stream.onDone(std::move(result)); });
 }
 
 /// Feeds bytes to the stream's reader and dispatches every complete frame.
@@ -347,7 +384,9 @@ void consumeStreamBytes(const std::shared_ptr<detail::CallState>& state, detail:
             completeStream(state, stream, parseEndStream((*frame)->payload));
             return;
         }
-        if (auto handled = stream.onMessage(std::move((*frame)->payload)); !handled) {
+        std::expected<void, ApiError> handled;
+        invokeGuarded("stream message handler", [&] { handled = stream.onMessage(std::move((*frame)->payload)); });
+        if (!handled) {
             completeStream(state, stream, std::unexpected(std::move(handled.error())));
             reply.abort();
             return;
@@ -373,8 +412,36 @@ void CallHandle::cancel() const {
     }
 }
 
+void CallHandle::cancelSilently() const {
+    if (!state_ || state_->finished || state_->cancelled) {
+        return;
+    }
+    state_->silent = true;
+    cancel();
+}
+
 bool CallHandle::isActive() const noexcept {
     return state_ && !state_->finished;
+}
+
+// --- CallScope ----------------------------------------------------------------------------
+
+void CallScope::add(CallHandle handle) {
+    std::erase_if(handles_, [](const CallHandle& existing) { return !existing.isActive(); });
+    if (handle.isActive()) {
+        handles_.push_back(std::move(handle));
+    }
+}
+
+void CallScope::cancelAll() {
+    const auto pending = std::exchange(handles_, {});
+    for (const CallHandle& handle : pending) {
+        handle.cancelSilently();
+    }
+}
+
+std::size_t CallScope::activeCount() const {
+    return static_cast<std::size_t>(std::ranges::count_if(handles_, &CallHandle::isActive));
 }
 
 // --- ConnectClient ------------------------------------------------------------
@@ -473,8 +540,51 @@ CallHandle ConnectClient::unaryRaw(const MethodInfo& method, QByteArray body, co
     return CallHandle{state};
 }
 
+CallHandle ConnectClient::bindToContext(CallHandle handle, const QObject* context,
+                                        const std::shared_ptr<QMetaObject::Connection>& link) {
+    if (context != nullptr && handle.isActive()) {
+        // The context is the receiver of nothing: this connection only exists to observe its destruction.
+        *link = QObject::connect(context, &QObject::destroyed, this, [handle]() { handle.cancelSilently(); });
+    }
+    return handle;
+}
+
 void ConnectClient::runUnaryAttempt(const std::shared_ptr<detail::CallState>& state,
                                     const std::shared_ptr<detail::UnaryCall>& call, int attempt) {
+    if (state->finished) {
+        return;
+    }
+    if (state->cancelled) {
+        completeUnary(state, *call, std::unexpected(cancelledError()));
+        return;
+    }
+    if (!interceptor_ || !interceptor_->canRefresh() || call->auth == AuthRequirement::Public) {
+        sendUnaryAttempt(state, call, attempt);
+        return;
+    }
+    // Refresh the token first if it is about to expire (single flight inside the refresher).
+    QPointer<ConnectClient> self(this);
+    interceptor_->prepare(call->auth, [self, state, call, attempt](std::optional<ApiError> failure) {
+        if (!self || state->finished) {
+            return;
+        }
+        if (state->cancelled) {
+            completeUnary(state, *call, std::unexpected(cancelledError()));
+            return;
+        }
+        if (failure) {
+            // Never complete inside unaryRaw(): the contract is an asynchronous completion.
+            QTimer::singleShot(0, self.data(), [state, call, error = std::move(*failure)]() mutable {
+                completeUnary(state, *call, std::unexpected(std::move(error)));
+            });
+            return;
+        }
+        self->sendUnaryAttempt(state, call, attempt);
+    });
+}
+
+void ConnectClient::sendUnaryAttempt(const std::shared_ptr<detail::CallState>& state,
+                                     const std::shared_ptr<detail::UnaryCall>& call, int attempt) {
     if (state->finished) {
         return;
     }
@@ -491,6 +601,8 @@ void ConnectClient::runUnaryAttempt(const std::shared_ptr<detail::CallState>& st
     }
     if (interceptor_) {
         interceptor_->apply(request, call->auth); // per attempt: picks up a rotated token
+        const QByteArray authorization = request.rawHeader("Authorization");
+        call->sentToken = authorization.startsWith("Bearer ") ? authorization.mid(7).toStdString() : std::string{};
     }
     hardenRequest(request, sslConfig_, call->correlationId);
     {
@@ -515,6 +627,29 @@ void ConnectClient::onUnaryFinished(QNetworkReply& reply, const std::shared_ptr<
 
     if (state->cancelled) {
         completeUnary(state, *call, std::unexpected(cancelledError()));
+        return;
+    }
+    if (!result && result.error().kind == ApiErrorKind::Unauthenticated && call->auth == AuthRequirement::Required &&
+        interceptor_ && interceptor_->canRefresh() && !call->refreshedAfterRejection) {
+        // The server rejected the token (revoked server-side, clock skew, rotated elsewhere): refresh
+        // once and replay once. The rejected call never ran on the server, so replaying is safe even
+        // for non-idempotent methods. A second rejection is final.
+        call->refreshedAfterRejection = true;
+        QPointer<ConnectClient> self(this);
+        interceptor_->refreshAfterRejection(call->sentToken, [self, state, call, attempt](std::optional<ApiError> failure) {
+            if (!self || state->finished) {
+                return;
+            }
+            if (state->cancelled) {
+                completeUnary(state, *call, std::unexpected(cancelledError()));
+                return;
+            }
+            if (failure) {
+                completeUnary(state, *call, std::unexpected(std::move(*failure)));
+                return;
+            }
+            self->runUnaryAttempt(state, call, attempt); // same attempt number: the retry budget is untouched
+        });
         return;
     }
     if (!result) {
@@ -559,30 +694,85 @@ CallHandle ConnectClient::serverStreamRaw(const MethodInfo& method, QByteArray b
     };
 
     // No default deadline: a stream is expected to outlive the unary timeout.
-    const std::chrono::milliseconds timeout = options.timeout.value_or(std::chrono::milliseconds{0});
+    stream->timeout = options.timeout.value_or(std::chrono::milliseconds{0});
+    stream->path = std::string(method.path);
+    stream->url = endpointUrl(config_.baseUrl, method.path);
+    stream->body = std::move(body);
+    stream->auth = method.auth;
+    stream->correlationId = callCorrelationId();
 
-    QNetworkRequest request(endpointUrl(config_.baseUrl, method.path));
+    openStream(state, stream);
+    return CallHandle{state};
+}
+
+void ConnectClient::openStream(const std::shared_ptr<detail::CallState>& state,
+                               const std::shared_ptr<detail::StreamCall>& stream) {
+    if (state->finished) {
+        return;
+    }
+    if (state->cancelled) {
+        completeStream(state, *stream, std::unexpected(cancelledError()));
+        return;
+    }
+    if (!interceptor_ || !interceptor_->canRefresh() || stream->auth == AuthRequirement::Public) {
+        sendStream(state, stream);
+        return;
+    }
+    QPointer<ConnectClient> self(this);
+    interceptor_->prepare(stream->auth, [self, state, stream](std::optional<ApiError> failure) {
+        if (!self || state->finished) {
+            return;
+        }
+        if (state->cancelled) {
+            completeStream(state, *stream, std::unexpected(cancelledError()));
+            return;
+        }
+        if (failure) {
+            QTimer::singleShot(0, self.data(), [state, stream, error = std::move(*failure)]() mutable {
+                completeStream(state, *stream, std::unexpected(std::move(error)));
+            });
+            return;
+        }
+        self->sendStream(state, stream);
+    });
+}
+
+void ConnectClient::sendStream(const std::shared_ptr<detail::CallState>& state,
+                               const std::shared_ptr<detail::StreamCall>& stream) {
+    if (state->finished) {
+        return;
+    }
+    if (state->cancelled) {
+        completeStream(state, *stream, std::unexpected(cancelledError()));
+        return;
+    }
+    stream->reader = envelope::EnvelopeReader{};
+    stream->contentTypeChecked = false;
+
+    QNetworkRequest request(stream->url);
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/connect+proto"));
     request.setRawHeader("Connect-Protocol-Version", "1");
     request.setRawHeader("Connect-Accept-Encoding", "identity"); // no per-message compression
     request.setRawHeader("Accept-Encoding", "identity");         // and no intermediary re-encoding
-    if (timeout.count() > 0) {
-        request.setRawHeader("Connect-Timeout-Ms", QByteArray::number(static_cast<qlonglong>(timeout.count())));
+    if (stream->timeout.count() > 0) {
+        request.setRawHeader("Connect-Timeout-Ms",
+                             QByteArray::number(static_cast<qlonglong>(stream->timeout.count())));
     }
     if (interceptor_) {
-        interceptor_->apply(request, method.auth);
+        interceptor_->apply(request, stream->auth);
+        const QByteArray authorization = request.rawHeader("Authorization");
+        stream->sentToken = authorization.startsWith("Bearer ") ? authorization.mid(7).toStdString() : std::string{};
     }
-    const std::string correlationId = callCorrelationId();
-    hardenRequest(request, sslConfig_, correlationId);
+    hardenRequest(request, sslConfig_, stream->correlationId);
     {
-        const core::CorrelationScope scope(correlationId);
-        qCDebug(lcNetwork, "POST %s (server stream)", std::string(method.path).c_str());
+        const core::CorrelationScope scope(stream->correlationId);
+        qCDebug(lcNetwork, "POST %s (server stream)", stream->path.c_str());
     }
 
-    QNetworkReply* reply = network_.post(request, envelope::encode(0, body));
+    QNetworkReply* reply = network_.post(request, envelope::encode(0, stream->body));
     state->reply = reply;
     watchHandshake(reply, pinnedSpki_);
-    armDeadline(reply, timeout);
+    armDeadline(reply, stream->timeout);
 
     connect(reply, &QNetworkReply::readyRead, this, [reply, state, stream, pins = pinnedSpki_]() {
         if (state->finished) {
@@ -610,7 +800,8 @@ CallHandle ConnectClient::serverStreamRaw(const MethodInfo& method, QByteArray b
         consumeStreamBytes(state, *stream, *reply, reply->readAll());
     });
 
-    connect(reply, &QNetworkReply::finished, this, [reply, state, stream, pins = pinnedSpki_]() {
+    QPointer<ConnectClient> self(this);
+    connect(reply, &QNetworkReply::finished, this, [self, reply, state, stream, pins = pinnedSpki_]() {
         state->reply.clear();
         if (state->finished) {
             return;
@@ -627,8 +818,29 @@ CallHandle ConnectClient::serverStreamRaw(const MethodInfo& method, QByteArray b
         }
         const QByteArray rest = reply->readAll();
         if (status != 200) {
-            completeStream(state, *stream,
-                           std::unexpected(errorFromUnaryResponse(status, rest, reply->errorString().toStdString())));
+            ApiError error = errorFromUnaryResponse(status, rest, reply->errorString().toStdString());
+            if (error.kind == ApiErrorKind::Unauthenticated && stream->auth == AuthRequirement::Required && self &&
+                self->interceptor_ && self->interceptor_->canRefresh() && !stream->refreshedAfterRejection) {
+                // Rejected before any message was delivered: refresh once, then open the stream again.
+                stream->refreshedAfterRejection = true;
+                self->interceptor_->refreshAfterRejection(
+                    stream->sentToken, [self, state, stream](std::optional<ApiError> refreshFailure) {
+                        if (!self || state->finished) {
+                            return;
+                        }
+                        if (state->cancelled) {
+                            completeStream(state, *stream, std::unexpected(cancelledError()));
+                            return;
+                        }
+                        if (refreshFailure) {
+                            completeStream(state, *stream, std::unexpected(std::move(*refreshFailure)));
+                            return;
+                        }
+                        self->openStream(state, stream);
+                    });
+                return;
+            }
+            completeStream(state, *stream, std::unexpected(std::move(error)));
             return;
         }
         if (!rest.isEmpty()) {
@@ -639,8 +851,6 @@ CallHandle ConnectClient::serverStreamRaw(const MethodInfo& method, QByteArray b
                                                 .httpStatus = status,
                                                 .message = "Stream ended without an end-of-stream message"}));
     });
-
-    return CallHandle{state};
 }
 
 } // namespace aedst::network

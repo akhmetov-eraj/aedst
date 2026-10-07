@@ -103,9 +103,15 @@ struct ApiError {
                 .connectCode = std::string(connectCode)};
     }
 
-    /// Only failures where the same request might succeed later. Background
-    /// polling loops (Features/Notifications) back off on these instead of surfacing them.
+    /// Only failures where the same request might succeed later: `unavailable` (also 502/503/504 and 429
+    /// without a Connect body), `deadline_exceeded` and connection-level failures, which Connect defines
+    /// as `unavailable` on the client. An explicit `resource_exhausted` is NOT retried blindly: the
+    /// server is shedding load on purpose and an immediate replay makes it worse. Background polling
+    /// loops (Features/Notifications) back off on these instead of surfacing them.
     [[nodiscard]] constexpr bool isRetryable() const noexcept {
+        if (connectCode == "resource_exhausted") {
+            return false;
+        }
         return kind == ApiErrorKind::Transport || kind == ApiErrorKind::Timeout || kind == ApiErrorKind::Unavailable;
     }
 

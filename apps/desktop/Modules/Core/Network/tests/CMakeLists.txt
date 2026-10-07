@@ -22,7 +22,7 @@ gtest_discover_tests(AedstNetworkTests
 # Protobuf messages (Aedst::Contract), one QCoreApplication for the event loop.
 # Non-discovering (DISCOVERY_MODE would launch the binary at build time, which
 # needs the Qt DLLs on PATH on Windows); one CTest entry per binary like Qt Test.
-add_executable(AedstNetworkClientTests connect_client_test.cpp)
+add_executable(AedstNetworkClientTests connect_client_test.cpp connect_client_auth_test.cpp)
 target_link_libraries(AedstNetworkClientTests PRIVATE Aedst::Network Aedst::Contract Aedst::Testing)
 aedst_set_warnings(AedstNetworkClientTests)
 

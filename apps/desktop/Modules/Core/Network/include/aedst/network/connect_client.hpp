@@ -7,6 +7,7 @@
 
 #include <QByteArray>
 #include <QList>
+#include <QMetaObject>
 #include <QNetworkAccessManager>
 #include <QObject>
 #include <QSslConfiguration>
@@ -15,6 +16,7 @@
 #include <google/protobuf/message_lite.h>
 
 #include <chrono>
+#include <cstddef>
 #include <expected>
 #include <functional>
 #include <memory>
@@ -52,6 +54,10 @@ public:
     /// still in flight.
     void cancel() const;
 
+    /// Cancels without running the completion at all. For owners that are going away: the
+    /// completion would otherwise run while the owner is half destroyed.
+    void cancelSilently() const;
+
     [[nodiscard]] bool isActive() const noexcept;
 
 private:
@@ -59,6 +65,26 @@ private:
     explicit CallHandle(std::shared_ptr<detail::CallState> state) noexcept : state_(std::move(state)) {}
 
     std::shared_ptr<detail::CallState> state_;
+};
+
+/// Cancels every call it holds when it is destroyed - put one in a QObject that starts calls and
+/// the requests die with their caller. Cancellation is silent (no completion runs), so it is safe
+/// to do from a destructor. Finished calls are forgotten on the next add().
+class CallScope final {
+public:
+    CallScope() = default;
+    CallScope(const CallScope&) = delete;
+    CallScope& operator=(const CallScope&) = delete;
+    CallScope(CallScope&&) = delete;
+    CallScope& operator=(CallScope&&) = delete;
+    ~CallScope() { cancelAll(); }
+
+    void add(CallHandle handle);
+    void cancelAll();
+    [[nodiscard]] std::size_t activeCount() const;
+
+private:
+    std::vector<CallHandle> handles_;
 };
 
 struct ClientConfig {
@@ -134,6 +160,18 @@ public:
                             std::type_identity_t<std::function<void(Res)>> onMessage,
                             std::type_identity_t<ApiCompletion<void>> onDone, const CallOptions& options = {});
 
+    /// Same, bound to the lifetime of `context` (typically the QObject that issued the call): when
+    /// the context is destroyed the call is cancelled silently and `done` never runs, so a closed
+    /// window or a deleted view model cannot be called back. `done` runs on the context thread.
+    template <typename Req, typename Res>
+    CallHandle unary(const Method<Req, Res>& method, const Req& request, const QObject* context,
+                     std::type_identity_t<ApiCompletion<Res>> done, const CallOptions& options = {});
+
+    template <typename Req, typename Res>
+    CallHandle serverStream(const Method<Req, Res>& method, const Req& request, const QObject* context,
+                            std::type_identity_t<std::function<void(Res)>> onMessage,
+                            std::type_identity_t<ApiCompletion<void>> onDone, const CallOptions& options = {});
+
     /// Untyped layer the templates sit on (already-serialized Protobuf bytes).
     CallHandle unaryRaw(const MethodInfo& method, QByteArray body, const CallOptions& options, RawCompletion done);
     CallHandle serverStreamRaw(const MethodInfo& method, QByteArray body, const CallOptions& options,
@@ -152,8 +190,16 @@ public:
     [[nodiscard]] const std::optional<ApiError>& configError() const noexcept { return configError_; }
 
 private:
+    /// Refreshes the token if needed (AuthInterceptor::prepare), then sends the attempt.
     void runUnaryAttempt(const std::shared_ptr<detail::CallState>& state, const std::shared_ptr<detail::UnaryCall>& call,
                          int attempt);
+    void sendUnaryAttempt(const std::shared_ptr<detail::CallState>& state,
+                          const std::shared_ptr<detail::UnaryCall>& call, int attempt);
+    void openStream(const std::shared_ptr<detail::CallState>& state, const std::shared_ptr<detail::StreamCall>& stream);
+    void sendStream(const std::shared_ptr<detail::CallState>& state, const std::shared_ptr<detail::StreamCall>& stream);
+    /// Links a call to `context`: destroying the context cancels the call silently.
+    [[nodiscard]] CallHandle bindToContext(CallHandle handle, const QObject* context,
+                                           const std::shared_ptr<QMetaObject::Connection>& link);
     void onUnaryFinished(QNetworkReply& reply, const std::shared_ptr<detail::CallState>& state,
                          const std::shared_ptr<detail::UnaryCall>& call, int attempt);
 
@@ -201,6 +247,35 @@ CallHandle ConnectClient::unary(const Method<Req, Res>& method, const Req& reque
         }
         done(detail::parseMessage<Res>(*raw));
     });
+}
+
+template <typename Req, typename Res>
+CallHandle ConnectClient::unary(const Method<Req, Res>& method, const Req& request, const QObject* context,
+                                std::type_identity_t<ApiCompletion<Res>> done, const CallOptions& options) {
+    auto link = std::make_shared<QMetaObject::Connection>();
+    CallHandle handle = unary(
+        method, request,
+        [link, done = std::move(done)](ApiResult<Res> result) {
+            QObject::disconnect(*link);
+            done(std::move(result));
+        },
+        options);
+    return bindToContext(std::move(handle), context, link);
+}
+
+template <typename Req, typename Res>
+CallHandle ConnectClient::serverStream(const Method<Req, Res>& method, const Req& request, const QObject* context,
+                                       std::type_identity_t<std::function<void(Res)>> onMessage,
+                                       std::type_identity_t<ApiCompletion<void>> onDone, const CallOptions& options) {
+    auto link = std::make_shared<QMetaObject::Connection>();
+    CallHandle handle = serverStream(
+        method, request, std::move(onMessage),
+        [link, onDone = std::move(onDone)](ApiResult<void> result) {
+            QObject::disconnect(*link);
+            onDone(std::move(result));
+        },
+        options);
+    return bindToContext(std::move(handle), context, link);
 }
 
 template <typename Req, typename Res>

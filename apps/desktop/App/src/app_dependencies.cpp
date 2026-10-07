@@ -120,7 +120,10 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
         deps->oidcSession_ = std::make_shared<oidc::OidcSession>(config.oidc, std::move(oidcDeps));
         tokenProvider = deps->oidcSession_;
     }
-    deps->authInterceptor_ = std::make_shared<network::AuthInterceptor>(tokenProvider);
+    // With OIDC the interceptor also refreshes the access token: before a call when it is about to
+    // expire, and once after an `unauthenticated` answer (single flight, shared by all callers).
+    deps->authInterceptor_ = std::make_shared<network::AuthInterceptor>(
+        tokenProvider, useOidc ? std::static_pointer_cast<network::TokenRefresher>(deps->oidcSession_) : nullptr);
     deps->connectClient_ = std::make_shared<network::ConnectClient>(
         network::ClientConfig{.baseUrl = config.apiBaseUrl}, deps->authInterceptor_);
     deps->mediaRemote_ = std::make_shared<media::ConnectMediaRemoteDataSource>(deps->connectClient_);
