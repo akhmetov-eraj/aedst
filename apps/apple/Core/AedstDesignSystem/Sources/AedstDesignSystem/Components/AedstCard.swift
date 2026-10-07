@@ -15,7 +15,7 @@ public struct AedstCard<Content: View>: View {
         VStack(alignment: .leading, spacing: AedstSpacing.sm) {
             content
         }
-        .padding(AedstSpacing.md)
+        .padding(AedstSpacing.lg)
         .background(AedstColor.card)
         .foregroundStyle(AedstColor.cardForeground)
         .clipShape(RoundedRectangle(cornerRadius: AedstRadius.xl, style: .continuous))

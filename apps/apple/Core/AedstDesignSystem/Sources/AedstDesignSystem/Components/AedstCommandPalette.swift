@@ -35,7 +35,7 @@ public struct AedstCommandPalette: View {
     }
 
     public var body: some View {
-        NavigationStack {
+        AedstNavigationContainer {
             List(filtered) { command in
                 Button {
                     command.action()

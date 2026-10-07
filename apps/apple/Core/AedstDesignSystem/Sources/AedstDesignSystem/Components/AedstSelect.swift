@@ -45,7 +45,7 @@ public struct AedstSelect<Option: Hashable>: View {
                         .foregroundStyle(AedstColor.foreground)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundStyle(AedstColor.mutedForeground)
                 }
                 .padding(.horizontal, AedstSpacing.sm)
@@ -60,7 +60,7 @@ public struct AedstSelect<Option: Hashable>: View {
             #if os(macOS)
             .menuStyle(.borderlessButton)
             #endif
-            .accessibilityLabel(Text(label ?? "Select"))
+            .accessibilityLabel(Text(label ?? AedstStrings.select))
             .accessibilityValue(Text(optionLabel(selection)))
         }
     }

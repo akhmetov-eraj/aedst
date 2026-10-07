@@ -1,25 +1,75 @@
-/// The seam `AedstNetwork`'s `AuthInterceptor` calls into to attach/refresh
-/// the bearer token. Implemented by `AedstPersistence`'s Keychain-backed
-/// store. Lives in `AedstCore` (not `AedstNetwork` or `AedstPersistence`) so
-/// neither of those two modules has to depend on the other.
+import Foundation
+
+/// An access/refresh token pair with absolute expiry instants. Expiries are
+/// absolute (computed once, at issue time, from an injected `AedstClock`) so a
+/// relaunch — or an offline start — can still tell whether a token is usable
+/// without asking the server.
+public struct TokenPair: Sendable, Codable, Equatable {
+    public let accessToken: String
+    public let refreshToken: String
+    public let accessTokenExpiresAt: Date
+    public let refreshTokenExpiresAt: Date
+
+    public init(accessToken: String, refreshToken: String, accessTokenExpiresAt: Date, refreshTokenExpiresAt: Date) {
+        self.accessToken = accessToken
+        self.refreshToken = refreshToken
+        self.accessTokenExpiresAt = accessTokenExpiresAt
+        self.refreshTokenExpiresAt = refreshTokenExpiresAt
+    }
+}
+
+/// Token-free view of the stored session — safe to hand to UI code.
+public struct SessionSnapshot: Sendable, Equatable {
+    public let userID: String
+    public let accessTokenExpiresAt: Date
+    public let refreshTokenExpiresAt: Date
+
+    public init(userID: String, accessTokenExpiresAt: Date, refreshTokenExpiresAt: Date) {
+        self.userID = userID
+        self.accessTokenExpiresAt = accessTokenExpiresAt
+        self.refreshTokenExpiresAt = refreshTokenExpiresAt
+    }
+}
+
+/// Outcome of a token refresh. The three cases are deliberately distinct: only
+/// `.rejected` (the server said the refresh token is dead) may end the session.
+/// A transient failure (`.unavailable`: offline, timeout, 5xx) must keep the
+/// session so the user is not signed out by a subway tunnel.
+public enum RefreshResult: Sendable, Equatable {
+    case refreshed(TokenPair)
+    case rejected
+    case unavailable
+}
+
+/// Session lifecycle notifications the UI reacts to.
+public enum SessionEvent: Sendable, Equatable {
+    /// The refresh token was rejected (or the stored session is unreadable):
+    /// the user must sign in again.
+    case expired
+}
+
+/// The seam `AedstNetwork` calls into to attach/refresh the bearer token.
+/// Implemented by `AedstPersistence`'s Keychain-backed store. Lives in
+/// `AedstCore` so neither `AedstNetwork` nor `AedstPersistence` depends on
+/// the other.
 public protocol TokenProvider: Sendable {
     func currentAccessToken() async -> String?
-    /// Called once, by whichever request hit a 401 first; concurrent callers
-    /// await the same in-flight refresh instead of each firing their own.
-    /// Returns `nil` when the refresh token itself is invalid/expired.
-    func refreshAccessToken() async -> String?
+    /// Called by whichever request hit a 401 first; concurrent callers await
+    /// the same in-flight refresh instead of each firing their own.
+    func refreshAccessToken() async -> RefreshResult
     func clearTokens() async
 }
 
-/// `TokenProvider` plus the write side (`AuthInterceptor`/`AuthService.Login`
-/// consumers only ever *read*; `Features/Auth`'s repository is the only
-/// caller that *writes* a freshly issued token pair). Kept as a separate,
-/// narrower protocol so a read-only consumer can't accidentally overwrite
-/// the session.
+/// `TokenProvider` plus the write side. Kept separate so a read-only
+/// consumer can't accidentally overwrite the session.
 public protocol SessionStore: TokenProvider {
-    func save(accessToken: String, refreshToken: String) async
-    /// Only `AuthService.Logout` needs the raw refresh token (the proto
-    /// call takes it explicitly, see `auth.proto`'s `LogoutRequest`) — no
-    /// other caller should read it, which is why it isn't on `TokenProvider`.
+    /// Atomically replaces the whole session (tokens and user id are one
+    /// Keychain item, so a failure can never leave a mismatched pair).
+    func save(_ tokens: TokenPair, userID: String) async throws
+    /// Only `AuthService.Logout` needs the raw refresh token.
     func currentRefreshToken() async -> String?
+    /// Token-free description of the stored session; works offline.
+    func currentSession() async -> SessionSnapshot?
+    /// Emits `.expired` when the server rejects the refresh token.
+    var events: AsyncStream<SessionEvent> { get }
 }

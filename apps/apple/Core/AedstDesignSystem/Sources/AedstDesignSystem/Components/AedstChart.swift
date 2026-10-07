@@ -16,6 +16,10 @@ public struct AedstChartPoint: Identifiable {
 /// Swift Charts wrapper matching shadcn/ui `Chart` — first-party and
 /// lightweight, so this stays a thin tokenizing layer (series colors from
 /// `AedstColor.chartSeries`) rather than a bespoke drawing engine.
+///
+/// Swift Charts is iOS 16 / macOS 13+, above this package's iOS 15 / macOS 12 floor, so the
+/// chart is `@available`-gated; call sites on older OS versions must provide a fallback.
+@available(iOS 16, macOS 13, tvOS 16, watchOS 9, *)
 public struct AedstChart: View {
     public enum Style {
         case bar
@@ -62,7 +66,7 @@ public struct AedstChart: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text("Chart with \(points.count) data points"))
+        .accessibilityLabel(Text(AedstStrings.chartSummary(points.count)))
     }
 
     private func seriesColor(_ index: Int) -> Color {
@@ -71,14 +75,16 @@ public struct AedstChart: View {
 }
 
 #Preview("AedstChart") {
-    AedstChart(
-        points: [
-            AedstChartPoint(label: "Mon", value: 4),
-            AedstChartPoint(label: "Tue", value: 7),
-            AedstChartPoint(label: "Wed", value: 3),
-            AedstChartPoint(label: "Thu", value: 9),
-        ]
-    )
-    .frame(height: 200)
-    .padding()
+    if #available(iOS 16, macOS 13, *) {
+        AedstChart(
+            points: [
+                AedstChartPoint(label: "Mon", value: 4),
+                AedstChartPoint(label: "Tue", value: 7),
+                AedstChartPoint(label: "Wed", value: 3),
+                AedstChartPoint(label: "Thu", value: 9),
+            ]
+        )
+        .frame(height: 200)
+        .padding()
+    }
 }

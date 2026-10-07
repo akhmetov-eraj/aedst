@@ -1,6 +1,7 @@
+import AedstNavigation
 import SwiftUI
 
-/// `App/Shared`'s composition root attaches this to the root `NavigationStack`
+/// `App/Shared`'s composition root attaches this to the root `AedstNavigationStack`
 /// alongside every other feature's `*Destinations` modifier — the one place
 /// that is allowed to know every feature exists (see `docs/architecture-apple.md`).
 public struct AuthDestinations: ViewModifier {
@@ -11,7 +12,7 @@ public struct AuthDestinations: ViewModifier {
     }
 
     public func body(content: Content) -> some View {
-        content.navigationDestination(for: AuthRoute.self) { route in
+        content.aedstDestination(for: AuthRoute.self) { route in
             switch route {
             case .login:
                 makeLoginView()

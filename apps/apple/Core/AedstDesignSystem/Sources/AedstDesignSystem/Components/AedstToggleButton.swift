@@ -35,7 +35,7 @@ public struct AedstToggleButton: View {
         .buttonStyle(.plain)
         #endif
         .accessibilityAddTraits(.isButton)
-        .accessibilityValue(Text(isOn ? "On" : "Off"))
+        .accessibilityValue(Text(isOn ? AedstStrings.on : AedstStrings.off))
     }
 }
 

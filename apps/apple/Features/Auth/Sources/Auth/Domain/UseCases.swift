@@ -1,4 +1,5 @@
 import AedstCore
+import Foundation
 
 public struct LoginInput: Sendable {
     public let credentials: Credentials
@@ -21,13 +22,18 @@ public struct LoginUseCase: UseCase {
     }
 
     public func callAsFunction(_ input: LoginInput) async -> Outcome<Session> {
-        guard input.credentials.email.contains("@") else {
+        // Trim what a keyboard/autofill commonly leaves behind; never touch the password.
+        let email = input.credentials.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard email.contains("@") else {
             return .failure(.validation(fields: ["email"]))
         }
         guard !input.credentials.password.isEmpty else {
             return .failure(.validation(fields: ["password"]))
         }
-        return await repository.login(with: input.credentials, deviceID: input.deviceID)
+        return await repository.login(
+            with: Credentials(email: email, password: input.credentials.password),
+            deviceID: input.deviceID
+        )
     }
 }
 
@@ -40,5 +46,18 @@ public struct LogoutUseCase: UseCase {
 
     public func callAsFunction(_ input: NoInput) async -> Outcome<Void> {
         await repository.logout()
+    }
+}
+
+/// Restores the persisted session at launch (no network call).
+public struct RestoreSessionUseCase: UseCase {
+    private let repository: AuthRepository
+
+    public init(repository: AuthRepository) {
+        self.repository = repository
+    }
+
+    public func callAsFunction(_ input: NoInput) async -> Outcome<Session?> {
+        .success(await repository.currentSession())
     }
 }

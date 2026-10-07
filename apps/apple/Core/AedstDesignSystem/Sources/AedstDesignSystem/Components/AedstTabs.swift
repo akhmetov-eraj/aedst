@@ -8,6 +8,7 @@ public struct AedstTabs<Content: View>: View {
     private let items: [AedstTabItem]
     @Binding private var selection: String
     private let content: (AedstTabItem) -> Content
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(items: [AedstTabItem], selection: Binding<String>, @ViewBuilder content: @escaping (AedstTabItem) -> Content) {
         self.items = items
@@ -17,10 +18,10 @@ public struct AedstTabs<Content: View>: View {
 
     public var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: AedstSpacing.md) {
+            HStack(spacing: AedstSpacing.lg) {
                 ForEach(items) { item in
                     Button {
-                        withAnimation(.easeOut(duration: 0.2)) { selection = item.id }
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { selection = item.id }
                     } label: {
                         VStack(spacing: AedstSpacing.xxs) {
                             Text(item.title)

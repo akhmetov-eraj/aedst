@@ -1,6 +1,6 @@
 // Shared across every target and configuration. Platform- and
 // configuration-specific overrides live in the other files in this
-// directory and are layered on top by project.yml.
+// directory and are layered on top by Project.swift.
 
 SWIFT_VERSION = 6.0
 SWIFT_STRICT_CONCURRENCY = complete
@@ -8,3 +8,24 @@ MARKETING_VERSION = 0.1.0
 CURRENT_PROJECT_VERSION = 1
 PRODUCT_BUNDLE_IDENTIFIER_PREFIX = com.aedst.apple
 ENABLE_USER_SCRIPT_SANDBOXING = YES
+
+// Signing. Automatic by default; the team id is NEVER committed. Provide it
+// through the gitignored Signing.local.xcconfig (copy Signing.local.xcconfig.example)
+// or on the xcodebuild command line (DEVELOPMENT_TEAM=...), which is what CI does.
+CODE_SIGN_STYLE = Automatic
+#include? "Signing.local.xcconfig"
+
+// Telemetry (see Core/AedstTelemetry). Empty = SDK disabled: a fork without
+// accounts ships with no telemetry. Real values come from the gitignored
+// Secrets.local.xcconfig (copy the .example) or from xcodebuild arguments in CI
+// (AEDST_SENTRY_DSN=... AEDST_POSTHOG_KEY=...). These are client-side
+// identifiers, not secrets, but keeping them out of git keeps forks clean.
+// NOTE: "//" starts a comment in xcconfig files, so write URLs as https:/$()/host.
+AEDST_SENTRY_DSN =
+AEDST_POSTHOG_KEY =
+AEDST_POSTHOG_HOST = https:/$()/eu.i.posthog.com
+// Where the access token carries roles (same rules as the server setting
+// AEDST_OIDC_ROLES_CLAIM; Keycloak: realm_access.roles). Only used to show or
+// hide the admin entry point; the server authorizes every admin call.
+AEDST_ROLES_CLAIM = roles
+#include? "Secrets.local.xcconfig"

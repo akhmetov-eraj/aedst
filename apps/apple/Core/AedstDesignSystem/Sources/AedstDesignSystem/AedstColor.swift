@@ -9,54 +9,56 @@ import AppKit
 /// counterpart to the Compose `MaterialTheme.colorScheme` wiring in
 /// `apps/android/core/ui` and the CSS custom properties in
 /// `apps/web/src/app/styles/globals.css`. Backed by dynamic light/dark
-/// initializers rather than an asset catalog so the token names stay
-/// greppable from Swift; swap for `Color("primary", bundle: .module)`
+/// initializers rather than an asset catalog; swap for `Color("primary", bundle: .module)`
 /// backed by `Resources/Colors.xcassets` if designers want to own these via
 /// Figma tokens instead.
+///
+/// Values come from the generated `AedstLightPalette`/`AedstDarkPalette` (single source:
+/// `packages/design-tokens/tokens/color`); this file only pairs them into adaptive colors.
 ///
 /// Names and pairing mirror web's token set 1:1 (`background`/`foreground`,
 /// `primary`/`primaryForeground`, ...) so a design spec reads the same
 /// token name on every platform.
 public enum AedstColor {
-    public static let background = adaptive(light: "#ffffff", dark: "#0a0a0a")
-    public static let foreground = adaptive(light: "#0a0a0a", dark: "#fafafa")
+    public static let background = adaptive(light: AedstLightPalette.background, dark: AedstDarkPalette.background)
+    public static let foreground = adaptive(light: AedstLightPalette.foreground, dark: AedstDarkPalette.foreground)
 
-    public static let card = adaptive(light: "#ffffff", dark: "#171717")
-    public static let cardForeground = adaptive(light: "#0a0a0a", dark: "#fafafa")
+    public static let card = adaptive(light: AedstLightPalette.card, dark: AedstDarkPalette.card)
+    public static let cardForeground = adaptive(light: AedstLightPalette.cardForeground, dark: AedstDarkPalette.cardForeground)
 
-    public static let popover = adaptive(light: "#ffffff", dark: "#171717")
-    public static let popoverForeground = adaptive(light: "#0a0a0a", dark: "#fafafa")
+    public static let popover = adaptive(light: AedstLightPalette.popover, dark: AedstDarkPalette.popover)
+    public static let popoverForeground = adaptive(light: AedstLightPalette.popoverForeground, dark: AedstDarkPalette.popoverForeground)
 
-    public static let primary = adaptive(light: "#171717", dark: "#e5e5e5")
-    public static let primaryForeground = adaptive(light: "#fafafa", dark: "#171717")
+    public static let primary = adaptive(light: AedstLightPalette.primary, dark: AedstDarkPalette.primary)
+    public static let primaryForeground = adaptive(light: AedstLightPalette.primaryForeground, dark: AedstDarkPalette.primaryForeground)
 
-    public static let secondary = adaptive(light: "#f5f5f5", dark: "#262626")
-    public static let secondaryForeground = adaptive(light: "#171717", dark: "#fafafa")
+    public static let secondary = adaptive(light: AedstLightPalette.secondary, dark: AedstDarkPalette.secondary)
+    public static let secondaryForeground = adaptive(light: AedstLightPalette.secondaryForeground, dark: AedstDarkPalette.secondaryForeground)
 
-    public static let muted = adaptive(light: "#f5f5f5", dark: "#262626")
-    public static let mutedForeground = adaptive(light: "#737373", dark: "#a1a1a1")
+    public static let muted = adaptive(light: AedstLightPalette.muted, dark: AedstDarkPalette.muted)
+    public static let mutedForeground = adaptive(light: AedstLightPalette.mutedForeground, dark: AedstDarkPalette.mutedForeground)
 
-    public static let accent = adaptive(light: "#f5f5f5", dark: "#262626")
-    public static let accentForeground = adaptive(light: "#171717", dark: "#fafafa")
+    public static let accent = adaptive(light: AedstLightPalette.accent, dark: AedstDarkPalette.accent)
+    public static let accentForeground = adaptive(light: AedstLightPalette.accentForeground, dark: AedstDarkPalette.accentForeground)
 
-    public static let destructive = adaptive(light: "#e7000b", dark: "#ff6467")
-    public static let destructiveForeground = adaptive(light: "#fafafa", dark: "#171717")
+    public static let destructive = adaptive(light: AedstLightPalette.destructive, dark: AedstDarkPalette.destructive)
+    public static let destructiveForeground = adaptive(light: AedstLightPalette.destructiveForeground, dark: AedstDarkPalette.destructiveForeground)
 
-    public static let success = adaptive(light: "#15803d", dark: "#4ade80")
-    public static let successForeground = adaptive(light: "#fafafa", dark: "#052e16")
+    public static let success = adaptive(light: AedstLightPalette.success, dark: AedstDarkPalette.success)
+    public static let successForeground = adaptive(light: AedstLightPalette.successForeground, dark: AedstDarkPalette.successForeground)
 
-    public static let warning = adaptive(light: "#b45309", dark: "#fbbf24")
-    public static let warningForeground = adaptive(light: "#fafafa", dark: "#451a03")
+    public static let warning = adaptive(light: AedstLightPalette.warning, dark: AedstDarkPalette.warning)
+    public static let warningForeground = adaptive(light: AedstLightPalette.warningForeground, dark: AedstDarkPalette.warningForeground)
 
-    public static let border = adaptive(light: "#e5e5e5", dark: Color.white.opacity(0.1))
-    public static let input = adaptive(light: "#e5e5e5", dark: Color.white.opacity(0.15))
-    public static let ring = adaptive(light: "#a1a1a1", dark: "#8a8a8a")
+    public static let border = adaptive(light: AedstLightPalette.border, dark: AedstDarkPalette.border)
+    public static let input = adaptive(light: AedstLightPalette.input, dark: AedstDarkPalette.input)
+    public static let ring = adaptive(light: AedstLightPalette.ring, dark: AedstDarkPalette.ring)
 
-    public static let chart1 = adaptive(light: "#dedede", dark: "#dedede")
-    public static let chart2 = adaptive(light: "#8a8a8a", dark: "#8a8a8a")
-    public static let chart3 = adaptive(light: "#6b6b6b", dark: "#6b6b6b")
-    public static let chart4 = adaptive(light: "#5a5a5a", dark: "#5a5a5a")
-    public static let chart5 = adaptive(light: "#383838", dark: "#383838")
+    public static let chart1 = adaptive(light: AedstLightPalette.chart1, dark: AedstDarkPalette.chart1)
+    public static let chart2 = adaptive(light: AedstLightPalette.chart2, dark: AedstDarkPalette.chart2)
+    public static let chart3 = adaptive(light: AedstLightPalette.chart3, dark: AedstDarkPalette.chart3)
+    public static let chart4 = adaptive(light: AedstLightPalette.chart4, dark: AedstDarkPalette.chart4)
+    public static let chart5 = adaptive(light: AedstLightPalette.chart5, dark: AedstDarkPalette.chart5)
 
     /// Ordered palette for chart series that need to cycle through colors.
     public static let chartSeries: [Color] = [chart1, chart2, chart3, chart4, chart5]
@@ -76,12 +78,8 @@ public enum AedstColor {
     @available(*, deprecated, renamed: "destructive")
     public static let danger = destructive
 
-    private static func adaptive(light: String, dark: String) -> Color {
-        Color(light: Color(hex: light), dark: Color(hex: dark))
-    }
-
-    private static func adaptive(light: String, dark: Color) -> Color {
-        Color(light: Color(hex: light), dark: dark)
+    private static func adaptive(light: Color, dark: Color) -> Color {
+        Color(light: light, dark: dark)
     }
 }
 
@@ -100,18 +98,5 @@ extension Color {
         #else
         self = light
         #endif
-    }
-
-    /// `#rrggbb` hex literal, used to port the design tokens from
-    /// `apps/web`'s CSS custom properties without hand-converting OKLCH.
-    init(hex: String) {
-        var sanitized = hex.trimmingCharacters(in: .whitespacesAndNewlines)
-        sanitized.removeAll { $0 == "#" }
-        var value: UInt64 = 0
-        Scanner(string: sanitized).scanHexInt64(&value)
-        let r = Double((value & 0xFF0000) >> 16) / 255
-        let g = Double((value & 0x00FF00) >> 8) / 255
-        let b = Double(value & 0x0000FF) / 255
-        self = Color(red: r, green: g, blue: b)
     }
 }

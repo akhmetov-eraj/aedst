@@ -22,7 +22,7 @@ public struct AedstOTPInput: View {
                 #endif
                 .focused($isFocused)
                 .opacity(0.01)
-                .onChange(of: code) { _, newValue in
+                .onChange(of: code) { newValue in
                     let digits = newValue.filter(\.isNumber)
                     code = String(digits.prefix(length))
                 }
@@ -49,8 +49,8 @@ public struct AedstOTPInput: View {
         .contentShape(Rectangle())
         .onTapGesture { isFocused = true }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("One-time passcode"))
-        .accessibilityValue(Text(code.isEmpty ? "Empty" : code))
+        .accessibilityLabel(Text(AedstStrings.oneTimePasscode))
+        .accessibilityValue(Text(code.isEmpty ? AedstStrings.empty : code))
     }
 
     private func character(at index: Int) -> String {

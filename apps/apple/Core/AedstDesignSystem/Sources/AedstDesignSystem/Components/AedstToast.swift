@@ -21,9 +21,10 @@ public struct AedstToastData: Equatable {
 
 public struct AedstToastModifier: ViewModifier {
     @Binding private var toast: AedstToastData?
-    private let duration: Duration
+    private let duration: TimeInterval
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(toast: Binding<AedstToastData?>, duration: Duration = .seconds(3)) {
+    public init(toast: Binding<AedstToastData?>, duration: TimeInterval = 3) {
         self._toast = toast
         self.duration = duration
     }
@@ -47,22 +48,22 @@ public struct AedstToastModifier: ViewModifier {
                 .foregroundStyle(AedstColor.popoverForeground)
                 .clipShape(RoundedRectangle(cornerRadius: AedstRadius.md, style: .continuous))
                 .shadow(radius: 12, y: 4)
-                .padding(AedstSpacing.md)
+                .padding(AedstSpacing.lg)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .task(id: toast) {
-                    try? await Task.sleep(for: duration)
-                    withAnimation { self.toast = nil }
+                    try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+                    withAnimation(reduceMotion ? nil : .default) { self.toast = nil }
                 }
                 .accessibilityElement(children: .combine)
                 .accessibilityAddTraits(.isStaticText)
             }
         }
-        .animation(.spring(duration: 0.3), value: toast)
+        .aedstAnimation(.spring(response: 0.3), value: toast)
     }
 }
 
 extension View {
-    public func aedstToast(_ toast: Binding<AedstToastData?>, duration: Duration = .seconds(3)) -> some View {
+    public func aedstToast(_ toast: Binding<AedstToastData?>, duration: TimeInterval = 3) -> some View {
         modifier(AedstToastModifier(toast: toast, duration: duration))
     }
 }

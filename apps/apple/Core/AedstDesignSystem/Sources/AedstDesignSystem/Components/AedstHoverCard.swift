@@ -24,7 +24,7 @@ public struct AedstHoverCardModifier<CardContent: View>: ViewModifier {
                     .frame(width: 240)
                     .background(AedstColor.popover)
                     .foregroundStyle(AedstColor.popoverForeground)
-                    .presentationCompactAdaptation(.popover)
+                    .aedstPopoverAdaptation()
             }
     }
 }

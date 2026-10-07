@@ -1,12 +1,18 @@
-/// Corner radius scale — mirrors the `--radius-*` custom properties derived
-/// from web's `--radius: 0.625rem` base in `apps/web/src/app/styles/globals.css`
-/// (`radius-sm = radius * 0.6`, ... `radius-xl = radius * 1.4`).
+//
+// AedstRadius.swift
+//
+
+// GENERATED — do not edit; edit packages/design-tokens/tokens
+
+import SwiftUI
+
 public enum AedstRadius {
-    public static let xs: Double = 4
-    public static let sm: Double = 6
-    public static let md: Double = 8
-    public static let lg: Double = 10
-    public static let xl: Double = 14
-    public static let xxl: Double = 18
-    public static let full: Double = 9999
+    public static let full = CGFloat(9999.00)
+    public static let lg = CGFloat(10.00)
+    public static let md = CGFloat(8.00)
+    public static let sm = CGFloat(6.00)
+    public static let xl = CGFloat(14.00)
+    public static let xs = CGFloat(4.00)
+    public static let xxl = CGFloat(18.00)
+    public static let xxxl = CGFloat(22.00)
 }

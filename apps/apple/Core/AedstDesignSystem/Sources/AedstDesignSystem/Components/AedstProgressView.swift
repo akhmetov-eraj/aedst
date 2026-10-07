@@ -45,13 +45,13 @@ public struct AedstProgressView: View {
             .tint(AedstColor.primary)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Text(label ?? "Progress"))
-        .accessibilityValue(value.map { Text("\(Int($0 * 100)) percent") } ?? Text(""))
+        .accessibilityLabel(Text(label ?? AedstStrings.progress))
+        .accessibilityValue(value.map { Text(AedstStrings.percent(Int($0 * 100))) } ?? Text(""))
     }
 }
 
 #Preview("AedstProgressView") {
-    VStack(spacing: AedstSpacing.md) {
+    VStack(spacing: AedstSpacing.lg) {
         AedstProgressView(value: 0.6, label: "Uploading")
         AedstProgressView(style: .circular)
     }

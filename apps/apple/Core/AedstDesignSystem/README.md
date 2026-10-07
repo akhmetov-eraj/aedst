@@ -6,12 +6,18 @@ SwiftUI design system for `apps/apple`, built to feature/quality parity with
 
 ## Tokens
 
+Design tokens are **generated** from `packages/design-tokens/tokens` (single source for all platforms; see that README). Files marked GENERATED must not be edited — change the JSON and run `pnpm --dir packages/design-tokens build`.
+
 | File | Contents |
 |---|---|
-| `AedstColor.swift` | Semantic adaptive light/dark colors mirroring web's CSS custom properties in `apps/web/src/app/styles/globals.css`: `background`/`foreground`, `card`/`cardForeground`, `popover`/`popoverForeground`, `primary`/`primaryForeground`, `secondary`/`secondaryForeground`, `muted`/`mutedForeground`, `accent`/`accentForeground`, `destructive`/`destructiveForeground`, `success`/`successForeground`, `warning`/`warningForeground`, `border`, `input`, `ring`, `chart1`...`chart5` (+ `chartSeries`). Legacy names (`brandPrimary`, `surface`, `textPrimary`, `textSecondary`, `danger`) are kept as `@available(*, deprecated)` aliases so existing call sites (`Features/Auth`, `App/Shared`) keep compiling. |
-| `AedstSpacing.swift` | 4pt-grid scale: `xxs`...`xxxl`. |
-| `AedstRadius.swift` | Corner radius scale mirroring web's `--radius-*` derived properties: `xs`...`xxl`, `full`. |
-| `AedstTypography.swift` | Semantic `Font` scale: `largeTitle`, `title`, `headline`, `body`, `caption`. |
+| `AedstLightPalette.swift`, `AedstDarkPalette.swift` | GENERATED. Raw light/dark `Color` values per semantic token (web-parity names). |
+| `AedstColor.swift` | Hand-written pairing of the two palettes into adaptive light/dark `Color`s (`AedstColor.background`, `.primary`, ..., `chartSeries`). Legacy names (`brandPrimary`, `surface`, `textPrimary`, `textSecondary`, `danger`) stay as `@available(*, deprecated)` aliases. |
+| `AedstSpacing.swift` | GENERATED. `CGFloat` scale `none`, `xxs`..`giant` (4pt grid; note `md` is 12, not the pre-token 16). |
+| `AedstRadius.swift` | GENERATED. `CGFloat` scale `xs`..`xxxl`, `full`. |
+| `AedstElevation.swift` | GENERATED. `CGFloat` elevation levels (reference values). |
+| `AedstMotion.swift` | GENERATED. Animation durations in seconds. |
+| `AedstTypeScale.swift` | GENERATED. Cross-platform type scale (reference values). Apple text deliberately uses Dynamic Type via `AedstTypography` instead. |
+| `AedstTypography.swift` | Semantic `Font` scale on Dynamic-Type text styles: `largeTitle`, `title`, `headline`, `body`, `caption`. |
 
 ## Components (`Components/`)
 
@@ -67,9 +73,10 @@ This is a Windows sandbox with no Swift toolchain (`which swift` → not found),
   `#if !os(macOS)` in `AedstCarousel`, and a `Chart` closure in `AedstChart`
   changed from an (index, point) tuple-shuffle parameter list (removed from
   Swift years ago) to a single destructured parameter.
-- `Package.swift` platform minimums (iOS 17 / macOS 14 / watchOS 10 / tvOS 17 /
-  visionOS 1) against every API used (two-parameter `.onChange`, `.popover`
-  `presentationCompactAdaptation`, `@Previewable`, Swift Charts) — all satisfied.
+- `Package.swift` platform minimums are now iOS 15 / macOS 12 / watchOS 8 / tvOS 15 /
+  visionOS 1; APIs above that (two-parameter `.onChange`, `presentationCompactAdaptation`,
+  `presentationDetents`, `scrollContentBackground`, `Font.system(_:design:weight:)`, `Duration`,
+  Swift Charts, `NavigationStack`) are replaced or `#available`-gated — see `apps/apple/README.md`.
 
 No `swift build` / `xcodebuild` was actually executed — this repo has no macOS
 CI runner available in this session either, so a real compiler pass is still

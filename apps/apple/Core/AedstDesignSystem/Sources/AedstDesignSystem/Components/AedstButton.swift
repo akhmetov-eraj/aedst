@@ -26,11 +26,11 @@ public enum AedstButtonSize {
         }
     }
 
-    var horizontalPadding: Double {
+    var horizontalPadding: CGFloat {
         switch self {
         case .sm: AedstSpacing.sm
-        case .md: AedstSpacing.md
-        case .lg: AedstSpacing.lg
+        case .md: AedstSpacing.lg
+        case .lg: AedstSpacing.xxl
         case .icon: 0
         }
     }
@@ -113,8 +113,10 @@ public struct AedstButton: View {
         #if os(macOS)
         .buttonStyle(.plain)
         #endif
+        // `Button` already exposes the button trait; the label is set explicitly
+        // because the visible title is hidden (opacity 0) while loading and
+        // absent for `.icon`.
         .accessibilityLabel(Text(title))
-        .accessibilityAddTraits(.isButton)
     }
 
     private var backgroundColor: Color {

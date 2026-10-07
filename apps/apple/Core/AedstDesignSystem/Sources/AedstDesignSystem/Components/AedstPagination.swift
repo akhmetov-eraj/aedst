@@ -13,7 +13,7 @@ public struct AedstPagination: View {
 
     public var body: some View {
         HStack(spacing: AedstSpacing.xxs) {
-            AedstIconButton(systemImage: "chevron.left", accessibilityLabel: "Previous page", isDisabled: page <= 1) {
+            AedstIconButton(systemImage: "chevron.left", accessibilityLabel: AedstStrings.previousPage, isDisabled: page <= 1) {
                 page -= 1
             }
 
@@ -34,7 +34,7 @@ public struct AedstPagination: View {
                 .accessibilityAddTraits(number == page ? [.isButton, .isSelected] : .isButton)
             }
 
-            AedstIconButton(systemImage: "chevron.right", accessibilityLabel: "Next page", isDisabled: page >= pageCount) {
+            AedstIconButton(systemImage: "chevron.right", accessibilityLabel: AedstStrings.nextPage, isDisabled: page >= pageCount) {
                 page += 1
             }
         }

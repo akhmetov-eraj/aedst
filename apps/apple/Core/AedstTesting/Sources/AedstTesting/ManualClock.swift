@@ -8,7 +8,7 @@ import Foundation
 public final class ManualClock: AedstClock, @unchecked Sendable {
     private let lock = NSLock()
     private var _now: Date
-    public private(set) var sleptDurations: [Duration] = []
+    public private(set) var sleptDurations: [TimeInterval] = []
 
     public init(now: Date = Date(timeIntervalSince1970: 0)) {
         self._now = now
@@ -22,7 +22,7 @@ public final class ManualClock: AedstClock, @unchecked Sendable {
         lock.withLock { _now = _now.addingTimeInterval(interval) }
     }
 
-    public func sleep(for duration: Duration) async throws {
+    public func sleep(for duration: TimeInterval) async throws {
         lock.withLock { sleptDurations.append(duration) }
     }
 }

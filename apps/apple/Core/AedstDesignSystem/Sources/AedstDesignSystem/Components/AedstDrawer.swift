@@ -46,7 +46,7 @@ public struct AedstDrawerModifier<DrawerContent: View>: ViewModifier {
                 .transition(.opacity)
             }
         }
-        .animation(.easeOut(duration: 0.25), value: isPresented)
+        .aedstAnimation(.easeOut(duration: 0.25), value: isPresented)
     }
 }
 
@@ -65,7 +65,7 @@ extension View {
     @Previewable @State var isPresented = true
     Color.clear
         .aedstDrawer(isPresented: $isPresented) {
-            VStack(alignment: .leading, spacing: AedstSpacing.md) {
+            VStack(alignment: .leading, spacing: AedstSpacing.lg) {
                 Text("Inspector").font(AedstTypography.title)
                 Spacer()
             }

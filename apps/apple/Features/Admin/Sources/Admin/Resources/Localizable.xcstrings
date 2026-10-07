@@ -1,0 +1,741 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "adminAuditLog" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سجل التدقيق"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audit log"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Журнал аудита"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Феҳристи аудит"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Audit jurnali"
+          }
+        }
+      }
+    },
+    "adminBroadcast" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "بث إشعار"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Broadcast"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Рассылка"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Паҳнкунӣ"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tarqatma"
+          }
+        }
+      }
+    },
+    "adminBroadcastBody" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الرسالة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Message"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщение"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Паём"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xabar"
+          }
+        }
+      }
+    },
+    "adminBroadcastLink" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "رابط داخل التطبيق (اختياري)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In-app link (optional)"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ссылка в приложении (необязательно)"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пайванд дар барнома (ихтиёрӣ)"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ilova ichidagi havola (ixtiyoriy)"
+          }
+        }
+      }
+    },
+    "adminBroadcastSend" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "إرسال"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправить"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Фиристодан"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yuborish"
+          }
+        }
+      }
+    },
+    "adminBroadcastSent" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أُرسل إلى %lld مستلمين."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sent to %lld recipients."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправлено получателям: %lld."
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ба %lld гиранда фиристода шуд."
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%lld qabul qiluvchiga yuborildi."
+          }
+        }
+      }
+    },
+    "adminBroadcastTitleField" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "العنوان"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Title"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Заголовок"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сарлавҳа"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sarlavha"
+          }
+        }
+      }
+    },
+    "adminBroadcastUser" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "معرّف المستخدم"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "User ID"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ID пользователя"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ID-и корбар"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foydalanuvchi ID"
+          }
+        }
+      }
+    },
+    "adminBroadcastUserHelp" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اتركه فارغًا لإشعار الجميع."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leave empty to notify everyone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Оставьте пустым, чтобы уведомить всех."
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Барои огоҳ кардани ҳама холӣ гузоред."
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hammaga yuborish uchun boʻsh qoldiring."
+          }
+        }
+      }
+    },
+    "adminCancel" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "إلغاء"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отмена"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Бекор кардан"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekor qilish"
+          }
+        }
+      }
+    },
+    "adminDeleteReason" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "السبب (يُسجَّل في سجل التدقيق)"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reason (recorded in the audit log)"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Причина (записывается в журнал аудита)"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сабаб (дар феҳристи аудит сабт мешавад)"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sabab (audit jurnaliga yoziladi)"
+          }
+        }
+      }
+    },
+    "adminDeleteTask" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حذف المهمة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete task"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить задачу"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нест кардани вазифа"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vazifani oʻchirish"
+          }
+        }
+      }
+    },
+    "adminDeleteTaskTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حذف «%@»؟"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete “%@”?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Удалить «%@»?"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«%@»-ро нест кунед?"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«%@» oʻchirilsinmi?"
+          }
+        }
+      }
+    },
+    "adminJobsPending" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المهام المعلقة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pending jobs"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Задания в очереди"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Корҳои дар навбат"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Navbatdagi ishlar"
+          }
+        }
+      }
+    },
+    "adminMedia" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "التخزين"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Storage"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Хранилище"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Анбор"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Xotira"
+          }
+        }
+      }
+    },
+    "adminOutboxLag" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تأخر صندوق الصادر"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Outbox lag"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Задержка outbox"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Таъхири outbox"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Outbox kechikishi"
+          }
+        }
+      }
+    },
+    "adminOverview" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نظرة عامة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Overview"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Обзор"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Шарҳи умумӣ"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Umumiy koʻrinish"
+          }
+        }
+      }
+    },
+    "adminPushDevices" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أجهزة الإشعارات"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push devices"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Устройства push"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дастгоҳҳои push"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Push qurilmalar"
+          }
+        }
+      }
+    },
+    "adminTasks" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المهام"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tasks"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Задачи"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вазифаҳо"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vazifalar"
+          }
+        }
+      }
+    },
+    "adminTitle" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الإدارة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Admin"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Администрирование"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Маъмурият"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Boshqaruv"
+          }
+        }
+      }
+    },
+    "adminUsers" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "المستخدمون"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Users"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пользователи"
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Корбарон"
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foydalanuvchilar"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.1"
+}

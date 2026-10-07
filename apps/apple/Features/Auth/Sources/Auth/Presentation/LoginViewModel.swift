@@ -1,10 +1,10 @@
 import AedstAnalytics
 import AedstCore
 import Foundation
-import Observation
+import Perception
 
 @MainActor
-@Observable
+@Perceptible
 public final class LoginViewModel {
     public var email = ""
     public var password = ""
@@ -14,12 +14,16 @@ public final class LoginViewModel {
 
     private let loginUseCase: LoginUseCase
     private let analytics: AnalyticsClient
-    private let deviceID: () -> String
+    private let deviceID: @Sendable () -> String
+    private let logger = AedstLogger(category: "login")
 
+    /// `deviceID` is injected (the composition root supplies the persisted,
+    /// stable per-install identifier) — a view model must not mint a fresh
+    /// random one per attempt.
     public init(
         loginUseCase: LoginUseCase,
         analytics: AnalyticsClient = NoopAnalyticsClient(),
-        deviceID: @escaping () -> String = { UUID().uuidString }
+        deviceID: @escaping @Sendable () -> String
     ) {
         self.loginUseCase = loginUseCase
         self.analytics = analytics
@@ -30,8 +34,11 @@ public final class LoginViewModel {
         email.contains("@") && !password.isEmpty
     }
 
-    public func submit() async {
-        guard !isLoading else { return }
+    /// Returns the new session on success so callers never have to read observable
+    /// state outside SwiftUI's tracking scope.
+    @discardableResult
+    public func submit() async -> Session? {
+        guard !isLoading, isFormValid else { return nil }
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }
@@ -44,10 +51,26 @@ public final class LoginViewModel {
         switch await loginUseCase(input) {
         case .success(let session):
             self.session = session
+            password = "" // do not keep the secret around in memory longer than needed
             analytics.track(AnalyticsEvent(name: "login_success"))
+            return session
         case .failure(let error):
-            errorMessage = error.errorDescription
+            errorMessage = Self.message(for: error)
+            logger.error("Login failed (\(error.analyticsCategory))")
             analytics.track(AnalyticsEvent(name: "login_failure", parameters: ["reason": error.analyticsCategory]))
+            return nil
+        }
+    }
+
+    /// Human, localized sentence for the login form. A 401 on *login* means
+    /// wrong credentials — not "your session ended", which is the generic
+    /// `.unauthorized` text used elsewhere.
+    static func message(for error: AedstError) -> String {
+        switch error {
+        case .unauthorized:
+            String(localized: "authLoginInvalidCredentials", bundle: .module)
+        default:
+            error.errorDescription ?? String(localized: "authLoginInvalidCredentials", bundle: .module)
         }
     }
 }

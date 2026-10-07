@@ -58,7 +58,7 @@ public struct AedstTextField: View {
                 Text(errorMessage)
                     .font(AedstTypography.caption)
                     .foregroundStyle(AedstColor.destructive)
-                    .accessibilityLabel(Text("Error: \(errorMessage)"))
+                    .accessibilityLabel(Text(AedstStrings.errorPrefix(errorMessage)))
             } else if let helperText {
                 Text(helperText)
                     .font(AedstTypography.caption)
@@ -70,7 +70,7 @@ public struct AedstTextField: View {
 }
 
 #Preview("AedstTextField — Light") {
-    VStack(spacing: AedstSpacing.md) {
+    VStack(spacing: AedstSpacing.lg) {
         AedstTextField("Email", text: .constant("hi@aedst.dev"), helperText: "We'll never share this.")
         AedstTextField("Password", text: .constant(""), errorMessage: "Required", isSecure: true)
         AedstTextField("Disabled", text: .constant("locked"), isDisabled: true)

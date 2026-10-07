@@ -26,25 +26,25 @@ public struct AedstDialogModifier<DialogContent: View>: ViewModifier {
                         HStack {
                             Text(title).font(AedstTypography.headline)
                             Spacer()
-                            AedstIconButton(systemImage: "xmark", accessibilityLabel: "Close") {
+                            AedstIconButton(systemImage: "xmark", accessibilityLabel: AedstStrings.close) {
                                 isPresented = false
                             }
                         }
                         dialogContent
                     }
-                    .padding(AedstSpacing.md)
+                    .padding(AedstSpacing.lg)
                     .background(AedstColor.popover)
                     .foregroundStyle(AedstColor.popoverForeground)
                     .clipShape(RoundedRectangle(cornerRadius: AedstRadius.xl, style: .continuous))
                     .shadow(radius: 24, y: 8)
-                    .padding(AedstSpacing.lg)
+                    .padding(AedstSpacing.xxl)
                     .frame(maxWidth: 480)
                 }
                 .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 .accessibilityAddTraits(.isModal)
             }
         }
-        .animation(.easeOut(duration: 0.2), value: isPresented)
+        .aedstAnimation(.easeOut(duration: 0.2), value: isPresented)
     }
 }
 

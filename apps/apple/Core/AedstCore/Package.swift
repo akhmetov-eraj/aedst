@@ -3,14 +3,15 @@ import PackageDescription
 
 let package = Package(
     name: "AedstCore",
+    defaultLocalization: "en",
     // watchOS/tvOS/visionOS are scaffolded minimums for future app targets:
-    // only App_iOS and App_macOS exist in project.yml today, so these three
+    // only App_iOS and App_macOS exist in Project.swift today, so these three
     // platforms build the package but have no real UI/entry point yet.
     platforms: [
-        .iOS(.v17),
-        .macOS(.v14),
-        .watchOS(.v10),
-        .tvOS(.v17),
+        .iOS(.v15),
+        .macOS(.v12),
+        .watchOS(.v8),
+        .tvOS(.v15),
         .visionOS(.v1),
     ],
     products: [
@@ -19,6 +20,7 @@ let package = Package(
     targets: [
         .target(
             name: "AedstCore",
+            resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(

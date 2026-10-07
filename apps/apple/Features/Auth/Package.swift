@@ -3,15 +3,12 @@ import PackageDescription
 
 let package = Package(
     name: "Auth",
-    // watchOS/tvOS/visionOS are scaffolded minimums for future app targets:
-    // only App_iOS and App_macOS exist in project.yml today, so these three
-    // platforms build the package but have no real UI/entry point yet.
+    defaultLocalization: "en",
+    // iOS/macOS only: `LoginViewModel`/`LoginView` use Perception's
+    // `@Perceptible`/`@Perception.Bindable` (the latter is unavailable on visionOS).
     platforms: [
-        .iOS(.v17),
-        .macOS(.v14),
-        .watchOS(.v10),
-        .tvOS(.v17),
-        .visionOS(.v1),
+        .iOS(.v15),
+        .macOS(.v12),
     ],
     products: [
         .library(name: "Auth", targets: ["Auth"]),
@@ -23,6 +20,8 @@ let package = Package(
         .package(path: "../../Core/AedstNavigation"),
         .package(path: "../../Core/AedstAnalytics"),
         .package(path: "../../Core/AedstTesting"),
+        // Observation backport — see Core/AedstNavigation/Package.swift for the version-range rationale.
+        .package(url: "https://github.com/pointfreeco/swift-perception", "2.0.11"..<"2.0.12"),
     ],
     targets: [
         .target(
@@ -33,13 +32,14 @@ let package = Package(
                 "AedstDesignSystem",
                 "AedstNavigation",
                 "AedstAnalytics",
+                .product(name: "Perception", package: "swift-perception"),
             ],
             resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
             name: "AuthTests",
-            dependencies: ["Auth", "AedstTesting"],
+            dependencies: ["Auth", "AedstCore", "AedstTesting"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]

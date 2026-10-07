@@ -41,7 +41,7 @@ public struct AedstSlider: View {
             Slider(value: $value, in: range, step: step)
                 .tint(AedstColor.primary)
         }
-        .accessibilityLabel(Text(label ?? "Slider"))
+        .accessibilityLabel(Text(label ?? AedstStrings.slider))
         .accessibilityValue(Text(value.formatted()))
     }
 }

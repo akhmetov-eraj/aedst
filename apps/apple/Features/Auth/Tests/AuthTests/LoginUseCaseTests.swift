@@ -4,12 +4,14 @@ import Testing
 
 @Suite("LoginUseCase")
 struct LoginUseCaseTests {
+    private func input(_ email: String, _ password: String) -> LoginInput {
+        LoginInput(credentials: Credentials(email: email, password: password), deviceID: "device-1")
+    }
+
     @Test("rejects an email without @ before hitting the repository")
     func rejectsInvalidEmail() async {
         let repository = SpyAuthRepository(loginResult: .success(.stub))
-        let useCase = LoginUseCase(repository: repository)
-
-        let result = await useCase(LoginInput(credentials: Credentials(email: "not-an-email", password: "hunter2"), deviceID: "device-1"))
+        let result = await LoginUseCase(repository: repository)(input("not-an-email", "hunter2"))
 
         #expect(result.error == .validation(fields: ["email"]))
         #expect(await repository.loginCallCount == 0)
@@ -18,9 +20,7 @@ struct LoginUseCaseTests {
     @Test("rejects an empty password before hitting the repository")
     func rejectsEmptyPassword() async {
         let repository = SpyAuthRepository(loginResult: .success(.stub))
-        let useCase = LoginUseCase(repository: repository)
-
-        let result = await useCase(LoginInput(credentials: Credentials(email: "a@b.com", password: ""), deviceID: "device-1"))
+        let result = await LoginUseCase(repository: repository)(input("a@b.com", ""))
 
         #expect(result.error == .validation(fields: ["password"]))
         #expect(await repository.loginCallCount == 0)
@@ -29,47 +29,44 @@ struct LoginUseCaseTests {
     @Test("delegates to the repository once inputs are valid")
     func delegatesToRepository() async {
         let repository = SpyAuthRepository(loginResult: .success(.stub))
-        let useCase = LoginUseCase(repository: repository)
-
-        let result = await useCase(LoginInput(credentials: Credentials(email: "a@b.com", password: "hunter2"), deviceID: "device-1"))
+        let result = await LoginUseCase(repository: repository)(input("a@b.com", "hunter2"))
 
         #expect(result.value == .stub)
         #expect(await repository.loginCallCount == 1)
+        #expect(await repository.lastDeviceID == "device-1")
+    }
+
+    @Test("trims whitespace around the email but never alters the password")
+    func normalizesInput() async {
+        let repository = SpyAuthRepository(loginResult: .success(.stub))
+        _ = await LoginUseCase(repository: repository)(input("  a@b.com \n", " pass word "))
+
+        #expect(await repository.lastCredentials?.email == "a@b.com")
+        #expect(await repository.lastCredentials?.password == " pass word ")
     }
 
     @Test("surfaces a repository failure unchanged")
     func surfacesRepositoryFailure() async {
         let repository = SpyAuthRepository(loginResult: .failure(.unauthorized))
-        let useCase = LoginUseCase(repository: repository)
-
-        let result = await useCase(LoginInput(credentials: Credentials(email: "a@b.com", password: "hunter2"), deviceID: "device-1"))
+        let result = await LoginUseCase(repository: repository)(input("a@b.com", "hunter2"))
 
         #expect(result.error == .unauthorized)
     }
 }
 
-private actor SpyAuthRepository: AuthRepository {
-    private let loginResult: Outcome<Session>
-    private(set) var loginCallCount = 0
+@Suite("RestoreSessionUseCase")
+struct RestoreSessionUseCaseTests {
+    @Test("returns the persisted session, or nil when signed out")
+    func restores() async {
+        let signedIn = SpyAuthRepository(loginResult: .failure(.unauthorized), storedSession: .stub)
+        let signedOut = SpyAuthRepository(loginResult: .failure(.unauthorized))
 
-    init(loginResult: Outcome<Session>) {
-        self.loginResult = loginResult
+        guard case .success(let restored) = await RestoreSessionUseCase(repository: signedIn)(NoInput()),
+              case .success(let none) = await RestoreSessionUseCase(repository: signedOut)(NoInput()) else {
+            Issue.record("restoring a session never fails")
+            return
+        }
+        #expect(restored == .stub)
+        #expect(none == nil)
     }
-
-    func login(with credentials: Credentials, deviceID: String) async -> Outcome<Session> {
-        loginCallCount += 1
-        return loginResult
-    }
-
-    func logout() async -> Outcome<Void> { .success(()) }
-
-    func hasActiveSession() async -> Bool { false }
-}
-
-extension Session {
-    fileprivate static let stub = Session(
-        userID: "user-1",
-        accessTokenExpiresAt: .distantFuture,
-        refreshTokenExpiresAt: .distantFuture
-    )
 }

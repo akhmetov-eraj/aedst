@@ -25,7 +25,7 @@ public struct AedstTooltipModifier: ViewModifier {
                     .background(AedstColor.foreground)
                     .foregroundStyle(AedstColor.background)
                     .clipShape(RoundedRectangle(cornerRadius: AedstRadius.sm, style: .continuous))
-                    .presentationCompactAdaptation(.popover)
+                    .aedstPopoverAdaptation()
             }
             .accessibilityHint(Text(text))
     }

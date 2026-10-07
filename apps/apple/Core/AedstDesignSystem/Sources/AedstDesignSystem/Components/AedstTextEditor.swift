@@ -39,7 +39,7 @@ public struct AedstTextEditor: View {
                 }
                 TextEditor(text: $text)
                     .font(AedstTypography.body)
-                    .scrollContentBackground(.hidden)
+                    .aedstHiddenScrollBackground()
                     .padding(.horizontal, AedstSpacing.xs - 4)
             }
             .frame(minHeight: minHeight)
@@ -57,6 +57,25 @@ public struct AedstTextEditor: View {
                     .foregroundStyle(AedstColor.destructive)
             }
         }
+    }
+}
+
+/// `scrollContentBackground(.hidden)` is iOS 16 / macOS 13; below that the system
+/// `TextEditor` background shows through (an accepted degradation at the iOS 15 floor).
+private struct AedstHiddenScrollBackgroundModifier: ViewModifier {
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 16, macOS 13, tvOS 16, watchOS 9, *) {
+            content.scrollContentBackground(.hidden)
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    fileprivate func aedstHiddenScrollBackground() -> some View {
+        modifier(AedstHiddenScrollBackgroundModifier())
     }
 }
 

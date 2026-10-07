@@ -29,7 +29,7 @@ public struct AedstCheckbox: View {
                     .overlay {
                         if isChecked {
                             Image(systemName: "checkmark")
-                                .font(.system(size: 12, weight: .bold))
+                                .font(.caption.weight(.bold))
                                 .foregroundStyle(AedstColor.primaryForeground)
                         }
                     }
@@ -46,9 +46,9 @@ public struct AedstCheckbox: View {
         #endif
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.5 : 1)
-        .accessibilityLabel(Text(label ?? "Checkbox"))
+        .accessibilityLabel(Text(label ?? AedstStrings.checkbox))
         .accessibilityAddTraits(.isButton)
-        .accessibilityValue(Text(isChecked ? "Checked" : "Unchecked"))
+        .accessibilityValue(Text(isChecked ? AedstStrings.checked : AedstStrings.unchecked))
     }
 }
 

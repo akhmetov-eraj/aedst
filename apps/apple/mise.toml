@@ -1,0 +1,90 @@
+# Pinned tool versions — verified against official sources 2026-09-12
+# (docs/adr/0008-verified-dependency-versions.md, docs/adr/0009-mise-tool-backends.md).
+# `mise install` on a clean Mac reproduces this exact toolchain; nothing here
+# is resolved by Homebrew (see ADR-0009 for why a Brewfile isn't needed).
+
+[settings]
+# Required by the `spm:` backend (Tuist) — see ADR-0009.
+experimental = true
+
+[tools]
+# Tuist CLI 4.211.0 = latest stable, verified 2026-10-07 (GitHub release "CLI 4.211.0").
+# Registry backend (prebuilt binary) instead of spm: (built from source). Overrides the
+# repo-root mise.toml, which tracks "latest"; CI installs from this directory.
+tuist = "4.211.0"
+"aqua:realm/SwiftLint" = "0.65.1"
+periphery = "3.8.0"
+
+[tasks.generate]
+description = "Generate the Xcode project/workspace from Project.swift (never commit the output — ADR-0004)."
+run = "tuist generate"
+
+[tasks.format]
+description = "Apply swift-format in place to every tracked Swift file."
+run = "swift format --in-place --recursive App Packages Tools"
+
+[tasks."lint:format"]
+description = "Check swift-format compliance without modifying files (what CI runs)."
+run = "swift format lint --recursive --strict App Packages Tools"
+
+[tasks."lint:swiftlint"]
+description = "Run SwiftLint (custom rules in .swiftlint.yml enforce section 9.2 of the architecture spec)."
+run = "swiftlint lint --strict"
+
+[tasks."test:fast"]
+description = "Swift Testing suite for all feature/client models — runs on the Mac host, no simulator (~60s target, ADR-0005)."
+run = "swift test --package-path Packages"
+
+[tasks."test:tools"]
+description = "Unit tests for Tools/ itself (scaffold's idempotency test, section 9.3)."
+run = "swift test --package-path Tools"
+
+[tasks."check-module-rules"]
+description = "Fail if Packages/Package.swift's target dependencies violate AGENTS.md's module boundaries."
+run = "swift run --package-path Tools check-module-rules --package-path Packages"
+
+[tasks."module-map"]
+description = "Regenerate docs/ai/module-map.md — commit the result."
+run = "swift run --package-path Tools module-map --package-path Packages --output docs/ai/module-map.md"
+
+[tasks."check:fast"]
+description = "The fast local feedback loop an AI agent runs after every change, before self-declaring a task done."
+depends = ["lint:format", "lint:swiftlint", "check-module-rules", "test:fast"]
+
+[tasks."lint:periphery"]
+description = "Dead-code scan of Packages/ (see Packages/.periphery.yml for why the config lives there, not here)."
+run = "cd Packages && periphery scan"
+
+[tasks."test:ui"]
+description = "XCUITest end-to-end scenario (App/UITests) against the Mock scheme — needs a booted/available iOS Simulator."
+depends = ["generate"]
+run = """
+xcodebuild test \
+  -workspace MyApp.xcworkspace \
+  -scheme MyApp-Mock \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:AppUITests
+"""
+
+[tasks."test:snapshots"]
+description = "swift-snapshot-testing across every #Preview state — light/dark, iPhone/iPad, large Dynamic Type. Needs a booted/available iOS Simulator; diffs land in .build/artifacts (see snapshot-review skill)."
+depends = ["generate"]
+run = """
+xcodebuild test \
+  -workspace MyApp.xcworkspace \
+  -scheme MyApp-Mock \
+  -destination 'platform=iOS Simulator,name=iPhone 17' \
+  -only-testing:SnapshotTests
+"""
+
+[tasks."sim:clone"]
+description = "Clone a Simulator for an isolated worktree (docs/ai/parallel-work.md). Usage: mise run sim:clone -- <suffix> (plain shell positional arg, not mise's templating — kept simple and unambiguous rather than guessed)."
+run = "xcrun simctl clone \"iPhone 17\" \"iPhone 17 ($1)\""
+
+[tasks."check:full"]
+description = "Everything check:fast runs, plus Tools/'s own tests, Periphery, and a module-map freshness check. What CI runs. (test:ui/test:snapshots need a Simulator and are run separately in CI, not folded in here — see .github/workflows/ once Phase 8 adds it.)"
+depends = ["check:fast", "test:tools", "lint:periphery"]
+run = """
+swift run --package-path Tools module-map --package-path Packages --output docs/ai/module-map.md
+git diff --exit-code docs/ai/module-map.md
+"""

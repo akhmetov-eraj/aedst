@@ -43,7 +43,7 @@ public struct AedstCombobox<Option: Hashable & Identifiable>: View {
                         .foregroundStyle(selection == nil ? AedstColor.mutedForeground : AedstColor.foreground)
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12))
+                        .font(.caption)
                         .foregroundStyle(AedstColor.mutedForeground)
                 }
                 .padding(.horizontal, AedstSpacing.sm)
@@ -60,7 +60,7 @@ public struct AedstCombobox<Option: Hashable & Identifiable>: View {
             #endif
         }
         .sheet(isPresented: $isPresented) {
-            NavigationStack {
+            AedstNavigationContainer {
                 List(filtered) { option in
                     Button {
                         selection = option

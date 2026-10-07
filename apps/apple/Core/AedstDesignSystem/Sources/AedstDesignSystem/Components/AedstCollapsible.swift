@@ -22,7 +22,7 @@ public struct AedstCollapsible<Content: View>: View {
                 .font(AedstTypography.body.weight(.medium))
                 .foregroundStyle(AedstColor.foreground)
         }
-        .accessibilityHint(Text(isExpanded ? "Collapses \(title)" : "Expands \(title)"))
+        .accessibilityHint(Text(isExpanded ? AedstStrings.collapses(title) : AedstStrings.expands(title)))
     }
 }
 

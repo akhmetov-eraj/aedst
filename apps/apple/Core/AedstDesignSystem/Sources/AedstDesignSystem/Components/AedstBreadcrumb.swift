@@ -41,7 +41,7 @@ public struct AedstBreadcrumb: View {
 
                 if index != items.count - 1 {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 10))
+                        .font(.caption2)
                         .foregroundStyle(AedstColor.mutedForeground)
                 }
             }

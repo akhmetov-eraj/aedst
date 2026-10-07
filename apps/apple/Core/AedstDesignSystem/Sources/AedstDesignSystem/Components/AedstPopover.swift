@@ -19,7 +19,7 @@ public struct AedstPopoverModifier<PopoverContent: View>: ViewModifier {
                 .padding(AedstSpacing.sm)
                 .background(AedstColor.popover)
                 .foregroundStyle(AedstColor.popoverForeground)
-                .presentationCompactAdaptation(.popover)
+                .aedstPopoverAdaptation()
         }
     }
 }

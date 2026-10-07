@@ -36,37 +36,37 @@
         }
       }
     },
-    "authLoginError" : {
+    "authLoginInvalidCredentials" : {
       "extractionState" : "manual",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "فشل تسجيل الدخول: %@"
+            "value" : "البريد الإلكتروني أو كلمة المرور غير صحيحة."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sign-in failed: %@"
+            "value" : "Incorrect email or password."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Не удалось войти: %@"
+            "value" : "Неверный email или пароль."
           }
         },
         "tg" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ворид шудан ноком монд: %@"
+            "value" : "Email ё парол нодуруст аст."
           }
         },
         "uz" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kirish muvaffaqiyatsiz: %@"
+            "value" : "Email yoki parol noto‘g‘ri."
           }
         }
       }

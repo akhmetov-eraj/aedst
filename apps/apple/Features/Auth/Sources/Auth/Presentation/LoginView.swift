@@ -1,5 +1,6 @@
 import AedstDesignSystem
 import Foundation
+import Perception
 import SwiftUI
 
 public struct LoginView: View {
@@ -12,43 +13,60 @@ public struct LoginView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: AedstSpacing.md) {
-            Text(String(localized: "authLoginTitle", bundle: .module))
-                .aedstFont(AedstTypography.largeTitle)
-                .foregroundStyle(AedstColor.textPrimary)
+        // `WithPerceptionTracking` + `@Perception.Bindable` are the Observation
+        // back-port's view-side halves (needed below iOS 17 / macOS 14; a
+        // pass-through above). Every read of `viewModel` must happen inside this closure.
+        WithPerceptionTracking {
+            @Perception.Bindable var viewModel = viewModel
 
-            AedstTextField(String(localized: "authLoginEmailLabel", bundle: .module), text: $viewModel.email)
-                .textContentType(.username)
-                #if os(iOS)
-                .textInputAutocapitalization(.never)
-                #endif
+            VStack(alignment: .leading, spacing: AedstSpacing.lg) {
+                Text(String(localized: "authLoginTitle", bundle: .module))
+                    .aedstFont(AedstTypography.largeTitle)
+                    .foregroundStyle(AedstColor.foreground)
+                    .accessibilityAddTraits(.isHeader)
 
-            AedstTextField(
-                String(localized: "authLoginPasswordLabel", bundle: .module),
-                text: $viewModel.password,
-                isSecure: true
-            )
+                AedstTextField(String(localized: "authLoginEmailLabel", bundle: .module), text: $viewModel.email)
+                    .textContentType(.username)
+                    .submitLabel(.next)
+                    #if os(iOS)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                    #endif
+                    .disableAutocorrection(true)
+
+                AedstTextField(
+                    String(localized: "authLoginPasswordLabel", bundle: .module),
+                    text: $viewModel.password,
+                    isSecure: true
+                )
                 .textContentType(.password)
+                .submitLabel(.go)
 
-            if let errorMessage = viewModel.errorMessage {
-                Text(String(format: String(localized: "authLoginError", bundle: .module), errorMessage))
-                    .aedstFont(AedstTypography.caption)
-                    .foregroundStyle(AedstColor.danger)
-            }
-
-            AedstButton(String(localized: "authLoginSubmit", bundle: .module), isLoading: viewModel.isLoading) {
-                Task {
-                    await viewModel.submit()
-                    if let session = viewModel.session {
-                        onLoginSucceeded(session)
-                    }
+                if let errorMessage = viewModel.errorMessage {
+                    Text(errorMessage)
+                        .aedstFont(AedstTypography.caption)
+                        .foregroundStyle(AedstColor.destructive)
+                        .accessibilityIdentifier("login.error")
                 }
-            }
-            .disabled(!viewModel.isFormValid)
 
-            Spacer()
+                AedstButton(String(localized: "authLoginSubmit", bundle: .module), isLoading: viewModel.isLoading) {
+                    submit()
+                }
+                .disabled(!viewModel.isFormValid)
+
+                Spacer()
+            }
+            .padding(AedstSpacing.xxl)
+            .background(AedstColor.background)
+            .onSubmit { submit() }
         }
-        .padding(AedstSpacing.lg)
-        .background(AedstColor.background)
+    }
+
+    private func submit() {
+        Task {
+            if let session = await viewModel.submit() {
+                onLoginSucceeded(session)
+            }
+        }
     }
 }

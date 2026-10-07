@@ -5,38 +5,58 @@ import Foundation
 /// One `ProtocolClient` per app process, shared by every feature module's
 /// generated Connect service client (see `Generated/README.md`). Analogous
 /// to the single Retrofit instance built in `apps/android/core/network`.
+///
+/// Targets connect-swift 1.2.3 (`ProtocolClientConfig`'s `interceptors:` takes
+/// `InterceptorFactory` values; `codec:` takes a `Codec` instance such as
+/// `ProtoCodec()` — there is no `.proto` shorthand).
 public enum ConnectClientFactory {
-    /// Every call except `AuthService.Login`/`RefreshToken` goes through
-    /// this client: it attaches the bearer token and clears it on a 401.
+    /// Ephemeral session: no on-disk URL cache or cookie jar, so bearer-token
+    /// responses are never written to the app container. Bounded timeouts so
+    /// a dead network fails fast instead of hanging a spinner.
+    static func makeSessionConfiguration() -> URLSessionConfiguration {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = 30
+        configuration.timeoutIntervalForResource = 60
+        configuration.waitsForConnectivity = false
+        configuration.httpCookieStorage = nil
+        configuration.httpShouldSetCookies = false
+        configuration.urlCache = nil
+        configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return configuration
+    }
+
+    /// Every call except `AuthService.Login`/`RefreshToken` goes through this
+    /// client: it attaches the bearer token. Pair it with
+    /// `AuthorizedRequestExecutor` at the call site for refresh-and-retry.
     public static func makeClient(
         environment: APIEnvironment,
-        tokenProvider: TokenProvider
+        tokenProvider: any TokenProvider
     ) -> ProtocolClient {
         ProtocolClient(
-            httpClient: URLSessionHTTPClient(),
+            httpClient: URLSessionHTTPClient(configuration: makeSessionConfiguration()),
             config: ProtocolClientConfig(
                 host: environment.baseURL.absoluteString,
                 networkProtocol: .connect,
-                codec: .proto,
+                codec: ProtoCodec(),
                 interceptors: [
-                    { config in AuthInterceptor(config: config, tokenProvider: tokenProvider) },
+                    InterceptorFactory { _ in AuthInterceptor(tokenProvider: tokenProvider) },
                 ]
             )
         )
     }
 
-    /// No `AuthInterceptor` — used only for the two calls that can't
-    /// possibly have a bearer token yet: `AuthService.Login` and
-    /// `RefreshToken`. Breaks what would otherwise be a circular dependency
-    /// (the authenticated client needs a `TokenProvider`, whose
-    /// `refreshHandler` needs a client to call `RefreshToken` on).
+    /// No `AuthInterceptor` — used only for the calls that can't possibly have
+    /// a bearer token yet: `AuthService.Login` and `RefreshToken` (and
+    /// `Logout`, which authenticates with the refresh token in its body).
+    /// Breaks what would otherwise be a circular dependency (the authenticated
+    /// client needs a `TokenProvider`, whose refresh handler needs a client).
     public static func makePlainClient(environment: APIEnvironment) -> ProtocolClient {
         ProtocolClient(
-            httpClient: URLSessionHTTPClient(),
+            httpClient: URLSessionHTTPClient(configuration: makeSessionConfiguration()),
             config: ProtocolClientConfig(
                 host: environment.baseURL.absoluteString,
                 networkProtocol: .connect,
-                codec: .proto
+                codec: ProtoCodec()
             )
         )
     }

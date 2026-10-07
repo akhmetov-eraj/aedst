@@ -3,10 +3,11 @@ import SwiftUI
 /// Shimmering placeholder matching shadcn/ui `Skeleton` — SwiftUI has no
 /// native equivalent, so this animates a gradient sweep over a muted block.
 public struct AedstSkeleton: View {
-    private let cornerRadius: Double
+    private let cornerRadius: CGFloat
     @State private var isAnimating = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(cornerRadius: Double = AedstRadius.sm) {
+    public init(cornerRadius: CGFloat = AedstRadius.sm) {
         self.cornerRadius = cornerRadius
     }
 
@@ -23,6 +24,8 @@ public struct AedstSkeleton: View {
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
             }
             .onAppear {
+                // Reduce Motion: a static placeholder instead of an endless shimmer.
+                guard !reduceMotion else { return }
                 withAnimation(.linear(duration: 1.2).repeatForever(autoreverses: false)) {
                     isAnimating = true
                 }

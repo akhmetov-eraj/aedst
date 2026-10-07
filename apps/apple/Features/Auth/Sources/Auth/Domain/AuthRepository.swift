@@ -6,8 +6,16 @@ import AedstCore
 /// imports `Data` directly.
 public protocol AuthRepository: Sendable {
     func login(with credentials: Credentials, deviceID: String) async -> Outcome<Session>
+    /// Revokes the refresh token server-side (best effort) and always clears
+    /// the local session, even if the network call fails.
     func logout() async -> Outcome<Void>
-    /// `true` once a valid access token exists (Keychain-backed; survives
-    /// process relaunch), without making a network call.
-    func hasActiveSession() async -> Bool
+    /// The persisted, still-usable session (Keychain-backed; survives relaunch
+    /// and works offline), or `nil` if signed out or the refresh token expired.
+    func currentSession() async -> Session?
+}
+
+extension AuthRepository {
+    public func hasActiveSession() async -> Bool {
+        await currentSession() != nil
+    }
 }

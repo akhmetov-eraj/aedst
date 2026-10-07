@@ -25,7 +25,7 @@ public struct AedstSwitch: View {
         .tint(AedstColor.primary)
         .disabled(isDisabled)
         .opacity(isDisabled ? 0.5 : 1)
-        .accessibilityLabel(Text(label ?? "Switch"))
+        .accessibilityLabel(Text(label ?? AedstStrings.switchControl))
     }
 }
 

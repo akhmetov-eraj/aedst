@@ -23,7 +23,7 @@ public struct AedstMenuBar: View {
     }
 
     public var body: some View {
-        HStack(spacing: AedstSpacing.md) {
+        HStack(spacing: AedstSpacing.lg) {
             ForEach(sections) { section in
                 Menu(section.title) {
                     ForEach(section.actions) { action in

@@ -8,8 +8,41 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>ru</string>
+		<string>ar</string>
+		<string>tg</string>
+		<string>uz</string>
+	</array>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.aedst.apple.deeplink</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>aedst</string>
+			</array>
+		</dict>
+	</array>
 	<key>AEDST_API_ENVIRONMENT</key>
 	<string>$(AEDST_API_ENVIRONMENT)</string>
+	<key>AEDST_SENTRY_DSN</key>
+	<string>$(AEDST_SENTRY_DSN)</string>
+	<key>AEDST_POSTHOG_KEY</key>
+	<string>$(AEDST_POSTHOG_KEY)</string>
+	<key>AEDST_POSTHOG_HOST</key>
+	<string>$(AEDST_POSTHOG_HOST)</string>
+	<key>AEDST_ROLES_CLAIM</key>
+	<string>$(AEDST_ROLES_CLAIM)</string>
+	<key>AEDST_APNS_SANDBOX</key>
+	<string>$(AEDST_APNS_SANDBOX)</string>
+	<key>NSFaceIDUsageDescription</key>
+	<string>AEDST uses Face ID to unlock the app and protect your session.</string>
 	<key>UILaunchScreen</key>
 	<dict/>
 	<key>UISupportedInterfaceOrientations</key>
