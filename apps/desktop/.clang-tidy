@@ -6,17 +6,12 @@
 Checks: >
   -*,
   bugprone-*,
+  cert-*,
   clang-analyzer-*,
   cppcoreguidelines-*,
   modernize-*,
   performance-*,
-  readability-braces-around-statements,
-  readability-const-return-type,
-  readability-container-size-empty,
-  readability-else-after-return,
-  readability-identifier-naming,
-  readability-make-member-function-const,
-  readability-redundant-*,
+  readability-*,
   -bugprone-easily-swappable-parameters,
   -cppcoreguidelines-owning-memory,
   -cppcoreguidelines-avoid-magic-numbers,
@@ -26,6 +21,15 @@ Checks: >
   -cppcoreguidelines-macro-usage,
   -cppcoreguidelines-non-private-member-variables-in-classes,
   -cppcoreguidelines-pro-type-vararg,
+  -cert-err58-cpp,
+  -readability-identifier-length,
+  -readability-magic-numbers,
+  -readability-function-cognitive-complexity,
+  -readability-implicit-bool-conversion,
+  -readability-convert-member-functions-to-static,
+  -readability-named-parameter,
+  -readability-uppercase-literal-suffix,
+  -readability-use-anyofallof,
   -modernize-use-trailing-return-type,
   -modernize-use-designated-initializers,
   -modernize-avoid-c-arrays,
@@ -50,6 +54,21 @@ Checks: >
 # - cppcoreguidelines-pro-type-vararg: fires inside qDebug()/gtest/QTest macros.
 # - modernize-avoid-c-arrays: test tables and Qt Test data rows use small C arrays.
 # - performance-enum-size: narrowing enum underlying types buys nothing here.
+# - cert-err58-cpp: fires on every namespace-scope `static const QString`/QStringLiteral
+#   and std::string table; none of them can throw in practice and the alternative
+#   (function-local statics everywhere) is noise.
+# - readability-identifier-length / magic-numbers / function-cognitive-complexity:
+#   loop indices, HTTP status codes and protocol parsers; review judgement, not a gate.
+# - readability-implicit-bool-conversion: Qt and protobuf accessors return int/pointers
+#   used as conditions throughout.
+# - readability-convert-member-functions-to-static / named-parameter /
+#   uppercase-literal-suffix / use-anyofallof: style preferences that fight Qt slot and
+#   override signatures and the clang-format style.
+#
+# readability-identifier-naming below stays the real naming gate (CONVENTIONS.md).
+#
+# Scope note: the Qt moc output is never analysed (it lives under build/**), so no
+# moc-specific exclusions are needed beyond the path filter.
 #
 # Generated code (protoc output under build/**/generated, moc/rcc autogen) and
 # third_party/ are never linted: HeaderFilterRegex only admits Modules/ and App/

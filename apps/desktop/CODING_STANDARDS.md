@@ -9,6 +9,29 @@ never write what the standard library, Qt, or an approved dependency already doe
 
 - C++23, no compiler extensions. Prefer `std::expected` via `core::Outcome<T>`
   for expected failures; exceptions are not used for control flow.
+### Allowed C++23 subset
+
+The tree is compiled as C++23 with extensions off, but only what **all** CI compilers
+accept is allowed: MSVC 19.37 (VS 2022 17.7), GCC 13 and Clang 17, the latter two with
+libstdc++ 13. The table is from the compilers' conformance pages and is **UNVERIFIED**
+until the first real CI run; correct it from the evidence.
+
+| Feature | Status | Why |
+|---|---|---|
+| `std::expected` / `std::unexpected` (via `core::Outcome`, `ApiResult`) | **used** | GCC 12+, Clang 16+ with libstdc++, MSVC 19.33+; probed in `cmake/AedstCompilerFeatures.cmake` |
+| C++20: `std::span`, `std::ranges` algorithms, designated initialisers, `std::type_identity`, `<=>`, `starts_with`/`ends_with` | **used** | supported everywhere |
+| `std::to_underlying`, `std::unreachable`, `std::byteswap`, `if consteval`, `std::string::contains`, multidimensional `operator[]` | allowed, not used yet | supported by the three baselines |
+| `std::move_only_function` | allowed with care | present in all three; confirm with libstdc++ 13 + Clang 17 in CI before relying on it |
+| `std::print`/`println`, `std::flat_map`, `std::generator`, `std::mdspan`, `std::ranges::to`, `std::views::zip`/`enumerate`/`chunk`/`slide`/`join_with`/`cartesian_product`, `std::stacktrace`, `std::spanstream` | **banned** | missing in libstdc++ 13 (GCC 14/15) or unreliable with Clang 17 |
+| Deducing `this`, `[[assume]]`, `import std;` / C++ modules | **banned** | GCC 14+/Clang 18+ only, or no build-system support |
+
+Raising the baseline (for example GCC 14) is a deliberate change: update
+`cmake/AedstCompilerFeatures.cmake`, the CI image, this table and
+`scripts/check-cxx-subset.sh` together. The script runs in the CI `lint` job and fails on a
+banned name; a documented exception needs a `cxx-subset: allow` comment on that line.
+
+### General
+
 - RAII everywhere; no owning raw pointers; `unique_ptr` by default,
   `shared_ptr` only where ownership is truly shared (DI graph).
 - `const`, `[[nodiscard]]` on results that carry errors, `noexcept` where true.

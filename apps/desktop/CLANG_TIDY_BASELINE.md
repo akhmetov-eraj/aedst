@@ -6,6 +6,13 @@ clang-tidy is a **blocking** CI check (`desktop-ci.yml`, `lint`-adjacent step in
 `clang-debug` preset's `compile_commands.json` (a Clang database, so GCC-only warning
 flags cannot produce unknown-option noise) and the checks configured in `.clang-tidy`.
 
+## Enabled checks
+
+`bugprone-*`, `cert-*`, `clang-analyzer-*`, `cppcoreguidelines-*`, `modernize-*`, `performance-*`, `readability-*`,
+minus the documented exclusions in `.clang-tidy` (each has a reason next to it). Qt moc/rcc/protobuf output is never
+analysed: it lives under `build/**` and `run-clang-tidy.sh` only accepts `Modules/` and `App/`. Phase 2 widened the set
+(`cert-*`, full `readability-*`), so the first real run will report more than the previous subset would have.
+
 ## The baseline
 
 The tree has never had a clang-tidy run, so some findings will pre-exist. Instead of

@@ -70,6 +70,9 @@ jobs:
       - name: File naming (apps/desktop only)
         run: bash ./scripts/check-naming.sh
 
+      - name: C++ subset (features all compilers support)
+        run: bash ./scripts/check-cxx-subset.sh
+
       - name: Feature target boundaries
         run: bash ./scripts/check-feature-boundaries.sh
 
@@ -200,7 +203,9 @@ jobs:
 
       - name: Coverage report (runs tests, then gcovr)
         if: matrix.kind == 'coverage'
-        run: cmake --build --preset coverage-report
+        run: |
+          cmake --build --preset coverage-report | tee coverage.log
+          { echo "### Coverage (gcovr, Modules/ + App/)"; echo; echo "```"; grep -E "^(lines|functions|branches):" coverage.log || true; echo "```"; } >> "$GITHUB_STEP_SUMMARY"
 
       - uses: actions/upload-artifact@v4
         if: matrix.kind == 'coverage'
