@@ -11,7 +11,7 @@
 - [vcpkg](https://github.com/microsoft/vcpkg) with `VCPKG_ROOT` set. Packages come
   from `vcpkg.json` (pinned `builtin-baseline`); Qt does **not** come from vcpkg.
 - Qt at the version in `qt-version.txt`, with modules: Core, Gui, Qml, Quick,
-  QuickControls2, Network, LinguistTools, Test/QuickTest (tests), DBus (Linux,
+  QuickControls2, Network, NetworkAuth (add-on: `qtnetworkauth` with aqtinstall), LinguistTools, Test/QuickTest (tests), DBus (Linux,
   optional). Set `QT_ROOT_DIR`. With aqtinstall add the modules explicitly; if a
   module is missing, configure fails with the missing component name.
 

@@ -17,6 +17,7 @@ class Router;
 
 namespace aedst::feature::auth {
 
+class BrowserSignInUseCase;
 class LoginUseCase;
 class LogoutUseCase;
 
@@ -39,6 +40,13 @@ class LoginViewModel final : public QObject {
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
     Q_PROPERTY(bool canSubmit READ canSubmit NOTIFY canSubmitChanged)
+    // Single sign-on in the system browser (OpenID Connect). When available the view shows one
+    // "Continue in browser" button instead of the e-mail/password form.
+    Q_PROPERTY(bool browserSignInAvailable READ browserSignInAvailable NOTIFY browserSignInAvailableChanged)
+    // The browser step is running: the app waits for the user to finish (or cancel) in the browser.
+    Q_PROPERTY(bool waitingForBrowser READ waitingForBrowser NOTIFY waitingForBrowserChanged)
+    // A stored session is being restored at startup; the view shows progress instead of the form.
+    Q_PROPERTY(bool restoringSession READ restoringSession NOTIFY restoringSessionChanged)
 
 public:
     LoginViewModel(std::shared_ptr<LoginUseCase> login, std::shared_ptr<LogoutUseCase> logout,
@@ -55,11 +63,22 @@ public:
     [[nodiscard]] bool isLoading() const noexcept;
     [[nodiscard]] QString errorMessage() const;
     [[nodiscard]] bool canSubmit() const;
+    [[nodiscard]] bool browserSignInAvailable() const noexcept;
+    [[nodiscard]] bool waitingForBrowser() const noexcept;
+    [[nodiscard]] bool restoringSession() const noexcept;
+
+    /// Enables the browser flow (the composition root calls it when OIDC is configured).
+    void setBrowserSignIn(std::shared_ptr<BrowserSignInUseCase> useCase);
+    void setRestoringSession(bool restoring);
+    /// Shows an error that did not come from a user action (for example a startup restore failure).
+    void showError(const QString& message);
 
     Q_INVOKABLE void login();
     /// Wipes the held password (also done on success, logout and destruction).
     Q_INVOKABLE void clearPassword();
     Q_INVOKABLE void logout();
+    Q_INVOKABLE void signInWithBrowser();
+    Q_INVOKABLE void cancelBrowserSignIn();
 
 signals:
     void emailChanged();
@@ -67,6 +86,9 @@ signals:
     void isLoadingChanged();
     void errorMessageChanged();
     void canSubmitChanged();
+    void browserSignInAvailableChanged();
+    void waitingForBrowserChanged();
+    void restoringSessionChanged();
 
     void loginSucceeded(const QString& userId);
     void loginFailed(const QString& message);
@@ -78,6 +100,7 @@ private:
 
     std::shared_ptr<LoginUseCase> login_;
     std::shared_ptr<LogoutUseCase> logout_;
+    std::shared_ptr<BrowserSignInUseCase> browserSignIn_;
     std::shared_ptr<analytics::AnalyticsTracker> analytics_;
     navigation::Router* router_;
 
@@ -85,6 +108,8 @@ private:
     core::SecretString password_;
     QString errorMessage_;
     bool isLoading_{false};
+    bool waitingForBrowser_{false};
+    bool restoringSession_{false};
 };
 
 } // namespace aedst::feature::auth

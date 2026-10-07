@@ -98,6 +98,7 @@ add_subdirectory(Modules/Core/Common)
 add_subdirectory(Modules/Core/Logging)         # Aedst::Logging (Qt logging categories)
 add_subdirectory(Modules/Core/Platform)        # Aedst::Platform (secure storage, notifications, autostart)
 add_subdirectory(Modules/Core/Network)
+add_subdirectory(Modules/Core/Oidc)            # Aedst::Oidc (OIDC + PKCE sign-in, QtKeychain refresh token)
 add_subdirectory(Modules/Core/Contract)
 add_subdirectory(Modules/Core/Connectivity)    # Aedst::Connectivity
 add_subdirectory(Modules/Core/CrashReporting)  # Aedst::CrashReporting

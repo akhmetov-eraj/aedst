@@ -1,4 +1,5 @@
 #include "Domain/auth_repository.hpp"
+#include "Domain/browser_sign_in_use_case.hpp"
 #include "Domain/login_use_case.hpp"
 #include "Domain/logout_use_case.hpp"
 #include "Presentation/login_view_model.hpp"
@@ -35,6 +36,26 @@ public:
 
     [[nodiscard]] std::optional<Session> currentSession() const override { return std::nullopt; }
 
+    void signInWithBrowser(core::Completion<Session> done) override {
+        ++browserCalls;
+        pendingBrowser = std::move(done);
+    }
+
+    void cancelBrowserSignIn() override {
+        ++cancelCalls;
+        if (pendingBrowser) {
+            auto done = std::exchange(pendingBrowser, nullptr);
+            done(core::fail(core::Error::cancelled("Sign-in was cancelled")));
+        }
+    }
+
+    [[nodiscard]] bool supportsBrowserSignIn() const override { return browserSupported; }
+
+    void completeBrowser(core::Outcome<Session> result) {
+        auto done = std::exchange(pendingBrowser, nullptr);
+        done(std::move(result));
+    }
+
     void completeLogin(core::Outcome<Session> result) {
         auto done = std::exchange(pendingLogin, nullptr);
         done(std::move(result));
@@ -42,6 +63,10 @@ public:
 
     int loginCalls{0};
     int logoutCalls{0};
+    int browserCalls{0};
+    int cancelCalls{0};
+    bool browserSupported{true};
+    core::Completion<Session> pendingBrowser;
     Credentials lastCredentials;
     core::Completion<Session> pendingLogin;
 };
@@ -178,6 +203,92 @@ private slots:
         viewModel_->clearPassword();
         QVERIFY(!viewModel_->hasPassword());
         QCOMPARE(hasPasswordSpy.count(), 2);
+    }
+
+    void browserSignInIsUnavailableUntilAUseCaseIsInstalled() {
+        QVERIFY(!viewModel_->browserSignInAvailable());
+        viewModel_->signInWithBrowser();
+        QCOMPARE(repository_->browserCalls, 0);
+
+        QSignalSpy availability(viewModel_.get(), &LoginViewModel::browserSignInAvailableChanged);
+        viewModel_->setBrowserSignIn(std::make_shared<BrowserSignInUseCase>(repository_));
+        QVERIFY(viewModel_->browserSignInAvailable());
+        QCOMPARE(availability.count(), 1);
+
+        repository_->browserSupported = false; // e.g. first-party password mode
+        QVERIFY(!viewModel_->browserSignInAvailable());
+    }
+
+    void browserSignInShowsWaitingStateAndSucceeds() {
+        viewModel_->setBrowserSignIn(std::make_shared<BrowserSignInUseCase>(repository_));
+        QSignalSpy succeeded(viewModel_.get(), &LoginViewModel::loginSucceeded);
+        QSignalSpy waiting(viewModel_.get(), &LoginViewModel::waitingForBrowserChanged);
+
+        viewModel_->signInWithBrowser();
+
+        QCOMPARE(repository_->browserCalls, 1);
+        QVERIFY(viewModel_->waitingForBrowser());
+        QVERIFY(viewModel_->isLoading());
+
+        repository_->completeBrowser(
+            Session{.userId = "user-9", .accessToken = "a", .refreshToken = {}, .accessTokenExpiresAt = {}});
+
+        QVERIFY(!viewModel_->waitingForBrowser());
+        QVERIFY(!viewModel_->isLoading());
+        QCOMPARE(waiting.count(), 2);
+        QCOMPARE(succeeded.count(), 1);
+        QCOMPARE(succeeded.takeFirst().at(0).toString(), QStringLiteral("user-9"));
+        QVERIFY(viewModel_->errorMessage().isEmpty());
+    }
+
+    void secondBrowserSignInWhileOneRunsIsIgnored() {
+        viewModel_->setBrowserSignIn(std::make_shared<BrowserSignInUseCase>(repository_));
+        viewModel_->signInWithBrowser();
+        viewModel_->signInWithBrowser();
+        QCOMPARE(repository_->browserCalls, 1);
+    }
+
+    void cancellingTheBrowserStepIsSilent() {
+        viewModel_->setBrowserSignIn(std::make_shared<BrowserSignInUseCase>(repository_));
+        QSignalSpy failed(viewModel_.get(), &LoginViewModel::loginFailed);
+        viewModel_->signInWithBrowser();
+
+        viewModel_->cancelBrowserSignIn();
+
+        QCOMPARE(repository_->cancelCalls, 1);
+        QVERIFY(!viewModel_->waitingForBrowser());
+        QVERIFY(!viewModel_->isLoading());
+        QVERIFY(viewModel_->errorMessage().isEmpty());
+        QCOMPARE(failed.count(), 0);
+    }
+
+    void cancelIsANoOpWhenNothingIsWaiting() {
+        viewModel_->setBrowserSignIn(std::make_shared<BrowserSignInUseCase>(repository_));
+        viewModel_->cancelBrowserSignIn();
+        QCOMPARE(repository_->cancelCalls, 0);
+    }
+
+    void browserSignInFailureIsShown() {
+        viewModel_->setBrowserSignIn(std::make_shared<BrowserSignInUseCase>(repository_));
+        QSignalSpy failed(viewModel_.get(), &LoginViewModel::loginFailed);
+        viewModel_->signInWithBrowser();
+
+        repository_->completeBrowser(core::fail(core::Error::storage("Secure credential storage is unavailable")));
+
+        QCOMPARE(failed.count(), 1);
+        QCOMPARE(viewModel_->errorMessage(), QStringLiteral("Secure credential storage is unavailable"));
+        QVERIFY(!viewModel_->isLoading());
+        viewModel_->signInWithBrowser(); // the user can retry
+        QCOMPARE(repository_->browserCalls, 2);
+    }
+
+    void restoringSessionFlagNotifiesOnlyOnChange() {
+        QSignalSpy restoring(viewModel_.get(), &LoginViewModel::restoringSessionChanged);
+        viewModel_->setRestoringSession(true);
+        viewModel_->setRestoringSession(true);
+        QVERIFY(viewModel_->restoringSession());
+        viewModel_->setRestoringSession(false);
+        QCOMPARE(restoring.count(), 2);
     }
 
     void logoutEmitsLoggedOut() {

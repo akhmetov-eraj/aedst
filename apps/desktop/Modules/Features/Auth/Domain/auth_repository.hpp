@@ -30,6 +30,15 @@ public:
     /// Always ends signed out locally, even if the server call fails.
     virtual void logout(core::Completion<void> done) = 0;
     [[nodiscard]] virtual std::optional<Session> currentSession() const = 0;
+
+    /// Interactive sign-in in the system browser (OpenID Connect, Authorization Code + PKCE).
+    /// The default - for repositories backed by the first-party password API - refuses.
+    virtual void signInWithBrowser(core::Completion<Session> done) {
+        done(core::fail(core::Error::invalidArgument("Browser sign-in is not available")));
+    }
+    /// Abandons a running browser step; completes the pending signInWithBrowser() with Cancelled.
+    virtual void cancelBrowserSignIn() {}
+    [[nodiscard]] virtual bool supportsBrowserSignIn() const { return false; }
 };
 
 } // namespace aedst::feature::auth

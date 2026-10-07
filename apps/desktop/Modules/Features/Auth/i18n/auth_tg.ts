@@ -43,5 +43,25 @@
         <source>Unavailable while offline</source>
         <translation>Бе пайвастшавӣ дастнорас аст</translation>
     </message>
+    <message>
+        <source>Restoring your session</source>
+        <translation>Барқарор кардани сессия</translation>
+    </message>
+    <message>
+        <source>Continue in browser</source>
+        <translation>Идома додан дар браузер</translation>
+    </message>
+    <message>
+        <source>Waiting for the browser</source>
+        <translation>Интизори браузер</translation>
+    </message>
+    <message>
+        <source>Finish signing in in your browser, then return to this window.</source>
+        <translation>Вурудро дар браузер анҷом диҳед ва ба ин равзана баргардед.</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Бекор кардан</translation>
+    </message>
 </context>
 </TS>

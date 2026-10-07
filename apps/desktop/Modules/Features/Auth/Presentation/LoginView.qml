@@ -28,8 +28,22 @@ Page {
         }
     }
 
+    /// Single sign-on: the identity provider authenticates the user in the system browser, so the
+    /// e-mail/password form is not shown at all.
+    readonly property bool useBrowserSignIn: LoginViewModel.browserSignInAvailable
+    readonly property bool restoring: LoginViewModel.restoringSession
+    readonly property bool canStartBrowserSignIn: useBrowserSignIn && !offline && !LoginViewModel.isLoading
+
+    function startBrowserSignIn() {
+        if (root.canStartBrowserSignIn) {
+            LoginViewModel.signInWithBrowser()
+        }
+    }
+
     function focusEmail() {
-        emailField.focusField()
+        if (!root.useBrowserSignIn) {
+            emailField.focusField()
+        }
     }
 
     background: Rectangle { color: Theme.background }
@@ -65,10 +79,18 @@ Page {
         onActivated: {
             if (root.offline) {
                 Connectivity.refresh()
+            } else if (root.useBrowserSignIn) {
+                root.startBrowserSignIn()
             } else {
                 root.submit()
             }
         }
+    }
+
+    Shortcut {
+        sequences: [StandardKey.Cancel]
+        enabled: root.visible && LoginViewModel.waitingForBrowser
+        onActivated: LoginViewModel.cancelBrowserSignIn()
     }
 
     ColumnLayout {
@@ -96,9 +118,72 @@ Page {
             onRetryRequested: Connectivity.refresh()
         }
 
+        // A stored session is being restored at startup (refresh token -> access token).
+        BusyIndicator {
+            id: restoringIndicator
+            objectName: "restoringIndicator"
+            Layout.alignment: Qt.AlignHCenter
+            visible: root.restoring
+            running: visible
+            Accessible.role: Accessible.ProgressBar
+            Accessible.name: qsTr("Restoring your session")
+        }
+
+        // --- Single sign-on in the system browser ---------------------------------------
+        AedstButton {
+            id: browserSignInButton
+            objectName: "browserSignInButton"
+            Layout.fillWidth: true
+            visible: root.useBrowserSignIn && !root.restoring
+            text: qsTr("Continue in browser")
+            busy: LoginViewModel.waitingForBrowser
+            enabled: root.canStartBrowserSignIn
+            Accessible.description: root.offline ? qsTr("Unavailable while offline")
+                : LoginViewModel.waitingForBrowser ? qsTr("Waiting for the browser") : ""
+            onClicked: root.startBrowserSignIn()
+        }
+
+        Label {
+            id: browserHint
+            objectName: "browserHint"
+            Layout.fillWidth: true
+            visible: LoginViewModel.waitingForBrowser
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+            text: qsTr("Finish signing in in your browser, then return to this window.")
+            font: Theme.smallFont
+            color: Theme.mutedForeground
+        }
+
+        AedstButton {
+            id: cancelBrowserButton
+            objectName: "cancelBrowserButton"
+            Layout.fillWidth: true
+            visible: LoginViewModel.waitingForBrowser
+            variant: AedstButton.Variant.Outline
+            text: qsTr("Cancel")
+            onClicked: LoginViewModel.cancelBrowserSignIn()
+        }
+
+        Label {
+            id: browserError
+            objectName: "browserError"
+            Layout.fillWidth: true
+            visible: root.useBrowserSignIn && !root.restoring && LoginViewModel.errorMessage.length > 0
+            wrapMode: Text.WordWrap
+            horizontalAlignment: Text.AlignHCenter
+            text: LoginViewModel.errorMessage
+            font: Theme.smallFont
+            color: Theme.error
+            Accessible.role: Accessible.StaticText
+            Accessible.name: text
+        }
+
+        // --- First-party e-mail/password form (until the first-party auth sunset) ------------
         AedstTextField {
             id: emailField
             objectName: "emailField"
+            visible: !root.useBrowserSignIn && !root.restoring
             Layout.fillWidth: true
             label: qsTr("Email")
             placeholderText: qsTr("you@example.com")
@@ -112,6 +197,7 @@ Page {
         AedstTextField {
             id: passwordField
             objectName: "passwordField"
+            visible: !root.useBrowserSignIn && !root.restoring
             Layout.fillWidth: true
             label: qsTr("Password")
             accessibleDescription: qsTr("Enter your password")
@@ -124,6 +210,7 @@ Page {
         AedstButton {
             id: signInButton
             objectName: "signInButton"
+            visible: !root.useBrowserSignIn && !root.restoring
             Layout.fillWidth: true
             text: qsTr("Sign in")
             busy: LoginViewModel.isLoading

@@ -59,6 +59,9 @@ issue).
   Qt's threaded HTTP stack the request bytes may already have been sent.
 - Windows: existing sessions from the pre-`MasterKeyProvider` format are not
   readable and users sign in once again.
+- OIDC mode (ADR-0025): only the refresh token is persisted, in the OS credential store. With no usable
+  credential store (headless Linux without a Secret Service) sign-in fails with an explicit message; there is no file
+  fallback for it. The access token is memory-only.
 - Linux without a Secret Service (headless, Flatpak without portal): the master
   key falls back to a `0600` file next to the database — weaker, and logged.
 - Native Windows toast (WinRT) is not implemented; Windows

@@ -47,6 +47,8 @@ struct FakeResponse {
     std::chrono::milliseconds delay{0};
     /// Close the connection without any response (transport failure).
     bool dropConnection{false};
+    /// Extra response headers (e.g. Location for a redirect).
+    std::vector<std::pair<QByteArray, QByteArray>> headers;
 
     [[nodiscard]] static FakeResponse proto(QByteArray body) {
         FakeResponse response;
@@ -68,6 +70,23 @@ struct FakeResponse {
         response.status = status;
         response.contentType = "application/json";
         response.body = "{\"code\":\"" + code + "\",\"message\":\"" + message + "\"}";
+        return response;
+    }
+
+    /// 302 to `location` (an OAuth authorization endpoint answering the browser).
+    [[nodiscard]] static FakeResponse redirect(const QByteArray& location) {
+        FakeResponse response;
+        response.status = 302;
+        response.contentType = "text/plain";
+        response.headers.emplace_back("Location", location);
+        return response;
+    }
+
+    [[nodiscard]] static FakeResponse json(QByteArray body, int status = 200) {
+        FakeResponse response;
+        response.status = status;
+        response.contentType = "application/json";
+        response.body = std::move(body);
         return response;
     }
 
@@ -102,6 +121,10 @@ public:
     /// Responses are consumed in order, one per request; when none is left the
     /// server answers 500 so an unexpected extra call is visible.
     void enqueue(FakeResponse response) { responses_.push_back(std::move(response)); }
+
+    /// Answers every request with `handler` instead of the queue (routing by method/target).
+    using Handler = std::function<FakeResponse(const RecordedRequest&)>;
+    void setHandler(Handler handler) { handler_ = std::move(handler); }
 
     [[nodiscard]] const std::vector<RecordedRequest>& requests() const { return requests_; }
 
@@ -149,7 +172,9 @@ private:
         requests_.push_back(std::move(request));
 
         FakeResponse response = FakeResponse::connectError(500, "internal", "FakeHttpServer: no response queued");
-        if (!responses_.empty()) {
+        if (handler_) {
+            response = handler_(requests_.back());
+        } else if (!responses_.empty()) {
             response = std::move(responses_.front());
             responses_.erase(responses_.begin());
         }
@@ -177,6 +202,9 @@ private:
             }
             QByteArray head = "HTTP/1.1 " + QByteArray::number(response.status) + " Status\r\n";
             head += "Content-Type: " + response.contentType + "\r\n";
+            for (const auto& header : response.headers) {
+                head += header.first + ": " + header.second + "\r\n";
+            }
             head += "Content-Length: " + QByteArray::number(payload.size()) + "\r\n";
             head += "Connection: close\r\n\r\n";
             socket->write(head);
@@ -207,6 +235,7 @@ private:
     QTcpServer server_;
     std::vector<FakeResponse> responses_;
     std::vector<RecordedRequest> requests_;
+    Handler handler_;
 };
 
 /// Spins the event loop until `done()` is true or `timeout` passes; returns done().

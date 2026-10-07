@@ -43,5 +43,25 @@
         <source>Unavailable while offline</source>
         <translation>غير متاح دون اتصال بالإنترنت</translation>
     </message>
+    <message>
+        <source>Restoring your session</source>
+        <translation>استعادة جلستك</translation>
+    </message>
+    <message>
+        <source>Continue in browser</source>
+        <translation>المتابعة في المتصفح</translation>
+    </message>
+    <message>
+        <source>Waiting for the browser</source>
+        <translation>في انتظار المتصفح</translation>
+    </message>
+    <message>
+        <source>Finish signing in in your browser, then return to this window.</source>
+        <translation>أكمل تسجيل الدخول في المتصفح ثم عد إلى هذه النافذة.</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>إلغاء</translation>
+    </message>
 </context>
 </TS>

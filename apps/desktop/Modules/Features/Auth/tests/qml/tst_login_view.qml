@@ -124,6 +124,83 @@ TestCase {
         compare(Connectivity.refreshCalls, 1)
     }
 
+    function test_browserSignInReplacesTheCredentialsForm() {
+        LoginViewModel.browserSignInAvailable = true
+        const view = createView()
+        compare(findChild(view, "browserSignInButton").visible, true)
+        compare(findChild(view, "emailField").visible, false)
+        compare(findChild(view, "passwordField").visible, false)
+        compare(findChild(view, "signInButton").visible, false)
+    }
+
+    function test_credentialsFormIsShownWithoutBrowserSignIn() {
+        const view = createView()
+        compare(findChild(view, "browserSignInButton").visible, false)
+        compare(findChild(view, "emailField").visible, true)
+        compare(findChild(view, "signInButton").visible, true)
+    }
+
+    function test_browserButtonStartsTheFlowAndShowsWaitingUi() {
+        LoginViewModel.browserSignInAvailable = true
+        const view = createView()
+        const button = findChild(view, "browserSignInButton")
+        const hint = findChild(view, "browserHint")
+        const cancel = findChild(view, "cancelBrowserButton")
+        compare(hint.visible, false)
+        compare(cancel.visible, false)
+
+        button.clicked()
+
+        compare(LoginViewModel.browserCalls, 1)
+        compare(button.busy, true)
+        compare(hint.visible, true)
+        compare(cancel.visible, true)
+
+        cancel.clicked()
+        compare(LoginViewModel.cancelCalls, 1)
+        compare(hint.visible, false)
+    }
+
+    function test_browserSignInIsDisabledOffline() {
+        LoginViewModel.browserSignInAvailable = true
+        const view = createView()
+        const button = findChild(view, "browserSignInButton")
+        compare(button.enabled, true)
+
+        Connectivity.isOffline = true
+
+        compare(button.enabled, false)
+        compare(button.Accessible.description, "Unavailable while offline")
+        button.clicked()
+        compare(LoginViewModel.browserCalls, 0)
+    }
+
+    function test_errorIsShownBelowTheBrowserButton() {
+        LoginViewModel.browserSignInAvailable = true
+        const view = createView()
+        const error = findChild(view, "browserError")
+        compare(error.visible, false)
+
+        LoginViewModel.errorMessage = "Secure credential storage is unavailable"
+
+        compare(error.visible, true)
+        compare(error.text, "Secure credential storage is unavailable")
+    }
+
+    function test_restoringSessionShowsProgressInsteadOfTheForm() {
+        LoginViewModel.browserSignInAvailable = true
+        LoginViewModel.restoringSession = true
+        const view = createView()
+        compare(findChild(view, "restoringIndicator").visible, true)
+        compare(findChild(view, "browserSignInButton").visible, false)
+        compare(findChild(view, "emailField").visible, false)
+
+        LoginViewModel.restoringSession = false
+
+        compare(findChild(view, "restoringIndicator").visible, false)
+        compare(findChild(view, "browserSignInButton").visible, true)
+    }
+
     function test_accessibleNamesAndRolesArePresent() {
         const view = createView()
         const email = findChild(view, "emailField")

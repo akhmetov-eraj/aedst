@@ -3,8 +3,10 @@
 #include "Data/connect_admin_repository.hpp"
 #include "Data/connect_auth_remote_data_source.hpp"
 #include "Data/connect_notification_repository.hpp"
+#include "Data/oidc_auth_repository.hpp"
 #include "Data/connect_search_repository.hpp"
 #include "Data/connect_task_repository.hpp"
+#include "Domain/browser_sign_in_use_case.hpp"
 #include "Domain/create_task_use_case.hpp"
 #include "Domain/login_use_case.hpp"
 #include "Domain/logout_use_case.hpp"
@@ -27,6 +29,8 @@
 #include "aedst/media/media_remote_data_source.hpp"
 #include "aedst/network/access_token_claims.hpp"
 #include "aedst/network/transport_policy.hpp"
+#include "aedst/oidc/oidc_session.hpp"
+#include "aedst/oidc/refresh_token_store.hpp"
 #include "aedst/persistence/master_key_provider.hpp"
 #include "aedst/telemetry/sentry_reporter.hpp"
 
@@ -99,7 +103,24 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
 
     // --- Network ---------------------------------------------------------------
     deps->tokenAdapter_ = std::make_shared<auth::LocalTokenStoreAdapter>(deps->tokenStore_);
-    deps->authInterceptor_ = std::make_shared<network::AuthInterceptor>(deps->tokenAdapter_);
+    const bool useOidc = config.oidc.isConfigured();
+    std::shared_ptr<const network::TokenProvider> tokenProvider = deps->tokenAdapter_;
+    if (useOidc) {
+        if (auto valid = oidc::validateOidcConfig(config.oidc); !valid) {
+            return core::fail(valid.error());
+        }
+        // The refresh token lives in the OS credential store only (Credential Manager / Secret Service).
+        // If that is unavailable, sign-in fails with an explicit message; there is no file fallback.
+        oidc::OidcSession::Dependencies oidcDeps;
+        oidcDeps.network = deps->network_.get();
+        oidcDeps.store = std::shared_ptr<oidc::RefreshTokenStore>(oidc::makeKeychainRefreshTokenStore(
+            "com.aedst.Desktop", oidc::keychainEntryName(oidc::normalizedIssuer(config.oidc.issuer).toStdString(),
+                                                         config.oidc.clientId.toStdString())));
+        oidcDeps.clock = deps->clock_;
+        deps->oidcSession_ = std::make_shared<oidc::OidcSession>(config.oidc, std::move(oidcDeps));
+        tokenProvider = deps->oidcSession_;
+    }
+    deps->authInterceptor_ = std::make_shared<network::AuthInterceptor>(tokenProvider);
     deps->connectClient_ = std::make_shared<network::ConnectClient>(
         network::ClientConfig{.baseUrl = config.apiBaseUrl}, deps->authInterceptor_);
     deps->mediaRemote_ = std::make_shared<media::ConnectMediaRemoteDataSource>(deps->connectClient_);
@@ -113,13 +134,20 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
     navigation::Router* router = deps->router_.get();
 
     // --- Auth ------------------------------------------------------------------
-    deps->authRepository_ = std::make_shared<auth::AuthRepositoryImpl>(
-        std::make_shared<auth::ConnectAuthRemoteDataSource>(deps->connectClient_), deps->tokenAdapter_, deps->clock_,
-        config.deviceId);
+    if (useOidc) {
+        deps->authRepository_ = std::make_shared<auth::OidcAuthRepository>(deps->oidcSession_);
+    } else {
+        deps->authRepository_ = std::make_shared<auth::AuthRepositoryImpl>(
+            std::make_shared<auth::ConnectAuthRemoteDataSource>(deps->connectClient_), deps->tokenAdapter_,
+            deps->clock_, config.deviceId);
+    }
     deps->refreshToken_ = std::make_shared<auth::RefreshTokenUseCase>(deps->authRepository_, deps->clock_);
     deps->loginViewModel_ = std::make_unique<auth::LoginViewModel>(
         std::make_shared<auth::LoginUseCase>(deps->authRepository_),
         std::make_shared<auth::LogoutUseCase>(deps->authRepository_), deps->analytics_, router);
+    if (useOidc) {
+        deps->loginViewModel_->setBrowserSignIn(std::make_shared<auth::BrowserSignInUseCase>(deps->authRepository_));
+    }
 
     // --- Tasks (+ attachments through Core media) ------------------------------
     auto taskRepository = std::make_shared<tasks::ConnectTaskRepository>(deps->connectClient_);
@@ -168,6 +196,15 @@ void AppDependencies::wireSessionLifecycle() {
                      [this](const QString&) { onSignedIn(); });
     QObject::connect(loginViewModel_.get(), &auth::LoginViewModel::loggedOut, loginViewModel_.get(),
                      [this]() { onSignedOut(); });
+    // OIDC: the provider rejected the refresh token (revoked, user disabled, expired). The session is
+    // already wiped, so only the UI state has to follow.
+    if (oidcSession_) {
+        QObject::connect(oidcSession_.get(), &oidc::OidcSession::sessionExpired, loginViewModel_.get(), [this]() {
+            qCInfo(lcApp, "The identity provider ended the session; returning to login");
+            onSignedOut();
+            router_->resetTo(auth::loginRoute());
+        });
+    }
     // Any feature hitting `unauthenticated` (refresh token revoked, session expired
     // server-side) ends the session the same way an explicit sign-out does.
     QObject::connect(errorCenter_.get(), &telemetry::ErrorCenter::sessionExpired, errorCenter_.get(), [this]() {
@@ -287,7 +324,36 @@ navigation::Route AppDependencies::initialRoute() const {
     return authRepository_->currentSession() ? tasks::taskListRoute() : auth::loginRoute();
 }
 
+void AppDependencies::restoreOidcSession() {
+    loginViewModel_->setRestoringSession(true);
+    oidcSession_->restore([this](core::Outcome<std::optional<oidc::OidcUser>> restored) {
+        loginViewModel_->setRestoringSession(false);
+        if (!restored) {
+            if (restored.error().code == core::ErrorCode::Network && oidcSession_->isSignedIn()) {
+                // Offline start: keep the identity and show the signed-in UI; requests refresh on demand.
+                qCWarning(lcApp, "Restoring the session while offline: %s", restored.error().message.c_str());
+                onSignedIn();
+                return;
+            }
+            qCWarning(lcApp, "Could not restore the session: %s", restored.error().message.c_str());
+            if (restored.error().code != core::ErrorCode::Unauthenticated) {
+                loginViewModel_->showError(QString::fromStdString(restored.error().message));
+            }
+            return;
+        }
+        if (!restored->has_value()) {
+            return; // nobody was signed in: the login screen stays
+        }
+        qCInfo(lcApp, "Session restored");
+        onSignedIn();
+    });
+}
+
 void AppDependencies::refreshSessionIfNeeded() {
+    if (oidcSession_) {
+        restoreOidcSession();
+        return;
+    }
     if (!authRepository_->currentSession()) {
         return;
     }

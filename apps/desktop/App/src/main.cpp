@@ -16,6 +16,7 @@
 #include "aedst/media/media_image_provider.hpp"
 #include "aedst/navigation/route.hpp"
 #include "aedst/network/connect_client.hpp"
+#include "aedst/oidc/oidc_config.hpp"
 #include "aedst/platform/deep_link.hpp"
 #include "aedst/platform/notification_service.hpp"
 #include "aedst/platform/single_instance_guard.hpp"
@@ -30,6 +31,7 @@
 #include <QJSEngine>
 #include <QNetworkProxyFactory>
 #include <QPointer>
+#include <QProcessEnvironment>
 #include <QQmlApplicationEngine>
 #include <QQmlEngine>
 #include <QQuickWindow>
@@ -267,6 +269,20 @@ int main(int argc, char* argv[]) {
         .crashReportingConfigured = sentryActive,
         .rolesClaim = configured("AEDST_OIDC_ROLES_CLAIM", "roles").toStdString(),
     };
+    // Identity provider (ZITADEL). Configured -> browser sign-in; not configured -> first-party password login.
+    config.oidc = aedst::oidc::loadOidcConfig(QSettings(), QProcessEnvironment::systemEnvironment());
+    if (config.oidc.isConfigured()) {
+        if (auto valid = aedst::oidc::validateOidcConfig(config.oidc); !valid) {
+            qCCritical(lcApp, "Invalid OIDC configuration: %s", valid.error().message.c_str());
+            shutdownTelemetry();
+            return EXIT_FAILURE;
+        }
+        if (qEnvironmentVariableIsEmpty("AEDST_OIDC_ROLES_CLAIM")) {
+            config.rolesClaim = "urn:zitadel:iam:org:project:roles"; // roles claim of ZITADEL
+        }
+        qCInfo(lcApp, "OpenID Connect sign-in enabled (issuer %s)",
+               qUtf8Printable(aedst::oidc::normalizedIssuer(config.oidc.issuer)));
+    }
     config.posthog.apiKey = configured("AEDST_POSTHOG_KEY", AEDST_POSTHOG_KEY_DEFAULT);
     config.posthog.host = QUrl(configured("AEDST_POSTHOG_HOST", AEDST_POSTHOG_HOST_DEFAULT));
     config.posthog.anonymousId = analyticsAnonymousId();

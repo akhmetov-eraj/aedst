@@ -1,5 +1,6 @@
 #include "Presentation/login_view_model.hpp"
 
+#include "Domain/browser_sign_in_use_case.hpp"
 #include "Domain/login_use_case.hpp"
 #include "Domain/logout_use_case.hpp"
 #include "Navigation/auth_route.hpp"
@@ -116,6 +117,80 @@ void LoginViewModel::login() {
                          // home (Tasks) and starts per-user background work.
                          emit guard->loginSucceeded(QString::fromStdString(result->userId));
                      });
+}
+
+bool LoginViewModel::browserSignInAvailable() const noexcept {
+    return browserSignIn_ != nullptr && browserSignIn_->isAvailable();
+}
+
+bool LoginViewModel::waitingForBrowser() const noexcept {
+    return waitingForBrowser_;
+}
+
+bool LoginViewModel::restoringSession() const noexcept {
+    return restoringSession_;
+}
+
+void LoginViewModel::setBrowserSignIn(std::shared_ptr<BrowserSignInUseCase> useCase) {
+    browserSignIn_ = std::move(useCase);
+    emit browserSignInAvailableChanged();
+}
+
+void LoginViewModel::setRestoringSession(bool restoring) {
+    if (restoring == restoringSession_) {
+        return;
+    }
+    restoringSession_ = restoring;
+    emit restoringSessionChanged();
+}
+
+void LoginViewModel::showError(const QString& message) {
+    setErrorMessage(message);
+}
+
+void LoginViewModel::signInWithBrowser() {
+    if (!browserSignInAvailable() || isLoading_) {
+        return;
+    }
+    setErrorMessage({});
+    setLoading(true);
+    waitingForBrowser_ = true;
+    emit waitingForBrowserChanged();
+
+    QPointer<LoginViewModel> guard(this);
+    browserSignIn_->execute(core::NoInput{}, [guard](core::Outcome<Session> result) {
+        if (!guard) {
+            return;
+        }
+        guard->waitingForBrowser_ = false;
+        emit guard->waitingForBrowserChanged();
+        guard->setLoading(false);
+
+        if (!result) {
+            // Cancelling or closing the browser step is a choice of the user, not an error to display.
+            if (result.error().code != core::ErrorCode::Cancelled) {
+                const QString message = QString::fromStdString(result.error().message);
+                guard->setErrorMessage(message);
+                if (guard->analytics_) {
+                    guard->analytics_->track(analytics::events::kLoginFailed,
+                                             {{"reason", std::string(core::toString(result.error().code))}});
+                }
+                emit guard->loginFailed(message);
+            }
+            return;
+        }
+        if (guard->analytics_) {
+            guard->analytics_->identify(result->userId);
+            guard->analytics_->track(analytics::events::kLoginSucceeded, {});
+        }
+        emit guard->loginSucceeded(QString::fromStdString(result->userId));
+    });
+}
+
+void LoginViewModel::cancelBrowserSignIn() {
+    if (browserSignIn_ && waitingForBrowser_) {
+        browserSignIn_->cancel(); // completes the pending execute() with Cancelled
+    }
 }
 
 void LoginViewModel::logout() {

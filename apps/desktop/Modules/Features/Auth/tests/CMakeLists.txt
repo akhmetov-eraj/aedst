@@ -51,3 +51,16 @@ add_test(NAME AedstFeatureAuth.LoginViewQmlTest COMMAND AedstFeatureAuthQmlTests
 set_tests_properties(AedstFeatureAuth.LoginViewQmlTest PROPERTIES
     LABELS "qmltest"
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen;QT_QUICK_CONTROLS_STYLE=Basic")
+
+# OidcAuthRepository against the scripted OpenID provider of the Aedst::Oidc tests (PKCE sign-in, refresh,
+# logout through the real OidcSession; in-memory keychain, no browser).
+add_executable(AedstFeatureAuthOidcTests oidc_auth_repository_test.cpp)
+target_link_libraries(AedstFeatureAuthOidcTests PRIVATE Aedst::Feature::Auth Aedst::Oidc Aedst::Testing Qt6::Network GTest::gtest)
+target_include_directories(AedstFeatureAuthOidcTests PRIVATE ${PROJECT_SOURCE_DIR}/Modules/Core/Oidc/tests)
+aedst_set_warnings(AedstFeatureAuthOidcTests)
+
+add_test(NAME AedstFeatureAuth.OidcAuthRepositoryTest COMMAND AedstFeatureAuthOidcTests)
+set_tests_properties(AedstFeatureAuth.OidcAuthRepositoryTest PROPERTIES
+    LABELS "unit"
+    TIMEOUT 120
+    ENVIRONMENT "QT_QPA_PLATFORM=offscreen")

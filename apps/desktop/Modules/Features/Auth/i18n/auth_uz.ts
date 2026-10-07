@@ -43,5 +43,25 @@
         <source>Unavailable while offline</source>
         <translation>Oflayn rejimda mavjud emas</translation>
     </message>
+    <message>
+        <source>Restoring your session</source>
+        <translation>Seansingiz tiklanmoqda</translation>
+    </message>
+    <message>
+        <source>Continue in browser</source>
+        <translation>Brauzerda davom etish</translation>
+    </message>
+    <message>
+        <source>Waiting for the browser</source>
+        <translation>Brauzer kutilmoqda</translation>
+    </message>
+    <message>
+        <source>Finish signing in in your browser, then return to this window.</source>
+        <translation>Brauzerda kirishni yakunlang, so'ng shu oynaga qayting.</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Bekor qilish</translation>
+    </message>
 </context>
 </TS>

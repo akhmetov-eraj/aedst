@@ -21,6 +21,11 @@ class FakeLoginViewModel final : public QObject {
     Q_PROPERTY(bool isLoading READ isLoading WRITE setIsLoading NOTIFY isLoadingChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage WRITE setErrorMessage NOTIFY errorMessageChanged)
     Q_PROPERTY(bool canSubmit READ canSubmit NOTIFY canSubmitChanged)
+    Q_PROPERTY(bool browserSignInAvailable READ browserSignInAvailable WRITE setBrowserSignInAvailable NOTIFY browserSignInAvailableChanged)
+    Q_PROPERTY(bool waitingForBrowser READ waitingForBrowser WRITE setWaitingForBrowser NOTIFY waitingForBrowserChanged)
+    Q_PROPERTY(bool restoringSession READ restoringSession WRITE setRestoringSession NOTIFY restoringSessionChanged)
+    Q_PROPERTY(int browserCalls READ browserCalls NOTIFY loginCallsChanged)
+    Q_PROPERTY(int cancelCalls READ cancelCalls NOTIFY loginCallsChanged)
     // Test-only observability.
     Q_PROPERTY(int loginCalls READ loginCalls NOTIFY loginCallsChanged)
     Q_PROPERTY(QString lastPassword READ lastPassword NOTIFY loginCallsChanged)
@@ -63,6 +68,32 @@ public:
         emit errorMessageChanged();
     }
     [[nodiscard]] bool canSubmit() const { return !isLoading_ && !email_.trimmed().isEmpty() && !password_.isEmpty(); }
+    [[nodiscard]] bool browserSignInAvailable() const { return browserSignInAvailable_; }
+    void setBrowserSignInAvailable(bool value) {
+        if (value == browserSignInAvailable_) {
+            return;
+        }
+        browserSignInAvailable_ = value;
+        emit browserSignInAvailableChanged();
+    }
+    [[nodiscard]] bool waitingForBrowser() const { return waitingForBrowser_; }
+    void setWaitingForBrowser(bool value) {
+        if (value == waitingForBrowser_) {
+            return;
+        }
+        waitingForBrowser_ = value;
+        emit waitingForBrowserChanged();
+    }
+    [[nodiscard]] bool restoringSession() const { return restoringSession_; }
+    void setRestoringSession(bool value) {
+        if (value == restoringSession_) {
+            return;
+        }
+        restoringSession_ = value;
+        emit restoringSessionChanged();
+    }
+    [[nodiscard]] int browserCalls() const { return browserCalls_; }
+    [[nodiscard]] int cancelCalls() const { return cancelCalls_; }
     [[nodiscard]] int loginCalls() const { return loginCalls_; }
     [[nodiscard]] QString lastPassword() const { return lastPassword_; }
 
@@ -75,6 +106,16 @@ public:
         emit loginCallsChanged();
     }
     Q_INVOKABLE void logout() { emit loggedOut(); }
+    Q_INVOKABLE void signInWithBrowser() {
+        ++browserCalls_;
+        setWaitingForBrowser(true);
+        emit loginCallsChanged();
+    }
+    Q_INVOKABLE void cancelBrowserSignIn() {
+        ++cancelCalls_;
+        setWaitingForBrowser(false);
+        emit loginCallsChanged();
+    }
     Q_INVOKABLE void clearPassword() { setPassword({}); }
     Q_INVOKABLE void emitLoginSucceeded() { emit loginSucceeded(QStringLiteral("user-1")); }
     Q_INVOKABLE void emitLoginFailed() { emit loginFailed(errorMessage_); }
@@ -83,6 +124,11 @@ public:
         setPassword({});
         setIsLoading(false);
         setErrorMessage({});
+        setBrowserSignInAvailable(false);
+        setWaitingForBrowser(false);
+        setRestoringSession(false);
+        browserCalls_ = 0;
+        cancelCalls_ = 0;
         loginCalls_ = 0;
         lastPassword_.clear();
         emit loginCallsChanged();
@@ -94,6 +140,9 @@ signals:
     void isLoadingChanged();
     void errorMessageChanged();
     void canSubmitChanged();
+    void browserSignInAvailableChanged();
+    void waitingForBrowserChanged();
+    void restoringSessionChanged();
     void loginCallsChanged();
     void loginSucceeded(const QString& userId);
     void loginFailed(const QString& message);
@@ -105,7 +154,12 @@ private:
     QString errorMessage_;
     QString lastPassword_;
     int loginCalls_{0};
+    int browserCalls_{0};
+    int cancelCalls_{0};
     bool isLoading_{false};
+    bool browserSignInAvailable_{false};
+    bool waitingForBrowser_{false};
+    bool restoringSession_{false};
 };
 
 class FakeConnectivity final : public QObject {

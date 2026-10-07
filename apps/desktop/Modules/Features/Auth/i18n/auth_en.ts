@@ -43,5 +43,25 @@
         <source>Unavailable while offline</source>
         <translation>Unavailable while offline</translation>
     </message>
+    <message>
+        <source>Restoring your session</source>
+        <translation>Restoring your session</translation>
+    </message>
+    <message>
+        <source>Continue in browser</source>
+        <translation>Continue in browser</translation>
+    </message>
+    <message>
+        <source>Waiting for the browser</source>
+        <translation>Waiting for the browser</translation>
+    </message>
+    <message>
+        <source>Finish signing in in your browser, then return to this window.</source>
+        <translation>Finish signing in in your browser, then return to this window.</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Cancel</translation>
+    </message>
 </context>
 </TS>

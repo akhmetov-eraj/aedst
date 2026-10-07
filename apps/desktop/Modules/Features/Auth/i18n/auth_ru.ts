@@ -43,5 +43,25 @@
         <source>Unavailable while offline</source>
         <translation>Недоступно без подключения к сети</translation>
     </message>
+    <message>
+        <source>Restoring your session</source>
+        <translation>Восстановление сеанса</translation>
+    </message>
+    <message>
+        <source>Continue in browser</source>
+        <translation>Продолжить в браузере</translation>
+    </message>
+    <message>
+        <source>Waiting for the browser</source>
+        <translation>Ожидание браузера</translation>
+    </message>
+    <message>
+        <source>Finish signing in in your browser, then return to this window.</source>
+        <translation>Завершите вход в браузере и вернитесь в это окно.</translation>
+    </message>
+    <message>
+        <source>Cancel</source>
+        <translation>Отмена</translation>
+    </message>
 </context>
 </TS>

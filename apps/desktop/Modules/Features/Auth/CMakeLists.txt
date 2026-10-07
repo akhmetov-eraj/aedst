@@ -15,6 +15,8 @@ find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Core Quick)
 add_library(AedstFeatureAuth STATIC
     Domain/session.hpp
     Domain/auth_repository.hpp
+    Domain/browser_sign_in_use_case.hpp
+    Domain/browser_sign_in_use_case.cpp
     Domain/login_use_case.hpp
     Domain/login_use_case.cpp
     Domain/logout_use_case.hpp
@@ -28,6 +30,8 @@ add_library(AedstFeatureAuth STATIC
     Data/local_token_store_adapter.cpp
     Data/auth_repository_impl.hpp
     Data/auth_repository_impl.cpp
+    Data/oidc_auth_repository.hpp
+    Data/oidc_auth_repository.cpp
     Presentation/login_view_model.hpp
     Presentation/login_view_model.cpp
     Navigation/auth_route.hpp
@@ -56,6 +60,7 @@ target_link_libraries(AedstFeatureAuth
         Qt6::Core
     PRIVATE
         Aedst::Persistence
+        Aedst::Oidc
         Aedst::Analytics
         Aedst::DesignSystem
         Qt6::Quick

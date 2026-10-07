@@ -14,6 +14,7 @@
 #include "aedst/navigation/router.hpp"
 #include "aedst/network/auth_interceptor.hpp"
 #include "aedst/network/connect_client.hpp"
+#include "aedst/oidc/oidc_config.hpp"
 #include "aedst/persistence/secure_storage.hpp"
 #include "aedst/persistence/sqlite_connection.hpp"
 #include "aedst/persistence/token_store.hpp"
@@ -33,6 +34,10 @@
 namespace aedst::media {
 class MediaRemoteDataSource;
 } // namespace aedst::media
+
+namespace aedst::oidc {
+class OidcSession;
+} // namespace aedst::oidc
 
 namespace aedst::platform {
 class NotificationService;
@@ -68,6 +73,9 @@ struct AppConfig {
     bool crashReportingConfigured{false};
     /// Access-token claim holding roles (mirrors the server's AEDST_OIDC_ROLES_CLAIM).
     std::string rolesClaim{"roles"};
+    /// OpenID Connect (ZITADEL). When configured, sign-in happens in the system browser and password
+    /// login is not offered; otherwise the first-party e-mail/password API is used (until its sunset).
+    oidc::OidcConfig oidc;
 };
 
 /// Manual DI composition root — the desktop counterpart of apps/apple's
@@ -118,8 +126,10 @@ public:
     /// Tasks when a session is stored, login otherwise.
     [[nodiscard]] navigation::Route initialRoute() const;
 
-    /// Rotates an expired access token once at startup; routes to login if the
-    /// server rejects the refresh token. Offline failures keep the stored session.
+    /// Startup session handling. First-party mode: rotates an expired access token once and routes to
+    /// login if the server rejects the refresh token. OIDC mode: loads the refresh token from the OS
+    /// keychain and exchanges it for an access token (the login view shows progress meanwhile).
+    /// Offline failures keep the stored session.
     void refreshSessionIfNeeded();
 
     /// Starts per-user background work for a stored session (notification polling,
@@ -131,6 +141,7 @@ private:
 
     void wireSessionLifecycle();
     void onSignedIn();
+    void restoreOidcSession();
     void onSignedOut();
     void updateSessionInfo();
 
@@ -156,7 +167,8 @@ private:
     std::shared_ptr<feature::auth::LocalTokenStoreAdapter> tokenAdapter_;
     std::shared_ptr<network::AuthInterceptor> authInterceptor_;
     std::shared_ptr<network::ConnectClient> connectClient_;
-    std::shared_ptr<feature::auth::AuthRepositoryImpl> authRepository_;
+    std::shared_ptr<oidc::OidcSession> oidcSession_;
+    std::shared_ptr<feature::auth::AuthRepository> authRepository_;
     std::shared_ptr<feature::auth::RefreshTokenUseCase> refreshToken_;
     std::shared_ptr<media::MediaRemoteDataSource> mediaRemote_;
 

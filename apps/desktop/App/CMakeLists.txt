@@ -103,6 +103,7 @@ target_link_libraries(aedst-desktop PRIVATE
     Aedst::Feature::Admin
     Aedst::Core
     Aedst::Logging
+    Aedst::Oidc
     Aedst::Network
     Aedst::Persistence
     Aedst::Navigation

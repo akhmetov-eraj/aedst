@@ -58,8 +58,8 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          # Add-on module for Aedst::Media (MediaPlayer, VideoOutput, QVideoSink).
-          modules: qtmultimedia
+          # Add-on modules: Aedst::Media (MediaPlayer, VideoOutput, QVideoSink), Aedst::Oidc (QtNetworkAuth).
+          modules: qtmultimedia qtnetworkauth
           cache: true
 
       - name: clang-format
@@ -148,8 +148,8 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          # Add-on module for Aedst::Media (MediaPlayer, VideoOutput, QVideoSink).
-          modules: qtmultimedia
+          # Add-on modules: Aedst::Media (MediaPlayer, VideoOutput, QVideoSink), Aedst::Oidc (QtNetworkAuth).
+          modules: qtmultimedia qtnetworkauth
           cache: true
 
       - name: Restore vcpkg binary cache
@@ -252,8 +252,8 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
-          # Add-on module for Aedst::Media (MediaPlayer, VideoOutput, QVideoSink).
-          modules: qtmultimedia
+          # Add-on modules: Aedst::Media (MediaPlayer, VideoOutput, QVideoSink), Aedst::Oidc (QtNetworkAuth).
+          modules: qtmultimedia qtnetworkauth
           cache: true
 
       - name: Restore vcpkg binary cache
