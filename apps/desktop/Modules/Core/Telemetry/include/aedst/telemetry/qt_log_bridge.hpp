@@ -1,6 +1,9 @@
 #pragma once
 
 #include "aedst/core/logger.hpp"
+#include "aedst/telemetry/sentry_reporter.hpp"
+
+#include <string_view>
 
 namespace aedst::telemetry {
 
@@ -14,9 +17,14 @@ struct QtLogBridgeOptions {
     /// by default: enabling a chatty qt.* category via QT_LOGGING_RULES must not
     /// flood the product log (the reason the two loggers were split in the first place).
     core::LogLevel forwardFrom{core::LogLevel::Warn};
-    /// Warnings and above also become crash-reporter breadcrumbs (context for the
-    /// next crash/error event; nothing is sent by itself).
+    /// Crash-reporter breadcrumbs (context for the next crash/error event; nothing is sent by itself): warnings and
+    /// above from every category, and Info from first-party `aedst.*` categories (sign-in, navigation, updates,
+    /// connectivity: the trail that explains a crash). Debug never. Text is scrubbed (secrets, e-mails, account
+    /// names in paths) before it is stored.
     bool breadcrumbs{true};
+    /// Where breadcrumbs go. Null = SentryReporter::addBreadcrumb (a no-op without Sentry). Tests set their own.
+    using BreadcrumbSink = void (*)(std::string_view category, std::string_view message, BreadcrumbLevel level);
+    BreadcrumbSink breadcrumbSink{nullptr};
 };
 
 /// Installs a process-wide qInstallMessageHandler that forwards Qt's

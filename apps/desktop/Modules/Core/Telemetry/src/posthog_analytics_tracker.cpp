@@ -1,6 +1,7 @@
 #include "aedst/telemetry/posthog_analytics_tracker.hpp"
 
 #include "aedst/core/logger.hpp"
+#include "aedst/core/redaction.hpp"
 #include "aedst/network/transport_policy.hpp"
 
 #include <QJsonArray>
@@ -30,6 +31,15 @@ QByteArray buildBatchPayload(const QString& apiKey, const QList<PostHogEvent>& e
     }
     const QJsonObject body{{QStringLiteral("api_key"), apiKey}, {QStringLiteral("batch"), batch}};
     return QJsonDocument(body).toJson(QJsonDocument::Compact);
+}
+
+QString sanitizePropertyValue(const QString& value) {
+    constexpr qsizetype kMaxLength = 200;
+    QString cleaned = QString::fromStdString(core::scrubPii(value.toStdString()));
+    if (cleaned.size() > kMaxLength) {
+        cleaned.truncate(kMaxLength);
+    }
+    return cleaned;
 }
 
 QHash<QString, QVariant> parseFeatureFlags(const QByteArray& body) {
@@ -109,7 +119,7 @@ void PostHogAnalyticsTracker::track(std::string_view event, const analytics::Ana
     }
     QJsonObject props = baseProperties();
     for (const auto& [key, value] : properties) {
-        props.insert(QString::fromStdString(key), QString::fromStdString(value));
+        props.insert(QString::fromStdString(key), sanitizePropertyValue(QString::fromStdString(value)));
     }
     enqueue(PostHogEvent{.event = QString::fromUtf8(event.data(), static_cast<qsizetype>(event.size())),
                          .distinctId = distinctId(),

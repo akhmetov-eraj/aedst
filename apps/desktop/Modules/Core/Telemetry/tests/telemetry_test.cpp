@@ -17,6 +17,8 @@
 #include <mutex>
 #include <sstream>
 #include <string>
+#include <string_view>
+#include <vector>
 
 namespace aedst::telemetry {
 namespace {
@@ -154,6 +156,69 @@ TEST_F(QtLogBridgeTest, SecretsInCategoryMessagesAreRedacted) {
     qCWarning(lcNetwork, "request failed: Authorization: Bearer abc.def.ghi");
     EXPECT_EQ(output().find("abc.def.ghi"), std::string::npos);
 }
+
+TEST(PostHogSanitizeTest, MasksPersonalDataAndCapsTheLength) {
+    EXPECT_EQ(sanitizePropertyValue(QStringLiteral("opened")), QStringLiteral("opened"));
+    EXPECT_EQ(sanitizePropertyValue(QStringLiteral("mail alice@example.com")), QStringLiteral("mail a***@e***.com"));
+    EXPECT_EQ(sanitizePropertyValue(QStringLiteral("/home/alice/x")), QStringLiteral("/home/<user>/x"));
+    EXPECT_EQ(sanitizePropertyValue(QString(500, QLatin1Char('a'))).size(), 200);
+}
+
+struct CapturedCrumb {
+    std::string category;
+    std::string message;
+    BreadcrumbLevel level;
+};
+
+// The sink is a plain function pointer (QtLogBridgeOptions::BreadcrumbSink), so the capture list is a global of this file.
+// NOLINTNEXTLINE(cppcoreguidelines-avoid-non-const-global-variables)
+std::vector<CapturedCrumb> gCrumbs;
+
+void captureCrumb(std::string_view category, std::string_view message, BreadcrumbLevel level) {
+    gCrumbs.push_back({std::string(category), std::string(message), level});
+}
+
+class BreadcrumbBridgeTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        gCrumbs.clear();
+        core::LoggerConfig config;
+        config.console = false;
+        config.level = core::LogLevel::Debug;
+        core::AedstLogger::init(config, {std::make_shared<spdlog::sinks::ostream_sink_mt>(captured_)});
+        installQtLogBridge({.breadcrumbs = true, .breadcrumbSink = &captureCrumb});
+    }
+    void TearDown() override {
+        uninstallQtLogBridge();
+        core::AedstLogger::shutdown();
+    }
+    std::ostringstream captured_;
+};
+
+TEST_F(BreadcrumbBridgeTest, FirstPartyInfoAndAllWarningsBecomeBreadcrumbsButDebugAndFrameworkInfoDoNot) {
+    const QLoggingCategory framework("qt.test.framework");
+    qCInfo(lcAuth, "signed in");
+    qCDebug(lcAuth, "detail");
+    qCInfo(framework, "chatty");
+    qCWarning(framework, "important");
+
+    ASSERT_EQ(gCrumbs.size(), 2U);
+    EXPECT_EQ(gCrumbs[0].category, "aedst.auth");
+    EXPECT_EQ(gCrumbs[0].message, "signed in");
+    EXPECT_EQ(gCrumbs[0].level, BreadcrumbLevel::Info);
+    EXPECT_EQ(gCrumbs[1].category, "qt.test.framework");
+    EXPECT_EQ(gCrumbs[1].level, BreadcrumbLevel::Warning);
+}
+
+TEST_F(BreadcrumbBridgeTest, BreadcrumbTextIsScrubbed) {
+    qCWarning(lcNetwork, "failed for alice@example.com reading C:\\Users\\alice\\AppData\\x token=abc123");
+    ASSERT_EQ(gCrumbs.size(), 1U);
+    EXPECT_EQ(gCrumbs[0].message.find("alice@"), std::string::npos) << gCrumbs[0].message;
+    EXPECT_EQ(gCrumbs[0].message.find("Users\\alice"), std::string::npos) << gCrumbs[0].message;
+    EXPECT_EQ(gCrumbs[0].message.find("abc123"), std::string::npos) << gCrumbs[0].message;
+    EXPECT_NE(gCrumbs[0].message.find("<user>"), std::string::npos) << gCrumbs[0].message;
+}
+
 } // namespace
 } // namespace aedst::telemetry
 

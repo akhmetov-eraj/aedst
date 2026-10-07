@@ -216,7 +216,59 @@ std::string maskEmails(std::string_view text) {
     return out;
 }
 
+constexpr std::string_view kUserPlaceholder = "<user>";
+
+constexpr bool isPathSeparator(char c) noexcept {
+    return c == '/' || c == '\\';
+}
+
+/// The account name that follows `Users` or `home` in a path -> <user>.
+std::string maskProfilePaths(std::string_view text) {
+    constexpr std::array<std::string_view, 2> kRoots{"users", "home"};
+    const std::string lower = lowered(text);
+    const std::size_t size = text.size();
+    std::string out;
+    out.reserve(size);
+    std::size_t pos = 0;
+    while (pos < size) {
+        std::size_t best = std::string::npos;
+        std::size_t bestLength = 0;
+        for (const std::string_view root : kRoots) {
+            for (std::size_t hit = lower.find(root, pos); hit != std::string::npos; hit = lower.find(root, hit + 1)) {
+                const std::size_t after = hit + root.size();
+                if (hit > 0 && isPathSeparator(text[hit - 1]) && after < size && isPathSeparator(text[after])) {
+                    if (hit < best) {
+                        best = hit;
+                        bestLength = root.size();
+                    }
+                    break;
+                }
+            }
+        }
+        if (best == std::string::npos) {
+            break;
+        }
+        const std::size_t nameStart = best + bestLength + 1;
+        std::size_t nameEnd = nameStart;
+        while (nameEnd < size && !isPathSeparator(text[nameEnd]) && !isBlank(text[nameEnd]) && !isQuote(text[nameEnd]) &&
+               text[nameEnd] != '\r' && text[nameEnd] != '\n') {
+            ++nameEnd;
+        }
+        out.append(text.substr(pos, nameStart - pos));
+        if (nameEnd > nameStart) {
+            out.append(kUserPlaceholder);
+        }
+        pos = nameEnd;
+    }
+    out.append(text.substr(pos));
+    return out;
+}
+
 } // namespace
+
+std::string scrubPii(std::string_view text) {
+    return maskProfilePaths(redactSecrets(text));
+}
 
 std::string redactSecrets(std::string_view text) {
     const std::string keyed = maskKeyValues(text);

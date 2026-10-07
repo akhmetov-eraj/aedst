@@ -1,6 +1,7 @@
 #include "aedst/telemetry/sentry_reporter.hpp"
 
 #include "aedst/core/logger.hpp"
+#include "aedst/core/redaction.hpp"
 
 #include <atomic>
 #include <string>
@@ -37,6 +38,57 @@ std::atomic<bool> gActive{false};
     return std::string(text);
 }
 
+/// Replaces the string at parent[key] by its scrubbed form (secrets, e-mails, account names in paths).
+void scrubStringAt(sentry_value_t parent, const char* key) {
+    const sentry_value_t value = sentry_value_get_by_key(parent, key);
+    if (sentry_value_get_type(value) != SENTRY_VALUE_TYPE_STRING) {
+        return;
+    }
+    const std::string cleaned = core::scrubPii(sentry_value_as_string(value));
+    sentry_value_set_by_key(parent, key, sentry_value_new_string(cleaned.c_str()));
+}
+
+void scrubListItems(sentry_value_t list, const char* key) {
+    if (sentry_value_get_type(list) != SENTRY_VALUE_TYPE_LIST) {
+        return;
+    }
+    for (size_t i = 0; i < sentry_value_get_length(list); ++i) {
+        const sentry_value_t item = sentry_value_get_by_index(list, i);
+        if (sentry_value_get_type(item) == SENTRY_VALUE_TYPE_OBJECT) {
+            scrubStringAt(item, key);
+        }
+    }
+}
+
+/// Last line of defence for events built in this process (handled errors, messages): free text is scrubbed, the
+/// machine name and the client address are dropped. Out-of-process crashpad crash reports do not pass through here;
+/// their breadcrumbs were scrubbed when they were added, and the minidump itself is covered by the consent gate.
+sentry_value_t beforeSend(sentry_value_t event, void* /*hint*/, void* /*userData*/) {
+    sentry_value_remove_by_key(event, "server_name");
+    const sentry_value_t user = sentry_value_get_by_key(event, "user");
+    if (sentry_value_get_type(user) == SENTRY_VALUE_TYPE_OBJECT) {
+        sentry_value_remove_by_key(user, "ip_address");
+        sentry_value_remove_by_key(user, "email");
+        sentry_value_remove_by_key(user, "username");
+    }
+    const sentry_value_t message = sentry_value_get_by_key(event, "message");
+    if (sentry_value_get_type(message) == SENTRY_VALUE_TYPE_OBJECT) {
+        scrubStringAt(message, "formatted");
+        scrubStringAt(message, "message");
+    }
+    scrubStringAt(event, "transaction");
+    const sentry_value_t exception = sentry_value_get_by_key(event, "exception");
+    scrubListItems(sentry_value_get_type(exception) == SENTRY_VALUE_TYPE_OBJECT
+                       ? sentry_value_get_by_key(exception, "values")
+                       : exception,
+                   "value");
+    const sentry_value_t crumbs = sentry_value_get_by_key(event, "breadcrumbs");
+    scrubListItems(sentry_value_get_type(crumbs) == SENTRY_VALUE_TYPE_OBJECT ? sentry_value_get_by_key(crumbs, "values")
+                                                                              : crumbs,
+                   "message");
+    return event;
+}
+
 #endif
 
 } // namespace
@@ -63,6 +115,7 @@ bool SentryReporter::start(const SentryConfig& config, bool consentGranted) {
     // and mirrored by Aedst's ConsentStore).
     sentry_options_set_require_user_consent(options, 1);
     sentry_options_set_max_breadcrumbs(options, 100);
+    sentry_options_set_before_send(options, &beforeSend, nullptr);
 #if defined(_WIN32)
     sentry_options_set_database_pathw(options, config.databasePath.wstring().c_str());
     if (!config.handlerPath.empty()) {
@@ -135,7 +188,7 @@ void SentryReporter::addBreadcrumb(std::string_view category, std::string_view m
     if (!gActive.load()) {
         return;
     }
-    sentry_value_t crumb = sentry_value_new_breadcrumb("default", toString(message).c_str());
+    sentry_value_t crumb = sentry_value_new_breadcrumb("default", core::scrubPii(message).c_str());
     sentry_value_set_by_key(crumb, "category", sentry_value_new_string(toString(category).c_str()));
     sentry_value_set_by_key(crumb, "level", sentry_value_new_string(levelName(level)));
     sentry_add_breadcrumb(crumb);
@@ -152,7 +205,7 @@ void SentryReporter::captureError(std::string_view context, std::string_view mes
         return;
     }
     sentry_capture_event(
-        sentry_value_new_message_event(SENTRY_LEVEL_ERROR, toString(context).c_str(), toString(message).c_str()));
+        sentry_value_new_message_event(SENTRY_LEVEL_ERROR, toString(context).c_str(), core::scrubPii(message).c_str()));
 #else
     (void)context;
     (void)message;

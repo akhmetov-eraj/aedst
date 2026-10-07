@@ -46,6 +46,11 @@ struct PostHogEvent {
 /// Pure, for tests.
 [[nodiscard]] QByteArray buildBatchPayload(const QString& apiKey, const QList<PostHogEvent>& events);
 
+/// What an event property value may carry: secrets, e-mails and account names in paths are masked
+/// (core::scrubPii) and the text is cut to 200 characters. Event vocabularies are small and static, so this is a
+/// guard against a feature passing something user-typed by mistake, not a feature. Pure, for tests.
+[[nodiscard]] QString sanitizePropertyValue(const QString& value);
+
 /// Parses a `POST <host>/flags?v=2` response ({"flags": {"<key>": {"enabled", "variant"}}})
 /// and, for older deployments, the legacy /decide shape ({"featureFlags": {"<key>": true|"variant"}}).
 /// Value: false (off), true (on, no variant) or the variant string. Pure, for tests.

@@ -306,6 +306,7 @@ jobs:
           cmake --preset ${{ matrix.preset }}
           "-DAEDST_SENTRY_DSN=${AEDST_SENTRY_DSN}"
           "-DAEDST_POSTHOG_KEY=${AEDST_POSTHOG_KEY}"
+          "-DAEDST_SENTRY_ENVIRONMENT=${{ inputs.release && (contains(github.ref_name, '-') && 'beta' || 'production') || 'ci' }}"
           "-DAEDST_ENABLE_VELOPACK=${{ inputs.release && 'ON' || 'OFF' }}"
           "-DAEDST_UPDATE_PUBLIC_KEYS=${{ inputs.release && vars.AEDST_UPDATE_PUBLIC_KEYS || '' }}"
           "-DAEDST_UPDATE_MANIFEST_URL=${{ inputs.release && vars.AEDST_UPDATE_MANIFEST_URL || '' }}"
@@ -385,16 +386,26 @@ jobs:
           fi
 
       - name: Upload debug symbols to Sentry
-        if: env.HAS_SENTRY_UPLOAD == 'true'
+        if: env.HAS_SENTRY_UPLOAD == 'true' && inputs.release
         env:
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           SENTRY_ORG: ${{ vars.SENTRY_ORG }}
           SENTRY_PROJECT: ${{ vars.SENTRY_DESKTOP_PROJECT }}
         run: |
           version=$(sed -nE 's/^[[:space:]]*VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt | head -1)
-          npx --yes @sentry/cli@3.8.0 debug-files upload --include-sources --wait \
+          # release == SentryConfig.release in App/src/main.cpp: "aedst-desktop@" + the package version (PROJECT_VERSION),
+          # which the release workflow has already checked against the tag. The binary reports the same string.
+          exe="build/${{ matrix.preset }}/App/aedst-desktop"
+          [ -f "$exe.exe" ] && exe="$exe.exe"
+          built=$("$exe" --version 2>/dev/null | head -1 || true)
+          if [ -n "$built" ] && [ "$built" != "$version" ]; then
+            echo "::error::the binary reports $built but CMakeLists.txt says $version"; exit 1
+          fi
+          release="aedst-desktop@${version}"
+          npx --yes @sentry/cli@3.8.0 releases new "$release"
+          npx --yes @sentry/cli@3.8.0 debug-files upload --include-sources --wait --release "$release" \
             "build/${{ matrix.preset }}/symbols" "build/${{ matrix.preset }}/App"
-          npx --yes @sentry/cli@3.8.0 releases new "aedst-desktop@${version}" || true
+          npx --yes @sentry/cli@3.8.0 releases finalize "$release"
 
   # ---------------------------------------------------------------------------
   # Install the produced package on a clean runner (no compiler, no Qt), run it,

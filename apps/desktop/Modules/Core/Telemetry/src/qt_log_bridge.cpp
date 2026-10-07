@@ -85,10 +85,12 @@ void bridgeHandler(QtMsgType type, const QMessageLogContext& context, const QStr
             } else {
                 core::AedstLogger::get()->log(toSpdlog(level), "[qt:{}] {}", category, text);
             }
-            if (gOptions.breadcrumbs && level >= core::LogLevel::Warn) {
-                SentryReporter::addBreadcrumb(category, core::redactSecrets(text),
-                                              level >= core::LogLevel::Error ? BreadcrumbLevel::Error
-                                                                             : BreadcrumbLevel::Warning);
+            if (gOptions.breadcrumbs && (level >= core::LogLevel::Warn || (ours && level == core::LogLevel::Info))) {
+                const auto sink = gOptions.breadcrumbSink != nullptr ? gOptions.breadcrumbSink : &SentryReporter::addBreadcrumb;
+                sink(category, core::scrubPii(text),
+                     level >= core::LogLevel::Error  ? BreadcrumbLevel::Error
+                     : level >= core::LogLevel::Warn ? BreadcrumbLevel::Warning
+                                                     : BreadcrumbLevel::Info);
             }
             if (type == QtFatalMsg) {
                 core::AedstLogger::flush(); // Qt aborts right after the handlers return.

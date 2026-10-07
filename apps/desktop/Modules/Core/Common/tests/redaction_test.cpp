@@ -89,5 +89,27 @@ TEST(RedactionLoggerTest, CanBeDisabledExplicitly) {
     EXPECT_NE(output.str().find("password=hunter2"), std::string::npos);
 }
 
+TEST(ScrubPiiTest, ReplacesTheAccountNameInProfilePaths) {
+    EXPECT_EQ(scrubPii(R"(C:\Users\alice\AppData\Local\AEDST\logs\aedst.log)"),
+              R"(C:\Users\<user>\AppData\Local\AEDST\logs\aedst.log)");
+    EXPECT_EQ(scrubPii("/home/alice/.config/AEDST/x.db"), "/home/<user>/.config/AEDST/x.db");
+    EXPECT_EQ(scrubPii("open '/home/bob' failed"), "open '/home/<user>' failed");
+    EXPECT_EQ(scrubPii("two: /home/a/x and C:/Users/b/y"), "two: /home/<user>/x and C:/Users/<user>/y");
+}
+
+TEST(ScrubPiiTest, LeavesOtherPathsAndWordsAlone) {
+    EXPECT_EQ(scrubPii("/usr/lib/libQt6Core.so"), "/usr/lib/libQt6Core.so");
+    EXPECT_EQ(scrubPii("the home screen"), "the home screen");
+    EXPECT_EQ(scrubPii("Users are listed"), "Users are listed");
+    EXPECT_EQ(scrubPii("/home/"), "/home/");
+}
+
+TEST(ScrubPiiTest, AlsoMasksSecretsAndIsIdempotent) {
+    const std::string input = R"(token=abc at C:\Users\Alice\x mail alice@example.com)";
+    const std::string once = scrubPii(input);
+    EXPECT_EQ(once, R"(token=*** at C:\Users\<user>\x mail a***@e***.com)");
+    EXPECT_EQ(scrubPii(once), once);
+}
+
 } // namespace
 } // namespace aedst::core
