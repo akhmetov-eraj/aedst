@@ -4,15 +4,18 @@
 #include <QImage>
 #include <QMutex>
 #include <QObject>
+#include <QPointer>
 #include <QQuickAsyncImageProvider>
 #include <QSize>
 #include <QString>
 #include <QUrl>
 
+#include <atomic>
 #include <functional>
 #include <memory>
 
 class QNetworkAccessManager;
+class QNetworkReply;
 class QNetworkDiskCache;
 
 namespace aedst::media {
@@ -31,9 +34,19 @@ public:
     MediaImageFetcher(MediaImageFetcher&&) = delete;
     MediaImageFetcher& operator=(MediaImageFetcher&&) = delete;
 
-    /// Downloads `url` and calls `done(bytes, error)` on the GUI thread.
-    /// Thread-safe to call: it queues onto the fetcher's thread.
-    void fetch(const QUrl& url, std::function<void(QByteArray, QString)> done);
+    /// One download in flight. `cancelled` may be set from any thread; `reply` belongs to the fetcher's thread.
+    struct Ticket {
+        std::atomic<bool> cancelled{false};
+        QPointer<QNetworkReply> reply;
+    };
+
+    /// Downloads `url` and calls `done(bytes, error)` on the GUI thread, exactly once - also when the download is
+    /// cancelled (then with an error). Thread-safe to call: it queues onto the fetcher's thread. A ticket cancelled
+    /// before the request starts never touches the network.
+    std::shared_ptr<Ticket> fetch(const QUrl& url, std::function<void(QByteArray, QString)> done);
+
+    /// Stops the download of `ticket` (an aborted transfer, or none at all if it has not started). Thread-safe.
+    void cancel(const std::shared_ptr<Ticket>& ticket);
 
 private:
     std::unique_ptr<QNetworkAccessManager> network_;

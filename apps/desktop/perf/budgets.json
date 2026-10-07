@@ -1,0 +1,14 @@
+{
+  "_comment": "PROVISIONAL budgets, chosen before any measurement (this tree was never built or run). After the first CI perf run set each limit to about 1.3x the measured median or p95 on the CI runner and record the numbers in docs/performance.md. Tighten freely; a PR that raises a limit must say why.",
+  "startup": {
+    "firstFrameMedianMs": 3000,
+    "qmlLoadedMedianMs": 2000,
+    "rssMiB": 300
+  },
+  "scroll": {
+    "p95Ms": 33,
+    "p99Ms": 50,
+    "rssMiB": 600
+  },
+  "regressionThresholdPercent": 30
+}

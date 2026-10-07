@@ -223,6 +223,86 @@ jobs:
           retention-days: 30
 
   # ---------------------------------------------------------------------------
+  # Performance gate: cold start, memory, scroll smoothness and the Qt Test micro-benchmarks against perf/budgets.json
+  # and perf/baseline.json (scripts/perf/run-perf.mjs, docs/performance.md). Runs on main, on manual dispatch, and on
+  # pull requests that carry the `perf` label (it builds a Release tree with tests, so it is not free).
+  # The budgets are PROVISIONAL until the first run has produced numbers; see perf/budgets.json.
+  # ---------------------------------------------------------------------------
+  perf:
+    needs: [test]
+    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
+    name: perf (${{ matrix.os }})
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - uses: lukka/get-cmake@a89e43e22a96abafcd7a62db652a65ecd33052c9 # latest at pin time
+        with:
+          cmakeVersion: ${{ env.CMAKE_VERSION }}
+
+      - name: Install system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgl1-mesa-dev libxkbcommon-dev libegl1 libfontconfig1 \
+            libsecret-1-dev libdbus-1-dev pkg-config xvfb mesa-utils
+
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
+        if: runner.os == 'Windows'
+
+      - name: Read pinned Qt version
+        run: echo "QT_VERSION=$(tr -d '[:space:]' < qt-version.txt)" >> "$GITHUB_ENV"
+
+      - uses: jurplel/install-qt-action@a9c63c7c123f3069cff414e7e482d95dfa9d8125 # v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: qtmultimedia qtnetworkauth
+          cache: true
+
+      - name: Restore vcpkg binary cache
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .vcpkg-binary-cache
+          key: vcpkg-${{ runner.os }}-bench-${{ hashFiles('apps/desktop/vcpkg.json') }}
+          restore-keys: |
+            vcpkg-${{ runner.os }}-bench-
+
+      - name: Point VCPKG_ROOT at the runner's vcpkg
+        run: echo "VCPKG_ROOT=$VCPKG_INSTALLATION_ROOT" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Configure
+        run: cmake --preset bench
+
+      - name: Build
+        run: cmake --build --preset bench
+
+      # Frame times need a window system: xvfb with Mesa's software GL on Linux (absolute numbers are indicative there; the
+      # regression comparison is against a baseline taken on the same runner type), the desktop session on Windows.
+      - name: Performance gate
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            xvfb-run -a -s "-screen 0 1280x800x24" node scripts/perf/run-perf.mjs --build-dir build/bench --report perf-report.json
+          else
+            node scripts/perf/run-perf.mjs --build-dir build/bench --report perf-report.json
+          fi
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always()
+        with:
+          name: perf-report-${{ runner.os }}
+          path: apps/desktop/perf-report.json
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
   # Release packages (+ symbols, + optional signing).
   # ---------------------------------------------------------------------------
   package:

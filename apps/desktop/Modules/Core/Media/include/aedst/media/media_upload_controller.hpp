@@ -12,6 +12,7 @@
 #include <QUrl>
 #include <QtQmlIntegration/qqmlintegration.h>
 
+#include <atomic>
 #include <memory>
 
 class QNetworkAccessManager;
@@ -147,6 +148,13 @@ private:
     double progress_{0.0};
     bool restartFromCreate_{true};
     quint64 generation_{0};
+    /// generation_ as the worker threads see it: a preparation whose generation is no longer current (cancelled, replaced,
+    /// controller destroyed) stops before the next expensive step instead of finishing work nobody will use.
+    std::shared_ptr<std::atomic<quint64>> liveGeneration_{std::make_shared<std::atomic<quint64>>(0)};
+    quint64 bumpGeneration() {
+        liveGeneration_->store(++generation_);
+        return generation_;
+    }
 };
 
 } // namespace aedst::media

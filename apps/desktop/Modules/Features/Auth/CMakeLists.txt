@@ -37,8 +37,8 @@ add_library(AedstFeatureAuth STATIC
     Navigation/auth_route.hpp
     Navigation/auth_destinations.hpp
     Navigation/auth_destinations.cpp
-    # Listed so lupdate (qt_add_translations below) scans its qsTr() strings; the file itself is
-    # embedded by qt_add_resources, not compiled.
+    # Listed so lupdate (qt_add_translations below) scans its qsTr() strings; the file itself belongs to the
+    # AedstFeatureAuthViews QML module below (ahead-of-time compiled).
     Presentation/LoginView.qml
 )
 add_library(Aedst::Feature::Auth ALIAS AedstFeatureAuth)
@@ -66,11 +66,20 @@ target_link_libraries(AedstFeatureAuth
         Qt6::Quick
 )
 
-qt_add_resources(AedstFeatureAuth aedst_feature_auth_qml
-    PREFIX "/aedst/feature/auth"
-    BASE Presentation
-    FILES Presentation/LoginView.qml
+# The sign-in screen is the first thing every launch renders: it is a static QML module so qmlcachegen compiles it
+# ahead of time (plain qt_add_resources would parse it at every start, docs/performance.md). The URI differs from
+# Aedst.Feature.Auth, which App registers at run time for LoginViewModel. Whoever links the feature (App, the QML tests)
+# gets the plugin through the INTERFACE link below, so the resources are not dropped by the linker.
+set_source_files_properties(Presentation/LoginView.qml PROPERTIES QT_RESOURCE_ALIAS LoginView.qml)
+qt_add_qml_module(AedstFeatureAuthViews
+    STATIC
+    URI Aedst.Feature.Auth.Views
+    VERSION 1.0
+    RESOURCE_PREFIX /qt/qml
+    QML_FILES Presentation/LoginView.qml
+    DEPENDENCIES QtQuick AedstDesignSystem
 )
+target_link_libraries(AedstFeatureAuth INTERFACE AedstFeatureAuthViewsplugin)
 
 # Per-module Qt Linguist catalog: .ts sources are hand-maintained (and kept in
 # sync with qsTr()/tr() call sites via `lupdate`), .qm binaries are generated

@@ -20,7 +20,7 @@ TestCase {
     }
 
     function createView() {
-        const component = Qt.createComponent("qrc:/aedst/feature/auth/LoginView.qml")
+        const component = Qt.createComponent("qrc:/qt/qml/Aedst/Feature/Auth/Views/LoginView.qml")
         compare(component.status, Component.Ready, component.errorString())
         const view = createTemporaryObject(component, testCase, { width: testCase.width, height: testCase.height })
         verify(view !== null, "LoginView created")

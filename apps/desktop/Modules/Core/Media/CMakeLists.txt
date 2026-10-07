@@ -85,4 +85,7 @@ aedst_set_warnings(AedstMedia)
 
 if(BUILD_TESTING)
     add_subdirectory(tests)
+    if(AEDST_BUILD_BENCHMARKS)
+        add_subdirectory(bench)
+    endif()
 endif()

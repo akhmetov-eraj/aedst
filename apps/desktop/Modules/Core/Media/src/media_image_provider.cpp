@@ -13,6 +13,8 @@
 #include <QThreadPool>
 
 #include <algorithm>
+#include <atomic>
+#include <memory>
 #include <utility>
 
 namespace aedst::media {
@@ -44,7 +46,7 @@ class MediaImageResponse final : public QQuickImageResponse {
 public:
     MediaImageResponse(MediaImageProvider& provider, MediaImageFetcher& fetcher, const QString& id,
                        const QSize& requestedSize)
-        : provider_(provider) {
+        : provider_(provider), fetcher_(fetcher) {
         const ImageRequest request = parseImageId(id);
         const QString key = memoryKey(request.cacheKey, requestedSize);
         if (QImage hit = provider_.cached(key); !hit.isNull()) {
@@ -55,12 +57,20 @@ public:
             finish({}, QStringLiteral("No image source"));
             return;
         }
-        fetcher.fetch(request.url, [this, key, requestedSize](QByteArray bytes, QString error) {
+        ticket_ = fetcher.fetch(request.url, [this, key, requestedSize](QByteArray bytes, QString error) {
             if (!error.isEmpty()) {
                 finish({}, error);
                 return;
             }
+            if (cancelled_.load()) {
+                finish({}, QStringLiteral("Cancelled")); // scrolled away while downloading: skip the decode
+                return;
+            }
             QThreadPool::globalInstance()->start([this, key, requestedSize, bytes = std::move(bytes)]() {
+                if (cancelled_.load()) {
+                    finish({}, QStringLiteral("Cancelled"));
+                    return;
+                }
                 QImage image = decode(bytes, requestedSize);
                 if (image.isNull()) {
                     finish({}, QStringLiteral("Cannot decode image"));
@@ -78,6 +88,13 @@ public:
 
     [[nodiscard]] QString errorString() const override { return error_; }
 
+    /// The Image element no longer needs this (delegate recycled, source changed): stop the download and skip the
+    /// decode. finished() is still emitted, as the contract requires.
+    void cancel() override {
+        cancelled_.store(true);
+        fetcher_.cancel(ticket_);
+    }
+
 private:
     void finish(QImage image, QString error) {
         image_ = std::move(image);
@@ -87,6 +104,9 @@ private:
     }
 
     MediaImageProvider& provider_;
+    MediaImageFetcher& fetcher_;
+    std::shared_ptr<MediaImageFetcher::Ticket> ticket_;
+    std::atomic<bool> cancelled_{false};
     QImage image_;
     QString error_;
 };
@@ -104,13 +124,20 @@ MediaImageFetcher::MediaImageFetcher(const QString& cacheDirectory, qint64 maxDi
 
 MediaImageFetcher::~MediaImageFetcher() = default;
 
-void MediaImageFetcher::fetch(const QUrl& url, std::function<void(QByteArray, QString)> done) {
+std::shared_ptr<MediaImageFetcher::Ticket> MediaImageFetcher::fetch(const QUrl& url,
+                                                                    std::function<void(QByteArray, QString)> done) {
+    auto ticket = std::make_shared<Ticket>();
     QMetaObject::invokeMethod(
         this,
-        [this, url, done = std::move(done)]() {
+        [this, url, ticket, done = std::move(done)]() {
+            if (ticket->cancelled.load()) {
+                done({}, QStringLiteral("Cancelled"));
+                return;
+            }
             QNetworkRequest request(url);
             request.setAttribute(QNetworkRequest::CacheLoadControlAttribute, QNetworkRequest::PreferCache);
             QNetworkReply* reply = network_->get(request);
+            ticket->reply = reply;
             connect(reply, &QNetworkReply::downloadProgress, reply, [reply](qint64 received, qint64) {
                 if (received > kMaxImageBytes) {
                     reply->abort(); // never buffer an unbounded body into memory
@@ -124,6 +151,23 @@ void MediaImageFetcher::fetch(const QUrl& url, std::function<void(QByteArray, QS
                 }
                 done(reply->readAll(), {});
             });
+        },
+        Qt::QueuedConnection);
+    return ticket;
+}
+
+void MediaImageFetcher::cancel(const std::shared_ptr<Ticket>& ticket) {
+    if (!ticket) {
+        return;
+    }
+    ticket->cancelled.store(true);
+    // The reply lives on the fetcher's thread: abort it there (a no-op when it is already finished).
+    QMetaObject::invokeMethod(
+        this,
+        [ticket]() {
+            if (ticket->reply) {
+                ticket->reply->abort();
+            }
         },
         Qt::QueuedConnection);
 }

@@ -9,6 +9,31 @@ change that.
 > environment (no toolchain). The numbers below are the *procedure*; fill in the
 > first real run in the PR that introduces a change.
 
+## Performance gate (CI)
+
+`scripts/perf/run-perf.mjs` is the single entry point (Node, standard library only; job `perf` in
+`.github/workflows/desktop-ci.yml`, on main, manual dispatch and PRs labelled `perf`):
+
+| Part | What is measured | Checked against |
+|---|---|---|
+| startup | median of 7 launches into an empty profile: `first frame` and `QML loaded` (from `startup +N ms` log lines) and resident memory 3 s later | `perf/budgets.json` `startup` |
+| scroll | `Modules/Core/Media/bench/scroll_bench.cpp`: the real `MediaGrid` over 5 000 async-image tiles, 300 frames at constant speed; p50/p95/p99/max frame time, frames over 20 ms, resident memory | `perf/budgets.json` `scroll` |
+| micro | Qt Test `QBENCHMARK`s (`AedstNetworkBench`) | regression threshold (30 %) against `perf/baseline.json`, per platform; new benchmarks are recorded and pass |
+
+Locally: `cmake --preset bench && cmake --build --preset bench && node scripts/perf/run-perf.mjs --build-dir build/bench`
+(`--only startup,scroll,micro`, `--update-baseline` after an intended change, `--report file.json`).
+
+**The limits in `perf/budgets.json` are provisional**: nothing was built or measured when they were written. After the first
+CI run, set each to about 1.3x the measured value on that runner and write the numbers in the table below. Frame times on the
+Linux runner come from Mesa software rendering under xvfb, so only the regression comparison on the same runner type is
+meaningful there; the Windows runner is the more representative one.
+
+| Measured (first run) | Windows runner | Linux runner |
+|---|---|---|
+| startup first frame (median) | _not measured_ | _not measured_ |
+| memory 3 s after first frame | _not measured_ | _not measured_ |
+| scroll p95 / p99 | _not measured_ | _not measured_ |
+
 ## Measuring
 
 | What | How |
@@ -33,16 +58,10 @@ change that.
 
 ## Runtime rules
 
-- **Compile QML ahead of time.** `qt_add_qml_module` runs `qmlcachegen` (bytecode)
-  for its `QML_FILES`; `App` already uses it for `Main.qml`. Files added with plain
-  `qt_add_resources` (`Modules/Core/DesignSystem`, `Modules/Features/Auth`'s
-  `LoginView.qml`) are **parsed and compiled at every launch** — the largest
-  remaining startup lever. Migration recipe (owned by the DesignSystem work, not
-  done here to avoid colliding with the token-injection change):
-  `qt_add_qml_module(AedstDesignSystem URI AedstDesignSystem VERSION 1.0 QML_FILES Theme.qml AedstButton.qml ...)`
-  with `set_source_files_properties(Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)`,
-  then drop the hand-written `qmldir`. For a static library module also link the
-  generated `<target>plugin` target (or `Q_IMPORT_QML_PLUGIN`).
+- **Compile QML ahead of time.** Every module that ships QML is a `qt_add_qml_module` (`qmlcachegen` bytecode):
+  `App`, `AedstDesignSystem`, `AedstMedia` and the feature view modules, including the sign-in screen
+  (`AedstFeatureAuthViews`, the first thing every launch renders - it used to be embedded with plain `qt_add_resources`
+  and parsed at each start; ADR-0031). New QML goes into one of those modules, never into `qt_add_resources`.
 - **Declarative type registration** instead of `qmlRegister*` at run time:
   `QML_ELEMENT` / `QML_SINGLETON` (with a `static create(QQmlEngine*, QJSEngine*)`
   returning the instance `AppDependencies` built) on the ViewModels, listed under

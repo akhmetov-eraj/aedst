@@ -19,6 +19,9 @@ GridView {
     cellWidth: tileSize + Theme.spacingSm
     cellHeight: tileSize + Theme.spacingSm
     keyNavigationEnabled: true
+    // Two extra rows are created ahead of the viewport so fast scrolling meets tiles whose async image is already loading.
+    // reuseItems is deliberately not set: tiles hold image state; measure with AedstMediaScrollBench before enabling it.
+    cacheBuffer: cellHeight * 2
     activeFocusOnTab: true
     ScrollBar.vertical: ScrollBar {}
 

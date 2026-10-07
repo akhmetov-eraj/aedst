@@ -56,7 +56,7 @@ MediaUploadController::MediaUploadController(Dependencies dependencies, QObject*
 }
 
 MediaUploadController::~MediaUploadController() {
-    ++generation_; // late worker results become no-ops
+    bumpGeneration(); // late worker results become no-ops, and running workers stop early
     discardTempFile();
 }
 
@@ -98,7 +98,7 @@ void MediaUploadController::cancel() {
     if (!busy()) {
         return;
     }
-    ++generation_;
+    bumpGeneration();
     uploader_.cancel(); // emits finished(Cancelled) synchronously when running
     deleteOrphan();
     discardTempFile();
@@ -167,14 +167,23 @@ void MediaUploadController::startNext() {
 void MediaUploadController::prepare() {
     setProgress(0.0);
     setState(State::Preparing);
-    const quint64 generation = ++generation_;
+    const quint64 generation = bumpGeneration();
+    const std::shared_ptr<std::atomic<quint64>> live = liveGeneration_;
     const QString input = current_.toLocalFile();
     const CompressionOptions options = deps_.compression;
     QPointer<MediaUploadController> guard(this);
-    QThreadPool::globalInstance()->start([guard, generation, input, options]() {
+    QThreadPool::globalInstance()->start([guard, generation, live, input, options]() {
         // Off the GUI thread: decoding/encoding a large photo and hashing take seconds.
+        const auto superseded = [&live, generation]() { return live->load() != generation; };
+        if (superseded()) {
+            return; // cancelled while queued: nothing was produced, nothing to clean up
+        }
         auto result = compressImage(input, tempUploadPath(options.format), options);
-        QByteArray hash = result ? sha256Hex(result->path) : QByteArray();
+        if (result && result->compressed && superseded()) {
+            QFile::remove(result->path); // cancelled during the encode: skip the hash and the hop back
+            return;
+        }
+        QByteArray hash = result && !superseded() ? sha256Hex(result->path) : QByteArray();
         // Hop back to the GUI thread through the application object (always alive);
         // `guard` is only dereferenced there, never on this worker thread.
         QMetaObject::invokeMethod(
