@@ -15,9 +15,8 @@
 #include "aedst/network/auth_interceptor.hpp"
 #include "aedst/network/connect_client.hpp"
 #include "aedst/oidc/oidc_config.hpp"
-#include "aedst/persistence/secure_storage.hpp"
-#include "aedst/persistence/sqlite_connection.hpp"
-#include "aedst/persistence/token_store.hpp"
+#include "aedst/persistence/async_token_store.hpp"
+#include "aedst/persistence/database_worker.hpp"
 #include "aedst/telemetry/error_center.hpp"
 #include "aedst/telemetry/posthog_analytics_tracker.hpp"
 #include "aedst/telemetry/telemetry_settings.hpp"
@@ -142,15 +141,15 @@ private:
     void wireSessionLifecycle();
     void onSignedIn();
     void restoreOidcSession();
+    void restoreFirstPartySession();
+    void refreshStoredSession();
     void onSignedOut();
     void updateSessionInfo();
 
     std::string rolesClaim_;
 
     // Infrastructure (Core)
-    std::shared_ptr<persistence::SqliteConnection> database_;
-    std::shared_ptr<persistence::SecureStorage> secureStorage_;
-    std::shared_ptr<persistence::TokenStore> tokenStore_;
+    std::shared_ptr<persistence::AsyncTokenStore> asyncTokenStore_;
     std::shared_ptr<core::Clock> clock_;
     std::unique_ptr<crash::FileConsentStore> crashConsent_;
     std::unique_ptr<crash::FileConsentStore> analyticsConsent_;

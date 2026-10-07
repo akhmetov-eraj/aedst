@@ -64,3 +64,11 @@ set_tests_properties(AedstFeatureAuth.OidcAuthRepositoryTest PROPERTIES
     LABELS "unit"
     TIMEOUT 120
     ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+# The first-party session store: reads from memory, writes through the database thread (no Qt event loop needed).
+add_executable(AedstFeatureAuthStoreTests local_token_store_adapter_test.cpp)
+target_link_libraries(AedstFeatureAuthStoreTests PRIVATE Aedst::Feature::Auth Aedst::Persistence GTest::gtest_main)
+aedst_set_warnings(AedstFeatureAuthStoreTests)
+
+add_test(NAME AedstFeatureAuth.LocalTokenStoreAdapterTest COMMAND AedstFeatureAuthStoreTests)
+set_tests_properties(AedstFeatureAuth.LocalTokenStoreAdapterTest PROPERTIES LABELS "unit" TIMEOUT 120)

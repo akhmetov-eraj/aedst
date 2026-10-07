@@ -17,10 +17,10 @@ class Transaction;
 /// Owns one sqlite3 connection (opened FULLMUTEX, WAL, foreign keys on,
 /// secure_delete on, synchronous=NORMAL, 5 s busy timeout).
 ///
-/// Threading: FULLMUTEX serialises every call into the connection, so it is
-/// safe from any thread. It is used from the GUI thread today. A Transaction
-/// spans several calls and is NOT isolated from other threads sharing the same
-/// connection, so keep a Transaction's lifetime on a single thread.
+/// Threading: FULLMUTEX serialises every call into the connection, so a stray cross-thread
+/// call is safe, but the application uses one connection from ONE thread (DatabaseWorker,
+/// ADR-0028). A Transaction spans several calls and is NOT isolated from other threads sharing
+/// the same connection, so keep a Transaction's lifetime on a single thread.
 class SqliteConnection final {
 public:
     [[nodiscard]] static core::Outcome<SqliteConnection> open(const std::filesystem::path& file);

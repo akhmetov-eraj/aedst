@@ -2,6 +2,7 @@ include(AedstCompilerWarnings)
 
 find_package(SQLite3 REQUIRED)
 find_package(OpenSSL REQUIRED)
+find_package(Threads REQUIRED)
 
 # Linux Secret Service (libsecret) is OPTIONAL: without it the Linux build falls
 # back to the 0600 key file. Needs pkg-config and the libsecret-1 dev package
@@ -25,6 +26,8 @@ endif()
 # persistence usable from Qt-free code and GoogleTest, and gives one SQLite
 # version everywhere (vcpkg's) instead of whichever QSQLITE plugin Qt shipped.
 add_library(AedstPersistence STATIC
+    include/aedst/persistence/async_token_store.hpp
+    include/aedst/persistence/database_worker.hpp
     include/aedst/persistence/sqlite_connection.hpp
     include/aedst/persistence/sqlite_statement.hpp
     include/aedst/persistence/master_key_provider.hpp
@@ -32,6 +35,8 @@ add_library(AedstPersistence STATIC
     include/aedst/persistence/migrator.hpp
     include/aedst/persistence/token_store.hpp
     src/key_file.hpp
+    src/async_token_store.cpp
+    src/database_worker.cpp
     src/key_file.cpp
     src/master_key_provider.cpp
     src/dpapi_master_key_provider.cpp
@@ -52,6 +57,7 @@ target_include_directories(AedstPersistence PUBLIC
 target_link_libraries(AedstPersistence
     PUBLIC
         Aedst::Core
+        Threads::Threads
     PRIVATE
         SQLite::SQLite3
         OpenSSL::Crypto

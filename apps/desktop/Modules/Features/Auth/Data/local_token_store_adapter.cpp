@@ -1,7 +1,6 @@
 #include "Data/local_token_store_adapter.hpp"
 
-#include "aedst/core/logger.hpp"
-#include "aedst/persistence/token_store.hpp"
+#include "aedst/persistence/async_token_store.hpp"
 
 #include <chrono>
 #include <cstdint>
@@ -26,55 +25,79 @@ std::chrono::system_clock::time_point toTimePoint(std::int64_t epochSeconds) {
 
 } // namespace
 
-LocalTokenStoreAdapter::LocalTokenStoreAdapter(std::shared_ptr<persistence::TokenStore> store)
+LocalTokenStoreAdapter::LocalTokenStoreAdapter(std::shared_ptr<persistence::AsyncTokenStore> store)
     : store_(std::move(store)) {}
 
-core::VoidOutcome LocalTokenStoreAdapter::save(const Session& session) {
-    persistence::StoredTokens stored = toStored(session);
-    auto saved = store_->save(stored);
-    // Wipe the temporary plaintext copy made for persistence.
-    core::secureWipe(stored.accessToken);
-    core::secureWipe(stored.refreshToken);
-    if (!saved) {
-        return saved;
+void LocalTokenStoreAdapter::preload(core::Completion<void> done) {
+    {
+        const std::scoped_lock lock(mutex_);
+        if (cached_) {
+            done(core::ok());
+            return;
+        }
     }
+    store_->load([weak = weak_from_this(), done = std::move(done)](
+                     core::Outcome<std::optional<persistence::StoredTokens>> stored) {
+        const auto self = weak.lock();
+        if (!self) {
+            return;
+        }
+        if (!stored) {
+            done(core::fail(stored.error()));
+            return;
+        }
+        if (*stored) {
+            const std::scoped_lock lock(self->mutex_);
+            // A sign-in that completed while the disk was being read wins over the older stored session.
+            if (!self->cached_) {
+                // Moving the strings into SecretString transfers the buffers; nothing is left behind.
+                self->cached_ = CachedSession{
+                    .userId = std::move((*stored)->userId),
+                    .accessToken = core::SecretString{std::move((*stored)->accessToken)},
+                    .refreshToken = core::SecretString{std::move((*stored)->refreshToken)},
+                    .accessTokenExpiresAt = toTimePoint((*stored)->accessTokenExpiresAtEpochSeconds),
+                };
+            }
+        }
+        done(core::ok());
+    });
+}
 
-    const std::scoped_lock lock(mutex_);
-    cached_ = CachedSession{
+void LocalTokenStoreAdapter::save(const Session& session, core::Completion<void> done) {
+    persistence::StoredTokens stored = toStored(session);
+    CachedSession next{
         .userId = session.userId,
         .accessToken = core::SecretString{session.accessToken},
         .refreshToken = core::SecretString{session.refreshToken},
         .accessTokenExpiresAt = session.accessTokenExpiresAt,
     };
-    return saved;
+    store_->save(stored, [weak = weak_from_this(), next = std::move(next), done = std::move(done)](
+                             core::VoidOutcome saved) mutable {
+        const auto self = weak.lock();
+        if (!self) {
+            return;
+        }
+        if (saved) {
+            const std::scoped_lock lock(self->mutex_);
+            self->cached_ = std::move(next);
+        }
+        done(std::move(saved));
+    });
+    // The queued copy is wiped by the store after use; wipe this one now.
+    core::secureWipe(stored.accessToken);
+    core::secureWipe(stored.refreshToken);
 }
 
-core::VoidOutcome LocalTokenStoreAdapter::ensureCachedLocked() const {
-    if (cached_) {
-        return core::ok();
+void LocalTokenStoreAdapter::clear(core::Completion<void> done) {
+    {
+        const std::scoped_lock lock(mutex_);
+        cached_.reset(); // ~SecretString wipes both tokens
     }
-    auto stored = store_->load();
-    if (!stored) {
-        return core::fail(stored.error());
-    }
-    if (!*stored) {
-        return core::ok();
-    }
-    // Moving the strings into SecretString transfers the buffers; nothing is left behind.
-    cached_ = CachedSession{
-        .userId = std::move((*stored)->userId),
-        .accessToken = core::SecretString{std::move((*stored)->accessToken)},
-        .refreshToken = core::SecretString{std::move((*stored)->refreshToken)},
-        .accessTokenExpiresAt = toTimePoint((*stored)->accessTokenExpiresAtEpochSeconds),
-    };
-    return core::ok();
+    store_->clear(std::move(done));
 }
 
 core::Outcome<std::optional<Session>> LocalTokenStoreAdapter::load() const {
     const std::scoped_lock lock(mutex_);
-    if (auto ready = ensureCachedLocked(); !ready) {
-        return core::fail(ready.error());
-    }
     if (!cached_) {
         return std::optional<Session>{};
     }
@@ -86,20 +109,8 @@ core::Outcome<std::optional<Session>> LocalTokenStoreAdapter::load() const {
     }};
 }
 
-core::VoidOutcome LocalTokenStoreAdapter::clear() {
-    {
-        const std::scoped_lock lock(mutex_);
-        cached_.reset(); // ~SecretString wipes both tokens
-    }
-    return store_->clear();
-}
-
 std::optional<std::string> LocalTokenStoreAdapter::accessToken() const {
     const std::scoped_lock lock(mutex_);
-    if (auto ready = ensureCachedLocked(); !ready) {
-        core::AedstLogger::error("Failed to read stored session: {}", ready.error().message);
-        return std::nullopt;
-    }
     if (!cached_) {
         return std::nullopt;
     }

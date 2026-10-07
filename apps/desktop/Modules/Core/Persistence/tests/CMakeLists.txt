@@ -9,6 +9,7 @@ add_executable(AedstPersistenceTests
     master_key_provider_test.cpp
     token_store_test.cpp
     migrator_test.cpp
+    database_worker_test.cpp
 )
 target_link_libraries(AedstPersistenceTests PRIVATE Aedst::Persistence GTest::gtest_main)
 aedst_set_warnings(AedstPersistenceTests)

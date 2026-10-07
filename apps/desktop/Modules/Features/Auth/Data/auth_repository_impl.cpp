@@ -56,9 +56,11 @@ void AuthRepositoryImpl::refreshToken(core::Completion<Session> done) {
         if (!result) {
             if (result.error().kind == network::ApiErrorKind::Unauthenticated) {
                 // Refresh token revoked or expired server-side: the local session is dead too.
-                if (auto cleared = self->local_->clear(); !cleared) {
-                    AedstLogger::error("Failed to clear rejected session: {}", cleared.error().message);
-                }
+                self->local_->clear([](core::VoidOutcome cleared) {
+                    if (!cleared) {
+                        AedstLogger::error("Failed to clear rejected session: {}", cleared.error().message);
+                    }
+                });
             }
             done(core::fail(result.error().toCoreError()));
             return;
@@ -70,7 +72,7 @@ void AuthRepositoryImpl::refreshToken(core::Completion<Session> done) {
 void AuthRepositoryImpl::logout(core::Completion<void> done) {
     auto current = local_->load();
     if (!current || !*current) {
-        (void)local_->clear();
+        local_->clear([](core::VoidOutcome) {});
         done(core::ok());
         return;
     }
@@ -85,11 +87,8 @@ void AuthRepositoryImpl::logout(core::Completion<void> done) {
         if (!result) {
             AedstLogger::warn("Server-side logout failed ({}); clearing local session anyway", result.error().message);
         }
-        if (auto cleared = self->local_->clear(); !cleared) {
-            done(core::fail(cleared.error()));
-            return;
-        }
-        done(core::ok());
+        // The session is gone from memory at once; the completion reports the on-disk wipe.
+        self->local_->clear([done](core::VoidOutcome cleared) { done(std::move(cleared)); });
     });
 }
 
@@ -112,12 +111,15 @@ Session AuthRepositoryImpl::toSession(std::string userId, const authv1::TokenPai
 }
 
 void AuthRepositoryImpl::persistAndComplete(Session session, const core::Completion<Session>& done) {
-    if (auto saved = local_->save(session); !saved) {
-        AedstLogger::error("Failed to persist session: {}", saved.error().message);
-        done(core::fail(saved.error()));
-        return;
-    }
-    done(std::move(session));
+    // Completes after the write: a session that could not be stored is not a signed-in session.
+    local_->save(session, [session, done](core::VoidOutcome saved) {
+        if (!saved) {
+            AedstLogger::error("Failed to persist session: {}", saved.error().message);
+            done(core::fail(saved.error()));
+            return;
+        }
+        done(session);
+    });
 }
 
 } // namespace aedst::feature::auth

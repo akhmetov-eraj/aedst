@@ -35,8 +35,8 @@ banned name; a documented exception needs a `cxx-subset: allow` comment on that 
 - RAII everywhere; no owning raw pointers; `unique_ptr` by default,
   `shared_ptr` only where ownership is truly shared (DI graph).
 - `const`, `[[nodiscard]]` on results that carry errors, `noexcept` where true.
-- No blocking work on the GUI thread beyond the measured budgets in
-  [ADR-0005](docs/adr/0005-local-database-and-threading.md).
+- No blocking work on the GUI thread. Database access goes through `DatabaseWorker`
+  ([ADR-0028](docs/adr/0028-local-data-database-thread.md)); network and keychain calls are asynchronous.
 - Warnings are part of the API: the set in `cmake/AedstCompilerWarnings.cmake`
   builds clean; CI uses warnings-as-errors. A suppression needs an inline comment
   with the reason and a link to the issue — never a blanket `-Wno-...`.

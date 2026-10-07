@@ -1,6 +1,6 @@
 # ADR-0005: Local database — `user_version` migrations, secure delete, GUI-thread budget
 
-- Status: accepted (not compiled in the authoring environment)
+- Status: accepted (not compiled in the authoring environment); the threading decision is superseded by [ADR-0028](0028-local-data-database-thread.md)
 - Scope: `apps/desktop` (`Aedst::Persistence`)
 
 ## Decision

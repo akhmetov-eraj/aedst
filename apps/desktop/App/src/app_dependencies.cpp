@@ -35,10 +35,12 @@
 #include "aedst/persistence/master_key_provider.hpp"
 #include "aedst/telemetry/sentry_reporter.hpp"
 
+#include <QCoreApplication>
+#include <QMetaObject>
 #include <QObject>
 
+#include <functional>
 #include <optional>
-#include <system_error>
 #include <utility>
 
 namespace aedst::app {
@@ -58,26 +60,7 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
     std::unique_ptr<AppDependencies> deps(new AppDependencies());
     deps->rolesClaim_ = config.rolesClaim;
 
-    // --- Persistence ---------------------------------------------------------
-    std::error_code ec;
-    std::filesystem::create_directories(config.dataDirectory, ec);
-    if (ec) {
-        return core::fail(core::Error::storage("Cannot create data directory: " + ec.message()));
-    }
-    auto database = persistence::SqliteConnection::open(config.dataDirectory / "aedst.sqlite3");
-    if (!database) {
-        return core::fail(database.error());
-    }
-    deps->database_ = std::make_shared<persistence::SqliteConnection>(std::move(*database));
-    // Master key lives in the OS credential store (DPAPI-wrapped file on Windows,
-    // Secret Service on Linux) with a 0600 key file only as fallback.
-    std::shared_ptr<persistence::MasterKeyProvider> keyProvider(
-        persistence::createPlatformMasterKeyProvider(config.dataDirectory));
-    deps->secureStorage_ = std::make_shared<persistence::SecureStorage>(std::move(keyProvider));
-    deps->tokenStore_ = std::make_shared<persistence::TokenStore>(deps->database_, deps->secureStorage_);
-    if (auto migrated = deps->tokenStore_->migrate(); !migrated) {
-        return core::fail(migrated.error());
-    }
+    const bool useOidc = config.oidc.isConfigured();
 
     // --- Cross-cutting: telemetry (consent-gated), errors, theme ---------------
     deps->clock_ = std::make_shared<core::SystemClock>();
@@ -103,10 +86,30 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
     deps->router_ = std::make_unique<navigation::Router>(deps->navGraph_);
 
     // --- Network ---------------------------------------------------------------
-    deps->tokenAdapter_ = std::make_shared<auth::LocalTokenStoreAdapter>(deps->tokenStore_);
-    const bool useOidc = config.oidc.isConfigured();
-    std::shared_ptr<const network::TokenProvider> tokenProvider = deps->tokenAdapter_;
-    if (useOidc) {
+    std::shared_ptr<const network::TokenProvider> tokenProvider;
+    if (!useOidc) {
+        // First-party (password) login: the session is stored in SQLite on the database thread.
+        // One thread owns SQLite (ADR-0028): opening the file, the schema migration, the OS keyring probe for the
+        // master key and every row access happen there, never on the GUI thread. Completions come back through a
+        // queued call on the application object. A database that cannot be opened does not stop the app: the
+        // first-party session just cannot be stored (the error reaches the login screen).
+        persistence::Dispatcher toGuiThread = [](std::function<void()> work) {
+            if (QCoreApplication* application = QCoreApplication::instance()) {
+                QMetaObject::invokeMethod(application, std::move(work), Qt::QueuedConnection);
+            }
+        };
+        auto worker = std::make_shared<persistence::DatabaseWorker>(config.dataDirectory / "aedst.sqlite3");
+        // Master key lives in the OS credential store (DPAPI-wrapped file on Windows, Secret Service on Linux) with
+        // a 0600 key file only as fallback; the provider is created lazily ON the database thread.
+        deps->asyncTokenStore_ = std::make_shared<persistence::AsyncTokenStore>(
+            std::move(worker),
+            [dataDirectory = config.dataDirectory]() {
+                return persistence::createPlatformMasterKeyProvider(dataDirectory);
+            },
+            toGuiThread);
+        deps->tokenAdapter_ = std::make_shared<auth::LocalTokenStoreAdapter>(deps->asyncTokenStore_);
+        tokenProvider = deps->tokenAdapter_;
+    } else {
         if (auto valid = oidc::validateOidcConfig(config.oidc); !valid) {
             return core::fail(valid.error());
         }
@@ -363,9 +366,27 @@ void AppDependencies::refreshSessionIfNeeded() {
         restoreOidcSession();
         return;
     }
-    if (!authRepository_->currentSession()) {
-        return;
-    }
+    restoreFirstPartySession();
+}
+
+void AppDependencies::restoreFirstPartySession() {
+    // The stored session is read from disk on the database thread; the login screen shows progress meanwhile.
+    loginViewModel_->setRestoringSession(true);
+    tokenAdapter_->preload([this](core::VoidOutcome loaded) {
+        loginViewModel_->setRestoringSession(false);
+        if (!loaded) {
+            qCWarning(lcApp, "Could not read the stored session: %s", loaded.error().message.c_str());
+            return; // stay on the login screen; signing in again recreates the session
+        }
+        if (!authRepository_->currentSession()) {
+            return; // nobody was signed in
+        }
+        onSignedIn(); // updates the session info, resumes per-user work and opens the home screen
+        refreshStoredSession();
+    });
+}
+
+void AppDependencies::refreshStoredSession() {
     refreshToken_->execute(core::NoInput{}, [this](core::Outcome<auth::Session> result) {
         if (result) {
             updateSessionInfo(); // the rotated token may carry different roles

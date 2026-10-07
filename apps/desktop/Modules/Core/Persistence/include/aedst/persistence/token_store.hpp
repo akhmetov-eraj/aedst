@@ -29,13 +29,10 @@ struct StoredTokens {
 /// (and features other than Auth, via an injected provider) can read "who is
 /// signed in" without depending on Features/Auth.
 ///
-/// Threading contract: the SQLite connection is FULLMUTEX and SecureStorage is
-/// internally locked, so every method is safe to call from any thread. The app
-/// calls them on the GUI thread on purpose: a save or load is two AES-GCM
-/// operations plus one single-row statement on a local WAL database (well under a
-/// millisecond; enforced by the PerformanceBudget test), so a worker thread would
-/// add synchronisation for no user-visible gain. Do not add unbounded work here
-/// without revisiting that.
+/// Threading: this class is synchronous and does no locking of its own beyond what the
+/// connection (FULLMUTEX) and SecureStorage provide. The application never calls it on the
+/// GUI thread: AsyncTokenStore runs it on the DatabaseWorker thread (ADR-0028). Direct use is for tests
+/// and for code that already runs on that thread.
 class TokenStore final {
 public:
     TokenStore(std::shared_ptr<SqliteConnection> connection, std::shared_ptr<const SecureStorage> secureStorage);

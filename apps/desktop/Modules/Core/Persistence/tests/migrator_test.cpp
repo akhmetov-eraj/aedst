@@ -1,4 +1,5 @@
 #include "aedst/persistence/migrator.hpp"
+#include "aedst/persistence/secure_storage.hpp"
 #include "aedst/persistence/sqlite_connection.hpp"
 
 #include <gtest/gtest.h>
@@ -144,6 +145,100 @@ TEST_F(MigratorTest, AppMigrationsAdoptPreMigratorDatabase) {
 
     ASSERT_TRUE(version.has_value()) << version.error().message;
     EXPECT_EQ(userVersion(*connection_), migrator.latestVersion());
+}
+
+// --- Schema history: a shipped migration is never edited, every older database upgrades -----------------------
+
+/// SHA-256 of each shipped migration's SQL text, in order. A shipped migration must never change (databases of
+/// users already ran it); fix mistakes with a NEW migration. When you append migration N+1, append its hash here,
+/// and leave the existing entries alone. The test fails with the computed hash of whatever differs.
+constexpr std::array<std::string_view, 1> kShippedMigrationHashes{
+    "e5532b7c31d8aea3a84ba5d0de57ac3c57fe55c47bdc7457ede7b5bed46f29e1", // 1 create_auth_session
+};
+
+TEST(SchemaHistoryTest, ShippedMigrationsAreFrozen) {
+    const auto migrations = appMigrations();
+    ASSERT_GE(migrations.size(), kShippedMigrationHashes.size()) << "a shipped migration was removed";
+    for (std::size_t i = 0; i < kShippedMigrationHashes.size(); ++i) {
+        const auto hash = SecureStorage::sha256Hex(migrations[i].sql);
+        ASSERT_TRUE(hash.has_value());
+        EXPECT_EQ(*hash, std::string(kShippedMigrationHashes[i]))
+            << "migration " << migrations[i].version << " (" << migrations[i].name
+            << ") was edited after it shipped; add a new migration instead";
+    }
+}
+
+TEST(SchemaHistoryTest, EveryMigrationHasAHashOnceItIsAppended) {
+    // Appending a migration without recording its hash silently lets the next edit through.
+    EXPECT_EQ(appMigrations().size(), kShippedMigrationHashes.size())
+        << "append the SHA-256 of the new migration to kShippedMigrationHashes";
+}
+
+TEST(SchemaHistoryTest, ADatabaseAtEveryPreviousVersionUpgradesAndKeepsItsRows) {
+    const auto all = appMigrations();
+    for (std::size_t from = 0; from < all.size(); ++from) {
+        auto opened = SqliteConnection::openInMemory();
+        ASSERT_TRUE(opened.has_value());
+        SqliteConnection connection = std::move(*opened);
+
+        // Build exactly what a build that knew only the first `from` migrations would have left behind.
+        auto previous = Migrator(all.first(from)).migrate(connection);
+        ASSERT_TRUE(previous.has_value()) << previous.error().message;
+        ASSERT_EQ(userVersion(connection), static_cast<std::int64_t>(from));
+        if (from >= 1) {
+            ASSERT_TRUE(connection.execute("INSERT INTO auth_session (id, user_id, access_token, refresh_token, "
+                                           "access_expires_at, refresh_fingerprint) "
+                                           "VALUES (1, 'u1', x'01', x'02', 42, 'fp')"));
+        }
+
+        const Migrator current(all);
+        auto upgraded = current.migrate(connection);
+        ASSERT_TRUE(upgraded.has_value()) << "from version " << from << ": " << upgraded.error().message;
+        EXPECT_EQ(*upgraded, current.latestVersion()) << "from version " << from;
+        EXPECT_EQ(userVersion(connection), current.latestVersion());
+
+        if (from >= 1) {
+            auto row = connection.prepare("SELECT user_id, access_expires_at FROM auth_session WHERE id = 1");
+            ASSERT_TRUE(row.has_value());
+            ASSERT_TRUE(row->step().value_or(false)) << "the row written at version " << from << " was lost";
+            EXPECT_EQ(row->columnText(0), "u1");
+            EXPECT_EQ(row->columnInt64(1), 42);
+        }
+        // A second run of the same build is a no-op.
+        auto again = current.migrate(connection);
+        ASSERT_TRUE(again.has_value());
+        EXPECT_EQ(*again, current.latestVersion());
+    }
+}
+
+TEST(SchemaHistoryTest, TheLatestSchemaHasTheExpectedAuthSessionColumns) {
+    auto opened = SqliteConnection::openInMemory();
+    ASSERT_TRUE(opened.has_value());
+    SqliteConnection connection = std::move(*opened);
+    ASSERT_TRUE(Migrator(appMigrations()).migrate(connection).has_value());
+
+    auto columns = connection.prepare("SELECT name FROM pragma_table_info('auth_session') ORDER BY cid");
+    ASSERT_TRUE(columns.has_value());
+    std::string names;
+    while (columns->step().value_or(false)) {
+        names += columns->columnText(0) + ",";
+    }
+    EXPECT_EQ(names, "id,user_id,access_token,refresh_token,access_expires_at,refresh_fingerprint,");
+}
+
+TEST(SchemaHistoryTest, ConnectionsUseTheDocumentedPragmas) {
+    auto opened = SqliteConnection::openInMemory();
+    ASSERT_TRUE(opened.has_value());
+    SqliteConnection connection = std::move(*opened);
+    const auto pragma = [&connection](const char* name) {
+        auto statement = connection.prepare(std::string("PRAGMA ") + name);
+        EXPECT_TRUE(statement.has_value());
+        EXPECT_TRUE(statement->step().value_or(false));
+        return statement->columnInt64(0);
+    };
+    EXPECT_EQ(pragma("foreign_keys"), 1);
+    EXPECT_EQ(pragma("busy_timeout"), 5000);
+    EXPECT_EQ(pragma("secure_delete"), 1);
 }
 
 TEST(TransactionTest, RollsBackUnlessCommitted) {
