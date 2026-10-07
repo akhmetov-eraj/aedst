@@ -1,4 +1,8 @@
-import { defaultLocale, locales } from "@/app/config/i18n/locales";
+import {
+  defaultLocale,
+  locales,
+  toLanguageTag,
+} from "@/app/config/i18n/locales";
 import { clientEnv } from "@/shared/env/client";
 
 /**
@@ -8,12 +12,10 @@ import { clientEnv } from "@/shared/env/client";
  * or origin a second time.
  */
 export const siteConfig = {
-  name: "iman",
-  // Kept intentionally short and generic — the product doesn't have
-  // marketing copy yet (see src/modules/home/i18n/*.json's placeholder
-  // strings). Update alongside real copy once it exists; every locale's
-  // `common.appDescription` key is what generateMetadata actually reads.
-  description: "Sign in to iman.",
+  name: "AEDST",
+  // Fallback for surfaces that cannot use the translated `common.appDescription`
+  // (the web manifest); every page's metadata reads the localized string.
+  description: "A fast, accessible task manager built on the AEDST stack.",
   url: new URL(clientEnv.NEXT_PUBLIC_SITE_URL),
   // shadcn's neutral theme (see src/app/styles/globals.css) — pure
   // white/near-black, not a placeholder brand color.
@@ -32,7 +34,7 @@ export function buildLanguageAlternates(pathname: string) {
   const suffix = pathname ? `/${pathname}` : "";
   const languages: Record<string, string> = {};
   for (const locale of locales) {
-    languages[locale] = new URL(
+    languages[toLanguageTag(locale)] = new URL(
       `/${locale}${suffix}`,
       siteConfig.url,
     ).toString();

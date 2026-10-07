@@ -12,6 +12,25 @@ export const localeNames: Record<Locale, string> = {
   ar: "العربية",
 };
 
+/**
+ * The app's locale codes are shared across all five platforms, and `tj` is
+ * Tajikistan's *country* code — the language's BCP 47 tag is `tg`. Anything a
+ * browser or crawler reads (`<html lang>`, hreflang, og:locale, JSON-LD) must
+ * use the real tag, or Lighthouse flags an invalid hreflang and screen readers
+ * pick the wrong voice.
+ */
+const LANGUAGE_TAGS: Record<Locale, string> = {
+  en: "en",
+  ru: "ru",
+  tj: "tg",
+  uz: "uz",
+  ar: "ar",
+};
+
+export function toLanguageTag(locale: Locale): string {
+  return LANGUAGE_TAGS[locale];
+}
+
 export const rtlLocales: readonly Locale[] = ["ar"];
 
 export function getLocaleDirection(locale: Locale): "ltr" | "rtl" {

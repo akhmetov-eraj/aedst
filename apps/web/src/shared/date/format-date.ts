@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { format, formatDistanceToNow } from "date-fns";
 import { ar, enUS, ru, uz } from "date-fns/locale";
 
 import type { Locale } from "@/app/config/i18n/locales";
@@ -24,4 +24,12 @@ export function formatDate(date: Date, locale: Locale): string {
 
 export function formatDateTime(date: Date, locale: Locale): string {
   return format(date, "PPp", { locale: DATE_FNS_LOCALES[locale] });
+}
+
+/** "5 minutes ago", localized (inbox, audit log). */
+export function formatRelative(date: Date, locale: Locale): string {
+  return formatDistanceToNow(date, {
+    addSuffix: true,
+    locale: DATE_FNS_LOCALES[locale],
+  });
 }

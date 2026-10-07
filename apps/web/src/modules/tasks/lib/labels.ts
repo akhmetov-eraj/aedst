@@ -36,10 +36,15 @@ export const ALL_PRIORITIES = [
   TaskPriority.URGENT,
 ] as const;
 
-/** Tailwind classes per status/priority — a small, fixed palette, not a design-system abstraction this app doesn't otherwise need. */
+/**
+ * Tailwind classes per status/priority — a small, fixed palette, not a
+ * design-system abstraction this app doesn't otherwise need. The neutral pair
+ * uses `text-foreground`: `text-muted-foreground` on `bg-muted` is only ~4.4:1,
+ * short of WCAG AA (4.5:1) for small text.
+ */
 export const STATUS_BADGE_CLASS: Record<TaskStatus, string> = {
   [TaskStatus.UNSPECIFIED]: "",
-  [TaskStatus.TODO]: "bg-muted text-muted-foreground",
+  [TaskStatus.TODO]: "bg-muted text-foreground",
   [TaskStatus.IN_PROGRESS]:
     "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300",
   [TaskStatus.DONE]:
@@ -48,7 +53,7 @@ export const STATUS_BADGE_CLASS: Record<TaskStatus, string> = {
 
 export const PRIORITY_BADGE_CLASS: Record<TaskPriority, string> = {
   [TaskPriority.UNSPECIFIED]: "",
-  [TaskPriority.LOW]: "bg-muted text-muted-foreground",
+  [TaskPriority.LOW]: "bg-muted text-foreground",
   [TaskPriority.MEDIUM]:
     "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300",
   [TaskPriority.HIGH]:

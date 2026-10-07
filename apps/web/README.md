@@ -1,10 +1,11 @@
 # aedst web
 
-The web client for the `aedst` monorepo. It's a Next.js app that talks
-directly to `apps/server`'s ConnectRPC API — no GraphQL or REST gateway in
-between (see [`docs/decisions/0002-connectrpc.md`](../../docs/content/decisions/0002-connectrpc.md):
-ConnectRPC's wire protocol is plain HTTP/1.1 + JSON/protobuf, so a browser can
-call it directly).
+The web client for the `aedst` monorepo: a Next.js app that reaches
+`apps/server`'s ConnectRPC API **only through its own server** (see
+[Architecture](../../docs/content/architecture-web.md#auth-data-and-security-model)).
+The session lives in httpOnly cookies — page JavaScript never sees a token —
+and the browser calls a same-origin `/api/rpc` proxy that attaches the bearer
+token and refreshes it transparently.
 
 ## Tech stack
 
@@ -21,8 +22,9 @@ call it directly).
   [`src/instrumentation-client.ts`](src/instrumentation-client.ts) and every
   route segment's `error.tsx` + the root `global-error.tsx`
 - **Biome** for linting and formatting
-- **Vitest** + Testing Library for unit tests
-- **Playwright** for end-to-end tests
+- **Vitest** + Testing Library + MSW for unit/integration tests (coverage thresholds enforced)
+- **Playwright** (Chromium, Firefox, WebKit, Pixel 7, iPhone 14) + axe for end-to-end, accessibility and responsive tests, against an in-memory mock of the API
+- **Lighthouse CI** and a gzip **bundle budget** for performance
 
 ## Getting started
 
@@ -54,7 +56,8 @@ the browser sees vs. server-only ones — see
 | Variable | Description | Default |
 | --- | --- | --- |
 | `NEXT_PUBLIC_SITE_URL` | This app's public origin — drives metadata/SEO | `http://localhost:3000` |
-| `NEXT_PUBLIC_API_BASE_URL` | Base URL of `apps/server`'s ConnectRPC API | `http://localhost:8080` |
+| `API_BASE_URL` | Server-only address of `apps/server`'s ConnectRPC API (the browser never uses it) | `http://localhost:8080` |
+| `AUTH_COOKIE_NAME` | Base name of the httpOnly session cookies | `aedst_session` |
 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN (optional) | — |
 | `NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL` | Better Uptime heartbeat URL (optional) | — |
 | `SENTRY_AUTH_TOKEN` | Server-only; enables Sentry source-map upload during `next build` (optional) | — |
@@ -96,11 +99,29 @@ pnpm test:ui       # Vitest UI
 ### End-to-end tests (Playwright)
 
 ```bash
-pnpm test:e2e:prod    # builds the app, then runs against it
+pnpm test:e2e:prod    # builds the app, then runs all browsers against it
+npx playwright test --project=mobile-safari   # one project (see playwright.config.ts)
 pnpm test:e2e:headed  # headed mode against the dev server
 pnpm test:e2e:debug   # Playwright inspector
 pnpm test:e2e:report  # view the last HTML report
 ```
+
+Playwright starts the app and `e2e/mock-api` (an in-memory stand-in for
+`apps/server` speaking the Connect JSON protocol) itself, so login, token
+refresh, dashboard, filters, pagination and CRUD run with no database or Go
+service. Install engines once with `npx playwright install`.
+
+### Performance budgets
+
+```bash
+pnpm build && pnpm check:bundle   # gzip JS/CSS ceilings (bundle-budget.json)
+pnpm lighthouse                   # Lighthouse CI: scores, LCP/CLS/TBT, script weight (lighthouserc.json)
+```
+
+### Supported browsers
+
+Chrome/Edge ≥ 111, Firefox ≥ 128, Safari/iOS ≥ 16.4 (`browserslist` in
+`package.json`) — the baseline of Tailwind CSS 4.
 
 ### Lint / format / typecheck
 

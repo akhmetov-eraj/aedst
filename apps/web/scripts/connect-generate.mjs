@@ -12,14 +12,16 @@ import { spawnSync } from "node:child_process";
 // no separate protoc-gen-connect-es plugin/output for this codegen style.
 //
 // Two `buf generate` invocations are required:
-//   1. The RPC-bearing protos from apps/server (auth, tasks).
-//      `events.proto` files are deliberately excluded — those describe NATS
-//      messages, not RPCs, and have no business in a browser client.
+//   1. Every RPC-bearing proto from apps/server (auth, tasks, notifications,
+//      search, media, admin — discovered, so a new module needs no edit here).
+//      `events.proto` files are deliberately excluded — those describe
+//      integration events carried by the server outbox, not RPCs, and have
+//      no business in a browser client.
 //   2. `buf/validate/validate.proto`, the protovalidate dependency that (1)'s
 //      generated code imports for field-constraint descriptors. protoc-gen-es
 //      only emits code for files it's explicitly told to generate, so this
 //      dependency needs its own pass into the same output directory.
-import { rmSync } from "node:fs";
+import { readdirSync, rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -58,13 +60,22 @@ function buf(args) {
 
 rmSync(generatedDir, { recursive: true, force: true });
 
+const rpcProtos = readdirSync(join(serverProtoDir, "aedst"), {
+  withFileTypes: true,
+})
+  .filter((entry) => entry.isDirectory())
+  .flatMap((entry) => {
+    const versionDir = join(serverProtoDir, "aedst", entry.name, "v1");
+    return readdirSync(versionDir)
+      .filter((file) => file.endsWith(".proto") && file !== "events.proto")
+      .map((file) => join(versionDir, file));
+  })
+  .sort();
+
 buf([
   "generate",
   serverProtoDir,
-  "--path",
-  join(serverProtoDir, "aedst", "auth", "v1", "auth.proto"),
-  "--path",
-  join(serverProtoDir, "aedst", "tasks", "v1", "tasks.proto"),
+  ...rpcProtos.flatMap((file) => ["--path", file]),
 ]);
 
 buf([

@@ -24,7 +24,13 @@
     "retry": "Повторить",
     "previousPage": "Назад",
     "nextPage": "Вперёд",
-    "due": "Срок: {date}"
+    "due": "Срок: {date}",
+    "searchLabel": "Поиск задач",
+    "statusFilterLabel": "Фильтр по статусу",
+    "priorityFilterLabel": "Фильтр по приоритету",
+    "sortLabel": "Сортировка задач",
+    "paginationLabel": "Постраничная навигация",
+    "resultsLabel": "Задачи"
   },
   "status": {
     "todo": "К выполнению",
@@ -73,5 +79,9 @@
     "notFoundTitle": "Задача не найдена",
     "notFoundDescription": "Возможно, она удалена или принадлежит другому пользователю.",
     "loadErrorTitle": "Не удалось загрузить задачу"
+  },
+  "a11y": {
+    "priority": "Приоритет",
+    "status": "Статус"
   }
 }

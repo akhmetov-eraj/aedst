@@ -3,7 +3,6 @@
 import { Moon01Icon, Sun01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useTheme } from "next-themes";
-import * as React from "react";
 
 import { Button } from "@/shared/ui/button";
 import {

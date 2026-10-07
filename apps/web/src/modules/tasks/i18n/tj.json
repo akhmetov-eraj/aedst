@@ -24,7 +24,13 @@
     "retry": "Такрор кардан",
     "previousPage": "Қаблӣ",
     "nextPage": "Баъдӣ",
-    "due": "Мӯҳлат: {date}"
+    "due": "Мӯҳлат: {date}",
+    "searchLabel": "Ҷустуҷӯи вазифаҳо",
+    "statusFilterLabel": "Филтр аз рӯи ҳолат",
+    "priorityFilterLabel": "Филтр аз рӯи афзалият",
+    "sortLabel": "Тартиб додани вазифаҳо",
+    "paginationLabel": "Саҳифабандӣ",
+    "resultsLabel": "Вазифаҳо"
   },
   "status": {
     "todo": "Бояд иҷро шавад",
@@ -73,5 +79,9 @@
     "notFoundTitle": "Вазифа ёфт нашуд",
     "notFoundDescription": "Шояд он нест карда шуда бошад ё ба дигар корбар тааллуқ дошта бошад.",
     "loadErrorTitle": "Вазифа бор нашуд"
+  },
+  "a11y": {
+    "priority": "Афзалият",
+    "status": "Ҳолат"
   }
 }

@@ -1,38 +1,65 @@
 "use client";
 
-import * as Sentry from "@sentry/nextjs";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+
+import {
+  fallbackMessages,
+  pickFallbackLocale,
+} from "@/app/config/i18n/fallback-messages";
+import { defaultLocale, getLocaleDirection } from "@/app/config/i18n/locales";
+import { reportError } from "@/shared/lib/errors/report-error";
 
 // The final fallback — catches errors the root layout itself throws, which
 // `(pages)/[locale]/error.tsx` can't (a segment's error boundary never
 // covers its own parent layout). Next.js requires this file to render its
 // own complete `<html>`/`<body>`; nothing above it in the tree can be
-// trusted to still be working, including next-intl's provider, so this
-// stays translation-free like `app/not-found.tsx`.
+// trusted to still be working, including next-intl's provider, so it uses
+// the provider-free `fallbackMessages` and picks the locale itself.
 export default function GlobalError({
   error,
 }: {
   error: Error & { digest?: string };
 }) {
+  const [locale, setLocale] = useState(defaultLocale);
+
   useEffect(() => {
-    Sentry.captureException(error);
+    reportError(error, {
+      source: "route",
+      extra: error.digest ? { digest: error.digest } : undefined,
+    });
   }, [error]);
 
+  useEffect(() => {
+    setLocale(
+      pickFallbackLocale({
+        pathname: window.location.pathname,
+        languages: navigator.languages,
+      }),
+    );
+  }, []);
+
+  const messages = fallbackMessages[locale];
+
   return (
-    <html lang="en">
+    <html lang={locale} dir={getLocaleDirection(locale)}>
+      <head>
+        <title>{messages.errorTitle}</title>
+      </head>
       <body className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center font-sans">
-        <p className="text-sm font-medium text-neutral-500">Error</p>
+        <p className="text-sm font-medium text-neutral-600">
+          {messages.errorLabel}
+        </p>
         <h1 className="text-2xl font-semibold text-neutral-900">
-          Something went wrong
+          {messages.errorTitle}
         </h1>
-        <p className="max-w-md text-sm text-neutral-500">
-          We've been notified and are looking into it.
+        <p className="max-w-md text-sm text-neutral-600">
+          {messages.errorDescription}
         </p>
         <a
           href="/"
           className="text-sm font-medium text-neutral-900 underline underline-offset-4"
         >
-          Go home
+          {messages.goHome}
         </a>
       </body>
     </html>

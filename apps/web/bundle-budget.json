@@ -1,0 +1,6 @@
+{
+  "$comment": "Gzip KB over every emitted client chunk (not just first load). Raised from 625/100 when PostHog (~100 KB, loaded only after analytics consent) and the search/notifications/media/admin routes were added; first-load weight is budgeted by lighthouserc.json (resource-summary:script:size).",
+  "totalJsGzipKB": 760,
+  "largestJsChunkGzipKB": 110,
+  "totalCssGzipKB": 36
+}

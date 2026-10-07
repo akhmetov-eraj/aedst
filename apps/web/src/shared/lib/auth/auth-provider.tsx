@@ -1,56 +1,95 @@
 "use client";
 
-import { createContext, use, useCallback, useEffect, useState } from "react";
-
+import * as Sentry from "@sentry/nextjs";
 import {
-  clearTokens,
-  loadTokens,
-  type StoredTokens,
-  saveTokens,
-} from "@/shared/lib/auth/token-storage";
+  createContext,
+  use,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import { identifyUser } from "@/shared/lib/analytics/analytics";
 
 type AuthContextValue = {
+  /** Unverified id of the signed-in user, or `null` when signed out. */
+  userId: string | null;
+  /** Unverified roles from the access token — UI hints, never authorization. */
+  roles: readonly string[];
   isAuthenticated: boolean;
-  /** True until the first read of localStorage completes (avoids a login-flash on load). */
-  isLoading: boolean;
-  login: (tokens: StoredTokens) => void;
-  logout: () => void;
+  hasRole: (role: string) => boolean;
+  signIn: (userId: string) => void;
+  signOut: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isLoading, setIsLoading] = useState(true);
+const NO_ROLES: readonly string[] = [];
+
+/**
+ * Client-side mirror of the server-side session. The tokens themselves live
+ * only in httpOnly cookies; this holds nothing secret — just *who* is signed
+ * in and which roles their token carries, seeded by the server layout, so
+ * there is no signed-out flash and no `localStorage` involved. It also keeps
+ * Sentry's user context and analytics identity (id only, no PII) in step
+ * with the session.
+ *
+ * `roles` only decide what to *render* (e.g. the admin link). apps/server
+ * re-checks every role on every call, so a tampered client gains nothing.
+ */
+export function AuthProvider({
+  initialUserId = null,
+  initialRoles = NO_ROLES,
+  children,
+}: {
+  initialUserId?: string | null;
+  initialRoles?: readonly string[];
+  children: React.ReactNode;
+}) {
+  const [userId, setUserId] = useState<string | null>(initialUserId);
+  const [roles, setRoles] = useState<readonly string[]>(initialRoles);
 
   useEffect(() => {
-    setIsAuthenticated(loadTokens() !== null);
-    setIsLoading(false);
+    setUserId(initialUserId);
+  }, [initialUserId]);
 
-    // Reacts to `token-storage.ts`'s manually-dispatched StorageEvent (this
-    // tab) and the browser's own `storage` event (other tabs signing
-    // out/in), so every open tab's UI stays in sync with one shared
-    // localStorage session.
-    const onStorage = () => setIsAuthenticated(loadTokens() !== null);
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+  // Compared by value: a fresh array from every server render must not
+  // reset state that has not changed.
+  const rolesKey = initialRoles.join(",");
+  useEffect(() => {
+    setRoles(rolesKey ? rolesKey.split(",") : NO_ROLES);
+  }, [rolesKey]);
+
+  useEffect(() => {
+    Sentry.setUser(userId ? { id: userId } : null);
+    identifyUser(userId);
+  }, [userId]);
+
+  const signIn = useCallback((nextUserId: string) => {
+    Sentry.addBreadcrumb({ category: "auth", message: "sign-in" });
+    setUserId(nextUserId);
   }, []);
 
-  const login = useCallback((tokens: StoredTokens) => {
-    saveTokens(tokens);
-    setIsAuthenticated(true);
+  const signOut = useCallback(() => {
+    Sentry.addBreadcrumb({ category: "auth", message: "sign-out" });
+    setUserId(null);
+    setRoles(NO_ROLES);
   }, []);
 
-  const logout = useCallback(() => {
-    clearTokens();
-    setIsAuthenticated(false);
-  }, []);
-
-  return (
-    <AuthContext value={{ isAuthenticated, isLoading, login, logout }}>
-      {children}
-    </AuthContext>
+  const value = useMemo<AuthContextValue>(
+    () => ({
+      userId,
+      roles: userId ? roles : NO_ROLES,
+      isAuthenticated: userId !== null,
+      hasRole: (role) => userId !== null && roles.includes(role),
+      signIn,
+      signOut,
+    }),
+    [userId, roles, signIn, signOut],
   );
+
+  return <AuthContext value={value}>{children}</AuthContext>;
 }
 
 export function useAuth(): AuthContextValue {

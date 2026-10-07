@@ -1,49 +1,41 @@
-import { TransportProvider } from "@connectrpc/connect-query";
-import { createConnectTransport } from "@connectrpc/connect-web";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
-import { NextIntlClientProvider } from "next-intl";
 import { describe, expect, it, vi } from "vitest";
 
-import authMessages from "@/modules/auth/i18n/en.json";
 import homeMessages from "@/modules/home/i18n/en.json";
-import { AuthProvider } from "@/shared/lib/auth/auth-provider";
+import { messages, renderWithProviders } from "@/test/render";
 import HomePage from "./page";
 
-// `next-intl`'s `useRouter` (used by `AuthGate` to redirect once signed in)
-// wraps `next/navigation`'s, which needs a real App Router tree to resolve —
-// not present in this jsdom render. Mocked here rather than globally in
-// vitest.config.mts since no other test in this suite exercises navigation
-// yet; promote it to a shared setup helper if that changes.
-vi.mock("@/app/config/i18n/navigation", () => ({
-  useRouter: () => ({ replace: vi.fn(), push: vi.fn() }),
+vi.mock("@/modules/auth/lib/auth-actions", () => ({
+  loginAction: vi.fn(),
+  registerAction: vi.fn(),
+  logoutAction: vi.fn(),
 }));
 
-function renderHomePage() {
-  const queryClient = new QueryClient();
-  const transport = createConnectTransport({
-    baseUrl: "http://localhost:8080",
-  });
+// The page is an async Server Component; next-intl/server needs a request
+// scope, so it is backed by the same English catalogue the client tests use.
+vi.mock("next-intl/server", () => ({
+  setRequestLocale: vi.fn(),
+  getTranslations: async ({
+    namespace,
+  }: {
+    namespace: keyof typeof messages;
+  }) => {
+    const catalogue = messages[namespace] as Record<string, string>;
+    return (key: string) => catalogue[key] ?? key;
+  },
+}));
 
-  return render(
-    <NextIntlClientProvider
-      locale="en"
-      messages={{ home: homeMessages, auth: authMessages }}
-    >
-      <TransportProvider transport={transport}>
-        <QueryClientProvider client={queryClient}>
-          <AuthProvider>
-            <HomePage />
-          </AuthProvider>
-        </QueryClientProvider>
-      </TransportProvider>
-    </NextIntlClientProvider>,
-  );
+async function renderHomePage(query: Record<string, string> = {}) {
+  const page = await HomePage({
+    params: Promise.resolve({ locale: "en" }),
+    searchParams: Promise.resolve(query),
+  });
+  return renderWithProviders(page);
 }
 
 describe("HomePage", () => {
-  it("renders the localized title and description", () => {
-    renderHomePage();
+  it("renders the localized title and description", async () => {
+    await renderHomePage();
 
     expect(
       screen.getByRole("heading", { name: homeMessages.title }),
@@ -51,29 +43,43 @@ describe("HomePage", () => {
     expect(screen.getByText(homeMessages.description)).toBeInTheDocument();
   });
 
-  it("renders the ConnectRPC login example form for a signed-out visitor", async () => {
-    renderHomePage();
+  it("renders the sign-in form for a signed-out visitor", async () => {
+    await renderHomePage();
 
     expect(
-      await screen.findByRole("heading", { name: authMessages.login.title }),
+      screen.getByRole("heading", { name: messages.auth.login.title }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: authMessages.login.submit }),
+      screen.getByRole("button", { name: messages.auth.login.submit }),
     ).toBeInTheDocument();
   });
 
-  it("lets a signed-out visitor switch to the register form", async () => {
-    const { default: userEvent } = await import("@testing-library/user-event");
-    renderHomePage();
+  it("emits schema.org JSON-LD describing the app", async () => {
+    const { container } = await renderHomePage();
 
-    await userEvent.click(
-      await screen.findByRole("button", {
-        name: authMessages.login.switchAction,
-      }),
+    const script = container.querySelector(
+      'script[type="application/ld+json"]',
     );
+    expect(script).not.toBeNull();
+    expect(JSON.parse(script?.textContent ?? "{}")).toMatchObject({
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      name: messages.common.appName,
+      inLanguage: "en",
+      url: "http://localhost:3000/en",
+    });
+  });
 
-    expect(
-      screen.getByRole("heading", { name: authMessages.register.title }),
-    ).toBeInTheDocument();
+  it("escapes markup in JSON-LD so it cannot close its script tag", () => {
+    // Guards the XSS vector directly through the component the page uses.
+    return import("@/app/config/json-ld").then(({ JsonLd }) => {
+      const { container } = render(
+        <JsonLd data={{ name: "</script><script>alert(1)</script>" }} />,
+      );
+      expect(container.innerHTML).not.toContain("</script><script>");
+      expect(container.querySelector("script")?.textContent).toContain(
+        "\\u003c/script>",
+      );
+    });
   });
 });

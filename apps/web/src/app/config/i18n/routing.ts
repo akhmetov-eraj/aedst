@@ -7,4 +7,8 @@ export const routing = defineRouting({
   defaultLocale,
   localePrefix: "always",
   localeDetection: true,
+  // hreflang is emitted by page metadata with real BCP 47 tags (see
+  // `toLanguageTag`); next-intl's own `Link` header would repeat it with the
+  // app's internal codes (`tj`), which crawlers reject.
+  alternateLinks: false,
 });

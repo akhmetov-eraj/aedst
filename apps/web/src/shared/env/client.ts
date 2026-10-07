@@ -1,4 +1,4 @@
-import { z } from "zod";
+import * as z from "zod/mini";
 
 // Every var here is a `NEXT_PUBLIC_*` var: Next.js inlines these into the
 // client bundle at build time, so nothing in this schema may ever hold a
@@ -13,27 +13,53 @@ import { z } from "zod";
 // that import throw at build time for no security benefit, since these
 // values were never secret to begin with. The asymmetric guard is
 // intentional: only `./server.ts` (real secrets) gets `server-only`.
+
+/** A 0..1 ratio given as a string env var ("0.2"). */
+const sampleRate = (fallback: number) =>
+  z._default(z.coerce.number().check(z.gte(0), z.lte(1)), fallback);
+
 const clientEnvSchema = z.object({
   // Canonical origin this app is served from — metadataBase, canonical
   // links, sitemap/robots, and absolute OG image URLs all derive from this
   // (see src/app/config/seo.ts). Must be the real public origin in every
   // deployed environment; the localhost default is dev-only.
-  NEXT_PUBLIC_SITE_URL: z.url().default("http://localhost:3000"),
+  NEXT_PUBLIC_SITE_URL: z._default(z.url(), "http://localhost:3000"),
 
-  // apps/server's ConnectRPC address (see apps/server's AEDST_HTTP_ADDR,
-  // ":8080" by default). ConnectRPC's wire protocol is plain HTTP/1.1 +
-  // JSON/protobuf (docs/content/decisions/0002-connectrpc.md), so the
-  // browser talks to it directly — no gateway in between.
-  NEXT_PUBLIC_API_BASE_URL: z.url().default("http://localhost:8080"),
+  NEXT_PUBLIC_SENTRY_DSN: z.optional(z.url()),
+  // Defaults to NODE_ENV when unset (see app/config/sentry/shared.ts).
+  NEXT_PUBLIC_SENTRY_ENVIRONMENT: z.optional(z.string()),
+  // Share of transactions traced. 1 locally; size it to traffic in prod.
+  NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE: sampleRate(
+    process.env.NODE_ENV === "production" ? 0.2 : 1,
+  ),
+  // Session Replay (only ever after analytics consent): share of all
+  // sessions, and share of sessions with an error.
+  NEXT_PUBLIC_SENTRY_REPLAY_SESSION_SAMPLE_RATE: sampleRate(0.1),
+  NEXT_PUBLIC_SENTRY_REPLAY_ON_ERROR_SAMPLE_RATE: sampleRate(1),
 
-  NEXT_PUBLIC_SENTRY_DSN: z.url().optional(),
-  NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL: z.url().optional(),
+  // PostHog product analytics + feature flags. Empty key = PostHog is never
+  // loaded. HOST is the PostHog *ingestion* host (EU or US cloud, or
+  // self-hosted); the browser never calls it directly — it posts to this
+  // app's `/ingest` rewrite (next.config.ts), so no CSP origin is needed.
+  NEXT_PUBLIC_POSTHOG_KEY: z.optional(z.string().check(z.minLength(1))),
+  NEXT_PUBLIC_POSTHOG_HOST: z._default(z.url(), "https://eu.i.posthog.com"),
+
+  NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL: z.optional(z.url()),
 });
 
 export const clientEnv = clientEnvSchema.parse({
   NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
-  NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
   NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN || undefined,
+  NEXT_PUBLIC_SENTRY_ENVIRONMENT:
+    process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT || undefined,
+  NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE:
+    process.env.NEXT_PUBLIC_SENTRY_TRACES_SAMPLE_RATE || undefined,
+  NEXT_PUBLIC_SENTRY_REPLAY_SESSION_SAMPLE_RATE:
+    process.env.NEXT_PUBLIC_SENTRY_REPLAY_SESSION_SAMPLE_RATE || undefined,
+  NEXT_PUBLIC_SENTRY_REPLAY_ON_ERROR_SAMPLE_RATE:
+    process.env.NEXT_PUBLIC_SENTRY_REPLAY_ON_ERROR_SAMPLE_RATE || undefined,
+  NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY || undefined,
+  NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST || undefined,
   NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL:
     process.env.NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL || undefined,
 });

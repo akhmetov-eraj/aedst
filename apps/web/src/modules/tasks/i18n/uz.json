@@ -24,7 +24,13 @@
     "retry": "Qayta urinish",
     "previousPage": "Oldingi",
     "nextPage": "Keyingi",
-    "due": "Muddat: {date}"
+    "due": "Muddat: {date}",
+    "searchLabel": "Vazifalarni qidirish",
+    "statusFilterLabel": "Holat bo'yicha filtr",
+    "priorityFilterLabel": "Ustuvorlik bo'yicha filtr",
+    "sortLabel": "Vazifalarni saralash",
+    "paginationLabel": "Sahifalash",
+    "resultsLabel": "Vazifalar"
   },
   "status": {
     "todo": "Bajarilishi kerak",
@@ -73,5 +79,9 @@
     "notFoundTitle": "Vazifa topilmadi",
     "notFoundDescription": "U o'chirilgan yoki boshqa foydalanuvchiga tegishli bo'lishi mumkin.",
     "loadErrorTitle": "Vazifani yuklab bo'lmadi"
+  },
+  "a11y": {
+    "priority": "Ustuvorlik",
+    "status": "Holat"
   }
 }

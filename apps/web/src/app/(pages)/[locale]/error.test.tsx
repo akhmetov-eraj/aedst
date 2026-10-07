@@ -8,6 +8,8 @@ import LocaleError from "./error";
 
 vi.mock("@sentry/nextjs", () => ({
   captureException: vi.fn(),
+  withScope: (callback: (scope: object) => unknown) =>
+    callback({ setTag() {}, setContext() {}, setFingerprint() {} }),
 }));
 
 describe("LocaleError", () => {

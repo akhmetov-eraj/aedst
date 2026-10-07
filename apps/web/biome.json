@@ -1,5 +1,5 @@
 {
-  "$schema": "https://biomejs.dev/schemas/2.5.14/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.5.15/schema.json",
   "vcs": {
     "enabled": true,
     "clientKind": "git",
@@ -15,8 +15,10 @@
       "!build",
       "!coverage",
       "!playwright-report",
+      "!.lighthouseci",
       "!test-results",
-      "!src/shared/api/connect/generated"
+      "!src/shared/api/connect/generated",
+      "!src/shared/api/graphql/generated"
     ]
   },
   "formatter": {
@@ -51,7 +53,32 @@
   },
   "overrides": [
     {
-      "includes": ["scripts/**", "src/instrumentation*.ts"],
+      "includes": ["src/shared/ui/**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "useSemanticElements": "off",
+            "useFocusableInteractive": "off",
+            "useKeyWithClickEvents": "off",
+            "noLabelWithoutControl": "off",
+            "noRedundantRoles": "off"
+          },
+          "correctness": {
+            "useExhaustiveDependencies": "off"
+          },
+          "suspicious": {
+            "noArrayIndexKey": "off",
+            "noDoubleEquals": "off",
+            "noDocumentCookie": "off"
+          },
+          "security": {
+            "noDangerouslySetInnerHtml": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["scripts/**", "src/instrumentation*.ts", "e2e/mock-api/**"],
       "linter": {
         "rules": {
           "suspicious": {

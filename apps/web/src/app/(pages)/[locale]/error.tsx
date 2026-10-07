@@ -1,9 +1,9 @@
 "use client";
 
-import * as Sentry from "@sentry/nextjs";
 import { useTranslations } from "next-intl";
 import { useEffect } from "react";
 
+import { reportError } from "@/shared/lib/errors/report-error";
 import { Button } from "@/shared/ui/button";
 
 type LocaleErrorProps = {
@@ -15,7 +15,10 @@ export default function LocaleError({ error, reset }: LocaleErrorProps) {
   const t = useTranslations("common");
 
   useEffect(() => {
-    Sentry.captureException(error);
+    reportError(error, {
+      source: "route",
+      extra: error.digest ? { digest: error.digest } : undefined,
+    });
   }, [error]);
 
   return (

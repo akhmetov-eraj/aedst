@@ -24,7 +24,13 @@
     "retry": "Retry",
     "previousPage": "Previous",
     "nextPage": "Next",
-    "due": "Due {date}"
+    "due": "Due {date}",
+    "searchLabel": "Search tasks",
+    "statusFilterLabel": "Filter by status",
+    "priorityFilterLabel": "Filter by priority",
+    "sortLabel": "Sort tasks",
+    "paginationLabel": "Pagination",
+    "resultsLabel": "Tasks"
   },
   "status": {
     "todo": "Todo",
@@ -73,5 +79,9 @@
     "notFoundTitle": "Task not found",
     "notFoundDescription": "It may have been deleted, or it belongs to someone else.",
     "loadErrorTitle": "Couldn't load this task"
+  },
+  "a11y": {
+    "priority": "Priority",
+    "status": "Status"
   }
 }

@@ -24,7 +24,13 @@
     "retry": "إعادة المحاولة",
     "previousPage": "السابق",
     "nextPage": "التالي",
-    "due": "الموعد: {date}"
+    "due": "الموعد: {date}",
+    "searchLabel": "البحث في المهام",
+    "statusFilterLabel": "تصفية حسب الحالة",
+    "priorityFilterLabel": "تصفية حسب الأولوية",
+    "sortLabel": "فرز المهام",
+    "paginationLabel": "ترقيم الصفحات",
+    "resultsLabel": "المهام"
   },
   "status": {
     "todo": "قيد الانتظار",
@@ -73,5 +79,9 @@
     "notFoundTitle": "المهمة غير موجودة",
     "notFoundDescription": "ربما تم حذفها أو أنها تخص مستخدمًا آخر.",
     "loadErrorTitle": "تعذّر تحميل هذه المهمة"
+  },
+  "a11y": {
+    "priority": "الأولوية",
+    "status": "الحالة"
   }
 }

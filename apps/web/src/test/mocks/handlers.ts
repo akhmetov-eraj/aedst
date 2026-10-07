@@ -1,12 +1,9 @@
-import { HttpResponse, http } from "msw";
+import type { AnyHandler } from "msw";
 
-export const handlers = [
-  http.get("https://api.example.com/users", () => {
-    return HttpResponse.json([
-      {
-        id: "1",
-        name: "Alice",
-      },
-    ]);
-  }),
-];
+/**
+ * Default handlers: none. Every test declares the Connect procedures it
+ * depends on with `rpcHandler`/`rpcErrorHandler` (see ./connect.ts), and
+ * `onUnhandledFrame: "error"` in vitest.setup.ts turns any call a test did
+ * not expect into a failure instead of a silent network attempt.
+ */
+export const handlers: AnyHandler[] = [];

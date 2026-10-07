@@ -1,37 +1,52 @@
+import * as Sentry from "@sentry/nextjs";
 import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { AuthProvider, useAuth } from "./auth-provider";
-import { loadTokens } from "./token-storage";
+import { AuthProvider, useAuth } from "@/shared/lib/auth/auth-provider";
+
+vi.mock("@sentry/nextjs", () => ({
+  setUser: vi.fn(),
+  addBreadcrumb: vi.fn(),
+}));
 
 function Probe() {
-  const { isAuthenticated, isLoading, login, logout } = useAuth();
-  if (isLoading) {
-    return <p>loading</p>;
-  }
+  const { userId, isAuthenticated, signIn, signOut } = useAuth();
   return (
     <div>
-      <p>{isAuthenticated ? "signed-in" : "signed-out"}</p>
-      <button
-        type="button"
-        onClick={() => login({ accessToken: "a", refreshToken: "r" })}
-      >
-        login
+      <p>{isAuthenticated ? `in:${userId}` : "out"}</p>
+      <button type="button" onClick={() => signIn("u-2")}>
+        sign in
       </button>
-      <button type="button" onClick={logout}>
-        logout
+      <button type="button" onClick={signOut}>
+        sign out
       </button>
     </div>
   );
 }
 
-afterEach(() => {
-  window.localStorage.clear();
-});
-
 describe("AuthProvider", () => {
-  it("starts signed out and persists tokens to localStorage on login", async () => {
+  it("starts from the server-provided user — no signed-out flash", () => {
+    render(
+      <AuthProvider initialUserId="u-1">
+        <Probe />
+      </AuthProvider>,
+    );
+
+    expect(screen.getByText("in:u-1")).toBeInTheDocument();
+  });
+
+  it("starts signed out without an initial user", () => {
+    render(
+      <AuthProvider>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    expect(screen.getByText("out")).toBeInTheDocument();
+  });
+
+  it("tracks sign-in/out and mirrors them into Sentry (id only) with breadcrumbs", async () => {
     const user = userEvent.setup();
     render(
       <AuthProvider>
@@ -39,44 +54,50 @@ describe("AuthProvider", () => {
       </AuthProvider>,
     );
 
-    expect(await screen.findByText("signed-out")).toBeInTheDocument();
-    expect(loadTokens()).toBeNull();
+    await user.click(screen.getByRole("button", { name: "sign in" }));
+    expect(screen.getByText("in:u-2")).toBeInTheDocument();
+    expect(Sentry.setUser).toHaveBeenLastCalledWith({ id: "u-2" });
+    expect(Sentry.addBreadcrumb).toHaveBeenCalledWith(
+      expect.objectContaining({ category: "auth", message: "sign-in" }),
+    );
 
-    await user.click(screen.getByRole("button", { name: "login" }));
-
-    expect(await screen.findByText("signed-in")).toBeInTheDocument();
-    expect(loadTokens()).toEqual({ accessToken: "a", refreshToken: "r" });
+    await user.click(screen.getByRole("button", { name: "sign out" }));
+    expect(screen.getByText("out")).toBeInTheDocument();
+    expect(Sentry.setUser).toHaveBeenLastCalledWith(null);
   });
 
-  it("clears the session on logout", async () => {
+  it("follows the server when a refresh changes the session", () => {
+    const { rerender } = render(
+      <AuthProvider initialUserId="u-1">
+        <Probe />
+      </AuthProvider>,
+    );
+
+    rerender(
+      <AuthProvider initialUserId={null}>
+        <Probe />
+      </AuthProvider>,
+    );
+
+    expect(screen.getByText("out")).toBeInTheDocument();
+  });
+
+  it("stores nothing in web storage — the session lives only in httpOnly cookies", async () => {
     const user = userEvent.setup();
     render(
       <AuthProvider>
         <Probe />
       </AuthProvider>,
     );
+    await user.click(screen.getByRole("button", { name: "sign in" }));
 
-    await user.click(await screen.findByRole("button", { name: "login" }));
-    await screen.findByText("signed-in");
-
-    await user.click(screen.getByRole("button", { name: "logout" }));
-
-    expect(await screen.findByText("signed-out")).toBeInTheDocument();
-    expect(loadTokens()).toBeNull();
+    expect(window.localStorage.length).toBe(0);
+    expect(window.sessionStorage.length).toBe(0);
   });
 
-  it("reads an existing session from localStorage on mount", async () => {
-    window.localStorage.setItem(
-      "aedst.auth.tokens",
-      JSON.stringify({ accessToken: "x", refreshToken: "y" }),
-    );
-
-    render(
-      <AuthProvider>
-        <Probe />
-      </AuthProvider>,
-    );
-
-    expect(await screen.findByText("signed-in")).toBeInTheDocument();
+  it("throws a clear error when used outside the provider", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(() => render(<Probe />)).toThrow(/within <AuthProvider>/);
+    spy.mockRestore();
   });
 });

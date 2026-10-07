@@ -1,7 +1,18 @@
+import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
 import { Link } from "@/app/config/i18n/navigation";
-import { Button } from "@/shared/ui/button";
+import { buttonVariants } from "@/shared/ui/button";
+
+// Without a title, assistive tech announces the raw URL and axe flags
+// `document-title`; `noindex` keeps soft-404 URLs out of search results.
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("common");
+  return {
+    title: t("errors.notFoundTitle"),
+    robots: { index: false, follow: false },
+  };
+}
 
 export default async function LocaleNotFound() {
   const t = await getTranslations("common");
@@ -15,7 +26,9 @@ export default async function LocaleNotFound() {
       <p className="max-w-md text-sm text-muted-foreground">
         {t("errors.notFoundDescription")}
       </p>
-      <Button render={<Link href="/" />}>{t("actions.goHome")}</Button>
+      <Link href="/" className={buttonVariants()}>
+        {t("actions.goHome")}
+      </Link>
     </div>
   );
 }
