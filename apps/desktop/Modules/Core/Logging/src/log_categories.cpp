@@ -10,6 +10,7 @@ Q_LOGGING_CATEGORY(lcPlatform, "aedst.platform")
 Q_LOGGING_CATEGORY(lcMedia, "aedst.media")
 Q_LOGGING_CATEGORY(lcNavigation, "aedst.navigation")
 Q_LOGGING_CATEGORY(lcTelemetry, "aedst.telemetry")
+Q_LOGGING_CATEGORY(lcNotifications, "aedst.notifications")
 Q_LOGGING_CATEGORY(lcAuth, "aedst.auth")
 
 namespace aedst::logging {

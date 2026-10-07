@@ -10,6 +10,7 @@
 #include <QSystemTrayIcon>
 
 #include <algorithm>
+#include <utility>
 
 namespace aedst::platform {
 namespace {
@@ -67,7 +68,10 @@ TrayNotificationService::TrayNotificationService(NotificationService& inAppFallb
     }
     tray_ = std::make_unique<QSystemTrayIcon>(trayIcon());
     updateToolTip();
-    connect(tray_.get(), &QSystemTrayIcon::messageClicked, this, &TrayNotificationService::messageClicked);
+    connect(tray_.get(), &QSystemTrayIcon::messageClicked, this, [this]() {
+        emit messageClicked();
+        notifyActivated(std::exchange(lastLink_, std::string{}));
+    });
     connect(tray_.get(), &QSystemTrayIcon::activated, this, [this](QSystemTrayIcon::ActivationReason reason) {
         if (reason == QSystemTrayIcon::Trigger || reason == QSystemTrayIcon::DoubleClick) {
             emit activated();
@@ -89,12 +93,20 @@ bool TrayNotificationService::isAvailable() const {
 }
 
 void TrayNotificationService::show(std::string_view title, std::string_view body, NotificationSeverity severity) {
+    lastLink_.clear();
     if (!tray_ || !tray_->isVisible()) {
         fallback_.show(title, body, severity);
         return;
     }
     tray_->showMessage(toQString(title, kMaxTitleChars), toQString(body, kMaxBodyChars), toMessageIcon(severity),
                        kMessageTimeoutMs);
+}
+
+void TrayNotificationService::showRequest(const NotificationRequest& request) {
+    show(request.title, request.body, request.severity);
+    if (tray_ && tray_->isVisible()) {
+        lastLink_ = request.link; // show() cleared it; set after, so a click on this balloon activates it
+    }
 }
 
 void TrayNotificationService::setBadgeCount(int count) {

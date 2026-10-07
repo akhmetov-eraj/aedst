@@ -6,6 +6,7 @@
 #include <QString>
 
 #include <memory>
+#include <string>
 #include <string_view>
 
 class QSystemTrayIcon;
@@ -42,6 +43,9 @@ public:
 
     [[nodiscard]] bool isAvailable() const override;
     void show(std::string_view title, std::string_view body, NotificationSeverity severity) override;
+    /// Clicking the balloon reports `request.link` to the activation handler. The tray has no action buttons
+    /// and shows one balloon at a time, so only the most recent link can be activated.
+    void showRequest(const NotificationRequest& request) override;
 
     /// Shown in the tray tooltip ("AEDST - 3 unread"); 0 hides the count.
     [[nodiscard]] int badgeCount() const noexcept { return badgeCount_; }
@@ -59,6 +63,7 @@ private:
 
     NotificationService& fallback_;
     std::unique_ptr<QSystemTrayIcon> tray_;
+    std::string lastLink_;
     int badgeCount_{0};
 };
 

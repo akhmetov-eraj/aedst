@@ -64,7 +64,7 @@ issue).
   fallback for it. The access token is memory-only.
 - Linux without a Secret Service (headless, Flatpak without portal): the master
   key falls back to a `0600` file next to the database — weaker, and logged.
-- Native Windows toast (WinRT) is not implemented; Windows
-  uses the tray notification and in-app notifications only.
+- Native toasts carry only a relative in-app route as activation argument (`isActivatableLink`); the route is validated
+  again by `Router::openLink`. Text from the server is escaped and length-limited before it reaches the toast XML or D-Bus.
 - Signing steps exist in CI but have never run against real
   credentials.

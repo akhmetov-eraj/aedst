@@ -26,11 +26,14 @@ qt_add_qml_module(AedstFeatureNotificationsViews
 add_library(AedstFeatureNotifications STATIC
     Domain/notification.hpp
     Domain/notification_repository.hpp
+    Domain/notification_stream.hpp
     Domain/new_notification_detector.hpp
     Domain/new_notification_detector.cpp
     Data/connect_notification_repository.hpp
     Data/connect_notification_repository.cpp
     Presentation/notification_list_model.hpp
+    Presentation/notification_realtime.hpp
+    Presentation/notification_realtime.cpp
     Presentation/notification_list_model.cpp
     Presentation/notifications_view_model.hpp
     Presentation/notifications_view_model.cpp
@@ -38,6 +41,14 @@ add_library(AedstFeatureNotifications STATIC
     Navigation/notifications_destinations.cpp
 )
 add_library(Aedst::Feature::Notifications ALIAS AedstFeatureNotifications)
+
+# The stream adapter needs the generated WatchNotifications messages: it is built once the server proto declares the RPC
+# (docs/proposals/notifications-watch-rpc.md); until then the feature polls.
+if(AEDST_HAS_WATCH_NOTIFICATIONS)
+    target_sources(AedstFeatureNotifications PRIVATE
+        Data/connect_notification_stream.hpp
+        Data/connect_notification_stream.cpp)
+endif()
 
 target_include_directories(AedstFeatureNotifications PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -50,6 +61,7 @@ target_link_libraries(AedstFeatureNotifications
         Qt6::Core
     PRIVATE
         Aedst::Analytics
+        Aedst::Logging
         Aedst::Platform
         Qt6::Quick
 )

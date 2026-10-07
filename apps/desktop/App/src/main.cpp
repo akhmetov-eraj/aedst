@@ -375,16 +375,18 @@ int main(int argc, char* argv[]) {
     handleActivation(aedst::platform::SingleInstanceGuard::sanitizeArguments(app.arguments()),
                      QPointer<QQuickWindow>(), router);
 
-    // Tray: clicking a notification (or the icon) brings the window forward; a
-    // message click also opens the inbox. The badge mirrors the unread count.
+    // Tray: clicking a balloon (or the icon) brings the window forward. The badge mirrors the unread count.
     auto& notificationsViewModel = deps.notificationsViewModel();
     QObject::connect(&trayNotifications, &aedst::platform::TrayNotificationService::messageClicked, &app,
-                     [window, router, &deps]() {
+                     [window]() { handleActivation({}, window, nullptr); });
+    // A click on a native notification (Windows toast, D-Bus, tray balloon) opens what it is about; the summary
+    // notification links to the inbox. The route is validated by Router::openLink.
+    QObject::connect(&notificationsViewModel,
+                     &aedst::feature::notifications::NotificationsViewModel::notificationActivated, &app,
+                     [window, router, &deps](const QString& link) {
                          handleActivation({}, window, nullptr);
                          if (deps.session().signedIn()) {
-                             router->navigate(QString::fromUtf8(aedst::navigation::routes::kNotifications.data(),
-                                                                static_cast<qsizetype>(
-                                                                    aedst::navigation::routes::kNotifications.size())));
+                             router->openLink(link);
                          }
                      });
     QObject::connect(&trayNotifications, &aedst::platform::TrayNotificationService::activated, &app,

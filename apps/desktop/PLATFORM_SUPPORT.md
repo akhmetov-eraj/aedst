@@ -18,7 +18,7 @@ status below is **design + CI configuration; nothing has been built yet.**
 | Toolchain | MSVC 19.37+ (VS 2022 17.7) | GCC 13+, Clang 17+ with libstdc++ 13+ |
 | Presets | `msvc-debug/release`, `msvc-asan` | `gcc-*`, `clang-*`, `*-asan`, `clang-tsan`, `coverage` |
 | Secret store | DPAPI-wrapped master key | Secret Service (libsecret, optional) → `0600` key file fallback |
-| Notifications | `QSystemTrayIcon` toast (native WinRT toast not implemented) | `org.freedesktop.Notifications` via QtDBus, else tray, else in-app |
+| Notifications | Native WinRT toast with an Open button (needs the Start Menu shortcut with the AUMID), else tray balloon, else in-app | `org.freedesktop.Notifications` via QtDBus with a click action, else tray, else in-app |
 | Autostart | `HKCU\...\Run` | XDG autostart; Flatpak portal documented only |
 | Installer | NSIS `.exe`, `.zip`, MSIX (unsigned unless configured) | `.deb`, `.rpm`, `.tar.gz`, Flatpak, AppImage (manual) |
 | Signing | Authenticode via `signtool` (needs secrets) | detached GPG `.asc` (needs secret) |
@@ -41,4 +41,4 @@ Every platform capability has a runtime availability check and a fallback:
 
 - AppImage/Flatpak are not built in CI (need real icons, linuxdeploy,
   flatpak-builder).
-- Native Windows toast (WinRT), portal autostart.
+- Toast click after the app exited (needs the installer's COM activator or protocol registration), portal autostart.

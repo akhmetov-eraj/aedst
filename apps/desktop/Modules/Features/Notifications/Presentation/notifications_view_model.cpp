@@ -26,6 +26,68 @@ NotificationsViewModel::NotificationsViewModel(std::shared_ptr<NotificationRepos
       detector_(std::chrono::system_clock::now()) {
     pollTimer_.setSingleShot(true);
     connect(&pollTimer_, &QTimer::timeout, this, &NotificationsViewModel::pollNow);
+    if (desktopNotifier_ != nullptr) {
+        // Marshalled to the GUI thread by the service; the link is validated by Router::openLink.
+        desktopNotifier_->setActivationHandler([guard = QPointer<NotificationsViewModel>(this)](const std::string& link) {
+            if (guard) {
+                emit guard->notificationActivated(QString::fromStdString(link));
+            }
+        });
+    }
+}
+
+QString NotificationsViewModel::deliveryMode() const {
+    return realtime_ && realtime_->isStreaming() ? QStringLiteral("stream") : QStringLiteral("polling");
+}
+
+void NotificationsViewModel::setStream(std::shared_ptr<NotificationStream> stream, NotificationRealtime::Timing timing) {
+    realtime_ = std::make_unique<NotificationRealtime>(std::move(stream), timing);
+    connect(realtime_.get(), &NotificationRealtime::eventReceived, this, &NotificationsViewModel::onStreamEvent);
+    connect(realtime_.get(), &NotificationRealtime::modeChanged, this, &NotificationsViewModel::onDeliveryModeChanged);
+    connect(realtime_.get(), &NotificationRealtime::resyncRequired, this, [this]() {
+        // The stream cannot replay what was missed: ask the server for the truth.
+        pollNow();
+        if (inbox_.count() > 0) {
+            reload();
+        }
+    });
+    connect(realtime_.get(), &NotificationRealtime::unauthenticated, this, [this](const QString& message) {
+        if (errors_) {
+            errors_->report(core::Error::unauthenticated(message.toStdString()), "notifications.stream",
+                            core::ErrorVisibility::Silent);
+        }
+    });
+}
+
+void NotificationsViewModel::onDeliveryModeChanged() {
+    emit deliveryModeChanged();
+    if (!running_) {
+        return;
+    }
+    if (realtime_ && realtime_->isStreaming()) {
+        pollTimer_.stop(); // live events replace the poll
+    } else if (!pollInFlight_ && !pollTimer_.isActive()) {
+        pollNow(); // the stream is not delivering: catch up and keep polling
+    }
+}
+
+void NotificationsViewModel::onStreamEvent(const NotificationEvent& event) {
+    if (!running_) {
+        return;
+    }
+    if (const auto* count = std::get_if<UnreadCountEvent>(&event.payload)) {
+        setUnreadCount(count->unread); // authoritative; the created event already announced the item
+        return;
+    }
+    if (const auto* created = std::get_if<NotificationCreatedEvent>(&event.payload)) {
+        announce({created->notification});
+        if (!created->notification.isRead()) {
+            setUnreadCount(unreadCount_ + 1); // the server's counter event follows and corrects it
+        }
+        if (inbox_.count() > 0 && (!unreadOnly_ || !created->notification.isRead())) {
+            inbox_.prependNotification(created->notification);
+        }
+    }
 }
 
 void NotificationsViewModel::start() {
@@ -38,10 +100,16 @@ void NotificationsViewModel::start() {
     detector_.reset(std::chrono::system_clock::now());
     loadPreferences();
     pollNow();
+    if (realtime_) {
+        realtime_->start();
+    }
 }
 
 void NotificationsViewModel::stop() {
     running_ = false;
+    if (realtime_) {
+        realtime_->stop();
+    }
     ++session_;
     pollTimer_.stop();
     pollInFlight_ = false;
@@ -95,6 +163,9 @@ void NotificationsViewModel::scheduleNextPoll(bool failed) {
     if (!running_) {
         return;
     }
+    if (realtime_ && realtime_->isStreaming()) {
+        return; // live events are flowing: no poll is needed
+    }
     failedPolls_ = failed ? std::min(failedPolls_ + 1, 10) : 0;
     const int base = foreground_ ? kPollIntervalMs : kBackgroundPollIntervalMs;
     const qint64 backoff = static_cast<qint64>(base) << std::min(failedPolls_, 4);
@@ -122,17 +193,30 @@ void NotificationsViewModel::announceNew() {
         if (!guard || session != guard->session_ || !result) {
             return;
         }
-        const auto detected = guard->detector_.detect(result->notifications, guard->preferences_);
-        for (const Notification& notification : detected.announce) {
-            guard->desktopNotifier_->show(notification.title, notification.body, platform::NotificationSeverity::Info);
-        }
-        if (detected.overflow > 0) {
-            const QString summary =
-                QCoreApplication::translate("NotificationsViewModel", "%n more new notification(s)", nullptr,
-                                            static_cast<int>(detected.overflow));
-            guard->desktopNotifier_->show(summary.toStdString(), {}, platform::NotificationSeverity::Info);
-        }
+        guard->announce(result->notifications);
     });
+}
+
+void NotificationsViewModel::announce(const std::vector<Notification>& unread) {
+    if (desktopNotifier_ == nullptr) {
+        return;
+    }
+    const auto detected = detector_.detect(unread, preferences_);
+    const std::string openLabel = QCoreApplication::translate("NotificationsViewModel", "Open").toStdString();
+    for (const Notification& notification : detected.announce) {
+        desktopNotifier_->showRequest(platform::NotificationRequest{.title = notification.title,
+                                                                    .body = notification.body,
+                                                                    .severity = platform::NotificationSeverity::Info,
+                                                                    .link = notification.link,
+                                                                    .tag = notification.id,
+                                                                    .actionLabel = openLabel});
+    }
+    if (detected.overflow > 0) {
+        const QString summary = QCoreApplication::translate("NotificationsViewModel", "%n more new notification(s)",
+                                                            nullptr, static_cast<int>(detected.overflow));
+        desktopNotifier_->showRequest(platform::NotificationRequest{
+            .title = summary.toStdString(), .link = "/notifications", .tag = "aedst-summary", .actionLabel = openLabel});
+    }
 }
 
 void NotificationsViewModel::setUnreadOnly(bool unreadOnly) {

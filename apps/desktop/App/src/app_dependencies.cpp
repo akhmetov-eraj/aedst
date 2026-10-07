@@ -3,6 +3,7 @@
 #include "Data/connect_admin_repository.hpp"
 #include "Data/connect_auth_remote_data_source.hpp"
 #include "Data/connect_notification_repository.hpp"
+#include "Data/connect_notification_stream.hpp"
 #include "Data/oidc_auth_repository.hpp"
 #include "Data/connect_search_repository.hpp"
 #include "Data/connect_task_repository.hpp"
@@ -172,6 +173,11 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
     deps->notificationsViewModel_ = std::make_unique<notifications::NotificationsViewModel>(
         std::make_shared<notifications::ConnectNotificationRepository>(deps->connectClient_), deps->errorCenter_,
         deps->analytics_, &desktopNotifier, router);
+#if defined(AEDST_CONTRACT_HAS_WATCH_NOTIFICATIONS)
+    // The server streams notifications: live delivery, polling only while the stream is not healthy.
+    deps->notificationsViewModel_->setStream(
+        std::make_shared<notifications::ConnectNotificationStream>(deps->connectClient_));
+#endif
     deps->mediaLibraryViewModel_ =
         std::make_unique<mediafeature::MediaLibraryViewModel>(mediafeature::MediaLibraryViewModel::Dependencies{
             .remote = deps->mediaRemote_,

@@ -35,6 +35,8 @@ public:
 
     void setNotifications(std::vector<Notification> notifications);
     void appendNotifications(std::vector<Notification> notifications);
+    /// A live notification arrived: inserted at the top unless that id is already listed.
+    void prependNotification(Notification notification);
     /// Marks rows read locally (optimistic); returns the ids that were unread.
     std::vector<std::string> markRead(const std::vector<std::string>& ids,
                                       std::chrono::system_clock::time_point when);

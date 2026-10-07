@@ -15,6 +15,12 @@ cd "$(dirname "$0")/.."
 
 proto_root=../server/api/proto
 table=Modules/Core/Contract/include/aedst/contract/methods.hpp
+streaming_table=Modules/Core/Contract/include/aedst/contract/streaming_methods.hpp
+
+# Services the desktop client never calls: device attestation is an iOS (App Attest) and Android (Play Integrity)
+# concern; there is no desktop equivalent. Keep in step with kIgnoredProtoFiles in
+# Modules/Core/Contract/tests/methods_test.cpp.
+ignored_services='^/aedst.(appattest|integrity).v1.'
 
 # "/<package>.<Service>/<Method>" for every rpc in every proto.
 declared=$(find "$proto_root" -name '*.proto' -print0 | xargs -0 awk '
@@ -23,14 +29,16 @@ declared=$(find "$proto_root" -name '*.proto' -print0 | xargs -0 awk '
   /^[[:space:]]*rpc[[:space:]]/ {
     name = $2; sub(/\(.*/, "", name)
     print "/" pkg "." svc "/" name
-  }' | sort -u)
+  }' | grep -Ev "$ignored_services" | sort -u)
 
-# Paths listed in the table.
-listed=$(grep -oE '"/[A-Za-z0-9_.]+/[A-Za-z0-9_]+"' "$table" | tr -d '"' | sort -u)
+# Paths listed in the tables (unary and server-streaming). The streaming table names its RPC only inside
+# `#if AEDST_CONTRACT_HAS_WATCH_NOTIFICATIONS`; the entry is the answer to "was the new RPC handled", so it is
+# only expected once the server proto declares the RPC (see the filtering of `extra` below).
+listed=$(grep -ohE '"/[A-Za-z0-9_.]+/[A-Za-z0-9_]+"' "$table" "$streaming_table" | tr -d '"' | sort -u)
 
 status=0
 missing=$(comm -23 <(echo "$declared") <(echo "$listed") || true)
-extra=$(comm -13 <(echo "$declared") <(echo "$listed") || true)
+extra=$(comm -13 <(echo "$declared") <(echo "$listed") | grep -v 'NotificationsService/WatchNotifications' || true)
 
 if [ -n "$missing" ]; then
   echo "::error::RPCs in apps/server/api/proto with no entry in $table:"

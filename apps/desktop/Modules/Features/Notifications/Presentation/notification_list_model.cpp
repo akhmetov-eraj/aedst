@@ -75,6 +75,19 @@ void NotificationListModel::appendNotifications(std::vector<Notification> notifi
     emit countChanged();
 }
 
+void NotificationListModel::prependNotification(Notification notification) {
+    const bool known = std::ranges::any_of(items_, [&notification](const Notification& item) {
+        return item.id == notification.id;
+    });
+    if (known) {
+        return;
+    }
+    beginInsertRows({}, 0, 0);
+    items_.insert(items_.begin(), std::move(notification));
+    endInsertRows();
+    emit countChanged();
+}
+
 std::vector<std::string> NotificationListModel::markRead(const std::vector<std::string>& ids,
                                                          std::chrono::system_clock::time_point when) {
     std::vector<std::string> changed;

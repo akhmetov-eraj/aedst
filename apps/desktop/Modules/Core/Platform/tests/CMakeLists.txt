@@ -7,6 +7,7 @@ add_executable(AedstPlatformTests
     autostart_test.cpp
     deep_link_test.cpp
     platform_info_test.cpp
+    toast_xml_test.cpp
 )
 target_link_libraries(AedstPlatformTests PRIVATE Aedst::Platform GTest::gtest_main)
 aedst_set_warnings(AedstPlatformTests)

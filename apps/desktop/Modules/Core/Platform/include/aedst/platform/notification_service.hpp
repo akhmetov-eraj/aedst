@@ -3,8 +3,11 @@
 #include <QObject>
 #include <QString>
 
+#include <functional>
 #include <memory>
+#include <string>
 #include <string_view>
+#include <utility>
 
 namespace aedst::platform {
 
@@ -26,6 +29,23 @@ enum class NotificationSeverity {
     return "info";
 }
 
+/// A notification that can be clicked. Text is plain UTF-8 (implementations truncate and escape it).
+struct NotificationRequest {
+    std::string title;
+    std::string body;
+    NotificationSeverity severity{NotificationSeverity::Info};
+    /// In-app route ("/tasks/<id>") opened when the user clicks the notification or its action button.
+    /// Empty = informational only. Validated by the receiver (Router::openLink allow-list), not here.
+    std::string link;
+    /// A newer notification with the same tag replaces the older one instead of stacking.
+    std::string tag;
+    /// Text of the action button ("Open"); empty = no button (the notification body stays clickable).
+    std::string actionLabel;
+};
+
+/// Invoked on the GUI thread when the user activates a notification that had a link.
+using NotificationActivationHandler = std::function<void(const std::string& link)>;
+
 /// Shows a user-visible notification. Text is plain UTF-8; implementations
 /// truncate and escape it, so callers can pass server-provided strings.
 class NotificationService {
@@ -40,6 +60,25 @@ public:
     /// Runtime capability check (is there anything that can display this?).
     [[nodiscard]] virtual bool isAvailable() const = 0;
     virtual void show(std::string_view title, std::string_view body, NotificationSeverity severity) = 0;
+
+    /// Clickable variant. Services without activation support (the in-app toast) just show the text.
+    virtual void showRequest(const NotificationRequest& request) {
+        show(request.title, request.body, request.severity);
+    }
+
+    /// Where activations of showRequest() notifications are reported. Services that wrap another one forward it.
+    virtual void setActivationHandler(NotificationActivationHandler handler) { activationHandler_ = std::move(handler); }
+
+protected:
+    /// Implementations call this (on the GUI thread) when the user clicked a notification with a link.
+    void notifyActivated(const std::string& link) const {
+        if (activationHandler_ && !link.empty()) {
+            activationHandler_(link);
+        }
+    }
+
+private:
+    NotificationActivationHandler activationHandler_;
 };
 
 /// Universal fallback: does not display anything itself, it emits

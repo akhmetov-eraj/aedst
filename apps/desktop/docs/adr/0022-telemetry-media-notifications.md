@@ -3,6 +3,7 @@
 - Status: accepted (not compiled in the authoring environment - no Qt/vcpkg toolchain)
 - Scope: `apps/desktop` (Qt/C++ app: `Modules/`, `App/`)
 - Supersedes in part: ADR-0006 (notifications: `QSystemTrayIcon` rejected; crash upload transport)
+- Superseded in part by: ADR-0027 (native Windows toasts and live delivery; "no push service on desktop" no longer holds once the server streams)
 
 ## Context
 

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "Domain/new_notification_detector.hpp"
+#include "Domain/notification_stream.hpp"
+#include "Presentation/notification_realtime.hpp"
 #include "Presentation/notification_list_model.hpp"
 
 #include <QObject>
@@ -32,15 +34,19 @@ class NotificationRepository;
 
 /// Inbox, unread badge, mark read, preferences, and native desktop notifications.
 ///
-/// Delivery model on desktop: there is no FCM/APNs/Web Push channel for a desktop
-/// app, so the client POLLS GetUnreadCount (kPollIntervalMs while the window is
-/// active, kBackgroundPollIntervalMs otherwise; exponential backoff up to
-/// kMaxBackoffMs on retryable errors). When the count rises it fetches the newest
-/// unread notifications and NewNotificationDetector picks what to show through
-/// platform::NotificationService (QSystemTrayIcon toast / D-Bus / in-app fallback),
-/// honouring the server-side preferences. Polling runs only between start() (signed
-/// in) and stop() (signed out). A server-streaming "watch unread" RPC would replace
-/// the poll without UI changes; the contract has none today.
+/// Delivery model on desktop (no FCM/APNs/Web Push channel exists for it):
+///  - STREAM: when a NotificationStream is installed (setStream) and the server offers
+///    WatchNotifications, events arrive live: a created notification is announced at once, the
+///    unread counter is whatever the server last said. Polling is OFF while the stream is healthy.
+///  - POLLING: otherwise, and whenever the stream is not healthy (connecting, backing off, repeatedly
+///    failing, or the RPC is missing on the server), the client POLLS GetUnreadCount
+///    (kPollIntervalMs while the window is active, kBackgroundPollIntervalMs otherwise; exponential
+///    backoff up to kMaxBackoffMs on retryable errors). When the count rises it fetches the newest unread
+///    notifications. NotificationRealtime owns reconnects, resume by event id and the fall back.
+/// NewNotificationDetector picks what to show through platform::NotificationService (Windows toast /
+/// D-Bus / tray / in-app fallback), honouring the server-side preferences, and a click on a native
+/// notification opens its link (notificationActivated -> Router). Everything runs only between start()
+/// (signed in) and stop() (signed out).
 class NotificationsViewModel final : public QObject {
     Q_OBJECT
     Q_PROPERTY(int unreadCount READ unreadCount NOTIFY unreadCountChanged)
@@ -56,6 +62,8 @@ class NotificationsViewModel final : public QObject {
     Q_PROPERTY(bool taskDueSoon READ taskDueSoon NOTIFY preferencesChanged)
     Q_PROPERTY(bool mediaReady READ mediaReady NOTIFY preferencesChanged)
     Q_PROPERTY(bool isSavingPreferences READ isSavingPreferences NOTIFY isSavingPreferencesChanged)
+    // "stream" while live events are flowing, "polling" otherwise (diagnostics, settings screen).
+    Q_PROPERTY(QString deliveryMode READ deliveryMode NOTIFY deliveryModeChanged)
 
 public:
     static constexpr int kPollIntervalMs = 30'000;
@@ -82,6 +90,11 @@ public:
     [[nodiscard]] bool taskDueSoon() const noexcept { return preferences_.taskDueSoon; }
     [[nodiscard]] bool mediaReady() const noexcept { return preferences_.mediaReady; }
     [[nodiscard]] bool isSavingPreferences() const noexcept { return isSavingPreferences_; }
+    [[nodiscard]] QString deliveryMode() const;
+
+    /// Installs the live channel. Call once before start(); without it the client only polls.
+    void setStream(std::shared_ptr<NotificationStream> stream, NotificationRealtime::Timing timing = {});
+    [[nodiscard]] NotificationRealtime* realtime() noexcept { return realtime_.get(); }
 
     /// Signed in: reset the detector to "now", load preferences, poll immediately.
     Q_INVOKABLE void start();
@@ -110,9 +123,15 @@ signals:
     void errorMessageChanged();
     void preferencesChanged();
     void isSavingPreferencesChanged();
+    void deliveryModeChanged();
+    /// The user clicked a native notification: bring the window forward and open `link`.
+    void notificationActivated(const QString& link);
 
 private:
     void onUnreadCount(int count);
+    void onStreamEvent(const NotificationEvent& event);
+    void onDeliveryModeChanged();
+    void announce(const std::vector<Notification>& unread);
     void announceNew();
     void scheduleNextPoll(bool failed);
     void setUnreadCount(int count);
@@ -130,6 +149,7 @@ private:
     NewNotificationDetector detector_;
     NotificationPreferences preferences_;
     QTimer pollTimer_;
+    std::unique_ptr<NotificationRealtime> realtime_;
     QString errorMessage_;
     std::string nextPageToken_;
     int unreadCount_{0};

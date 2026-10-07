@@ -1,10 +1,12 @@
 #include "aedst/contract/methods.hpp"
+#include "aedst/contract/streaming_methods.hpp"
 
 #include <google/protobuf/descriptor.h>
 #include <google/protobuf/descriptor.pb.h>
 #include <gtest/gtest.h>
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <sstream>
 #include <string>
@@ -90,6 +92,13 @@ TEST(MethodTableTest, EveryEntryMatchesTheGeneratedDescriptors) {
     expectMatchesDescriptor(kAdminListAuditLog);
 }
 
+/// Protos whose services the desktop client never calls: device attestation exists for iOS (App Attest) and
+/// Android (Play Integrity) only. Keep in step with ignored_services in scripts/check-proto-freshness.sh.
+constexpr std::array<std::string_view, 2> kIgnoredProtoFiles{
+    "aedst/appattest/v1/appattest.proto",
+    "aedst/integrity/v1/integrity.proto",
+};
+
 TEST(MethodTableTest, EveryRpcInTheProtosHasAnEntry) {
     std::vector<std::string> protoNames;
     std::stringstream names(AEDST_CONTRACT_PROTO_NAMES);
@@ -100,6 +109,9 @@ TEST(MethodTableTest, EveryRpcInTheProtosHasAnEntry) {
 
     std::size_t rpcCount = 0;
     for (const std::string& protoName : protoNames) {
+        if (std::find(kIgnoredProtoFiles.begin(), kIgnoredProtoFiles.end(), protoName) != kIgnoredProtoFiles.end()) {
+            continue;
+        }
         const auto* file = DescriptorPool::generated_pool()->FindFileByName(protoName);
         ASSERT_NE(file, nullptr) << protoName << " was not compiled into AedstContractProto";
         for (int s = 0; s < file->service_count(); ++s) {
@@ -108,13 +120,33 @@ TEST(MethodTableTest, EveryRpcInTheProtosHasAnEntry) {
                 const std::string path =
                     "/" + std::string(service->full_name()) + "/" + std::string(service->method(m)->name());
                 ++rpcCount;
-                EXPECT_NE(std::find(kAllMethodPaths.begin(), kAllMethodPaths.end(), path), kAllMethodPaths.end())
-                    << path << " exists in " << protoName << " but has no entry in aedst/contract/methods.hpp";
+                const bool streaming = service->method(m)->server_streaming();
+                const auto& table = streaming ? kAllStreamingMethodPaths : kAllMethodPaths;
+                EXPECT_NE(std::find(table.begin(), table.end(), path), table.end())
+                    << path << " exists in " << protoName << " but has no entry in aedst/contract/"
+                    << (streaming ? "streaming_methods.hpp" : "methods.hpp");
             }
         }
     }
-    EXPECT_EQ(rpcCount, kAllMethodPaths.size()) << "methods.hpp lists an RPC the protos no longer define";
+    EXPECT_EQ(rpcCount, kAllMethodPaths.size() + kAllStreamingMethodPaths.size())
+        << "the method tables list an RPC the protos no longer define";
 }
+
+#if defined(AEDST_CONTRACT_HAS_WATCH_NOTIFICATIONS)
+TEST(StreamingMethodTableTest, WatchNotificationsMatchesTheDescriptor) {
+    const std::string path(kNotificationsWatch.info.path);
+    const MethodDescriptor* descriptor = findMethod(kNotificationsWatch.info.path);
+    ASSERT_NE(descriptor, nullptr) << path;
+    EXPECT_TRUE(descriptor->server_streaming()) << path << " must be a server-streaming RPC";
+    EXPECT_FALSE(descriptor->client_streaming()) << path;
+    EXPECT_EQ(std::string(descriptor->input_type()->full_name()),
+              std::string(notificationsv1::WatchNotificationsRequest::descriptor()->full_name()));
+    EXPECT_EQ(std::string(descriptor->output_type()->full_name()),
+              std::string(notificationsv1::NotificationEvent::descriptor()->full_name()));
+    EXPECT_EQ(kNotificationsWatch.info.auth, network::AuthRequirement::Required);
+    EXPECT_EQ(kNotificationsWatch.info.idempotency, network::Idempotency::Unknown) << "streams are never retried";
+}
+#endif
 
 TEST(MethodTableTest, PublicProceduresMatchTheServersPublicEdge) {
     // apps/server/cmd/server/main.go: publicProcedures = Register, Login, RefreshToken, Logout.

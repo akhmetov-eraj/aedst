@@ -8,6 +8,9 @@
 #if defined(AEDST_PLATFORM_HAS_DBUS)
 #include "dbus_notification_service.hpp"
 #endif
+#if defined(AEDST_PLATFORM_HAS_WINDOWS_TOAST)
+#include "windows_toast_notification_service.hpp"
+#endif
 
 namespace aedst::platform {
 namespace {
@@ -23,6 +26,12 @@ public:
 
     void show(std::string_view title, std::string_view body, NotificationSeverity severity) override {
         target_.show(title, body, severity);
+    }
+
+    void showRequest(const NotificationRequest& request) override { target_.showRequest(request); }
+
+    void setActivationHandler(NotificationActivationHandler handler) override {
+        target_.setActivationHandler(std::move(handler));
     }
 
 private:
@@ -48,6 +57,16 @@ void InAppNotificationService::show(std::string_view title, std::string_view bod
 
 std::unique_ptr<NotificationService> makeNotificationService(NotificationService& inAppFallback,
                                                              NotificationService* nativeDesktop) {
+#if defined(AEDST_PLATFORM_HAS_WINDOWS_TOAST)
+    // Native toast with an action button and click activation. The tray balloon (or the in-app toast) takes over
+    // when Windows refuses toasts (disabled by the user or by policy, no Start Menu shortcut, COM failure).
+    NotificationService& toastFallback =
+        (nativeDesktop != nullptr && nativeDesktop->isAvailable()) ? *nativeDesktop : inAppFallback;
+    auto toast = std::make_unique<WindowsToastNotificationService>(toastFallback);
+    if (toast->isAvailable()) {
+        return toast;
+    }
+#endif
 #if defined(AEDST_PLATFORM_HAS_DBUS)
     auto native = std::make_unique<DBusNotificationService>(inAppFallback);
     if (native->isAvailable()) {

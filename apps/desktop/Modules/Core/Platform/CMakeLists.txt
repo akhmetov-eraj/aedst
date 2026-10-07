@@ -16,12 +16,14 @@ add_library(AedstPlatform STATIC
     include/aedst/platform/notification_service.hpp
     include/aedst/platform/platform_info.hpp
     include/aedst/platform/single_instance_guard.hpp
+    include/aedst/platform/toast_xml.hpp
     include/aedst/platform/tray_notification_service.hpp
     src/autostart.cpp
     src/deep_link.cpp
     src/notification_service.cpp
     src/platform_info.cpp
     src/single_instance_guard.cpp
+    src/toast_xml.cpp
     src/tray_notification_service.cpp
 )
 add_library(Aedst::Platform ALIAS AedstPlatform)
@@ -47,6 +49,13 @@ endif()
 
 if(WIN32)
     target_compile_definitions(AedstPlatform PRIVATE NOMINMAX WIN32_LEAN_AND_MEAN)
+    # Native toasts through C++/WinRT (headers ship with the Windows SDK, no extra package): see
+    # docs/adr/0027-realtime-notifications.md. WindowsApp is the umbrella import library for the WinRT APIs.
+    target_sources(AedstPlatform PRIVATE
+        src/windows_toast_notification_service.hpp
+        src/windows_toast_notification_service.cpp)
+    target_link_libraries(AedstPlatform PRIVATE WindowsApp ole32 shell32 propsys runtimeobject)
+    target_compile_definitions(AedstPlatform PRIVATE AEDST_PLATFORM_HAS_WINDOWS_TOAST)
 endif()
 
 aedst_set_warnings(AedstPlatform)
