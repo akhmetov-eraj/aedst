@@ -1,30 +1,34 @@
 package com.aedst.core.analytics
 
-import android.content.Context
-import com.google.firebase.analytics.FirebaseAnalytics
-import com.google.firebase.crashlytics.FirebaseCrashlytics
-import com.google.firebase.perf.FirebasePerformance
+import com.aedst.core.common.AppInitializer
+import com.aedst.core.common.ErrorReporter
+import com.aedst.core.network.HttpTelemetry
+import dagger.Binds
 import dagger.Module
-import dagger.Provides
 import dagger.hilt.InstallIn
-import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
-import javax.inject.Singleton
+import dagger.multibindings.IntoSet
 
 @Module
 @InstallIn(SingletonComponent::class)
-object AnalyticsModule {
+abstract class AnalyticsModule {
 
-    @Provides
-    @Singleton
-    fun provideAnalyticsTracker(@ApplicationContext context: Context): AnalyticsTracker =
-        if (BuildConfig.ANALYTICS_ENABLED) {
-            FirebaseAnalyticsTracker(
-                FirebaseAnalytics.getInstance(context),
-                FirebaseCrashlytics.getInstance(),
-                FirebasePerformance.getInstance(),
-            )
-        } else {
-            NoOpAnalyticsTracker()
-        }
+    @Binds
+    abstract fun bindAnalyticsTracker(impl: PostHogAnalytics): AnalyticsTracker
+
+    @Binds
+    abstract fun bindFeatureFlags(impl: PostHogAnalytics): FeatureFlags
+
+    @Binds
+    abstract fun bindConsentStore(impl: DataStoreAnalyticsConsentStore): AnalyticsConsentStore
+
+    @Binds
+    abstract fun bindErrorReporter(impl: SentryErrorReporter): ErrorReporter
+
+    @Binds
+    abstract fun bindHttpTelemetry(impl: SentryHttpTelemetry): HttpTelemetry
+
+    @Binds
+    @IntoSet
+    abstract fun bindTelemetryInitializer(impl: TelemetryInitializer): AppInitializer
 }

@@ -16,16 +16,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
 import com.aedst.core.ui.theme.AedstSpacing
 import com.aedst.core.ui.theme.AedstTheme
 
 /** Definition of a single [AedstDataTable] column: header label, relative width, and cell renderer. */
-data class AedstTableColumn<T>(
-    val header: String,
-    val weight: Float = 1f,
-    val cell: @Composable (T) -> Unit,
-)
+data class AedstTableColumn<T>(val header: String, val weight: Float = 1f, val cell: @Composable (T) -> Unit)
 
 /**
  * Simple tabular data list: a bold header row followed by a lazily-composed, zebra-striped row

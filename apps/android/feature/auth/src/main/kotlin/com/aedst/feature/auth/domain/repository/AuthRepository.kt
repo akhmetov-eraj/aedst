@@ -12,7 +12,9 @@ import kotlinx.coroutines.flow.Flow
 interface AuthRepository {
     val session: Flow<AuthSession?>
 
-    suspend fun login(credentials: Credentials, deviceId: String): AuthSession
+    /** Signs in; the per-installation device id is supplied by the data layer, not the caller. */
+    suspend fun login(credentials: Credentials): AuthSession
 
+    /** Best-effort server-side revoke, then always clears the local session. */
     suspend fun logout()
 }

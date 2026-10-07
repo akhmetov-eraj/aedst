@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accessibility descriptions for design-system components -->
+    <string name="aedst_a11y_collapse">Пӯшидан</string>
+    <string name="aedst_a11y_expand">Кушодан</string>
+    <string name="aedst_a11y_avatar">Аватар</string>
+    <string name="aedst_a11y_avatar_named">Аватар: %1$s</string>
+    <string name="aedst_a11y_otp_progress">Рамзи якбора: %1$d аз %2$d рақам ворид шуд</string>
+    <string name="aedst_a11y_previous_page">Саҳифаи қаблӣ</string>
+    <string name="aedst_a11y_next_page">Саҳифаи навбатӣ</string>
+    <string name="aedst_a11y_page">Саҳифаи %1$d</string>
+    <string name="aedst_a11y_hide_password">Пинҳон кардани парол</string>
+    <string name="aedst_a11y_show_password">Нишон додани парол</string>
+    <string name="aedst_a11y_loading">Боргирӣ</string>
+
+    <!-- User-facing text for each AedstError kind (see AedstError.userMessageRes) -->
+    <string name="aedst_error_offline">Пайвастшавӣ ба интернет нест. Шабакаро санҷед ва бори дигар кӯшиш кунед.</string>
+    <string name="aedst_error_network">Пайваст шудан ба сервер имконнопазир аст. Баъдтар кӯшиш кунед.</string>
+    <string name="aedst_error_unauthorized">Маълумот нодуруст аст ё сессия ба охир расидааст. Дубора ворид шавед.</string>
+    <string name="aedst_error_not_found">Маълумоти дархостшуда ёфт нашуд.</string>
+    <string name="aedst_error_validation">Маълумоти воридшударо санҷед.</string>
+    <string name="aedst_error_unknown">Хатогӣ рух дод. Бори дигар кӯшиш кунед.</string>
+    <string name="aedst_error_forbidden">Шумо ба ин қисмат дастрасӣ надоред.</string>
+    <string name="aedst_error_conflict">Маълумот тағйир ёфт. Навсозӣ кунед ва бори дигар кӯшиш кунед.</string>
+    <string name="aedst_error_rate_limited">Дархостҳо аз ҳад зиёданд. Каме интизор шавед ва бори дигар кӯшиш кунед.</string>
+
+    <string name="aedst_offline_banner">Пайвастшавӣ ба интернет нест</string>
+</resources>

@@ -4,6 +4,7 @@
     <string name="auth_login_password_label">Пароль</string>
     <string name="auth_login_invalid_email">Введите корректный email.</string>
     <string name="auth_login_invalid_password">Введите пароль.</string>
+    <string name="auth_login_password_too_long">Пароль не должен быть длиннее 128 символов.</string>
     <string name="auth_login_submit">Войти</string>
     <string name="auth_login_switch_prompt">Нет аккаунта?</string>
     <string name="auth_login_switch_action">Создать</string>
@@ -21,4 +22,5 @@
 
     <string name="auth_sign_out">Выйти</string>
     <string name="auth_signed_in_as">Вы вошли как %1$s</string>
+    <string name="auth_analytics_consent">Отправлять анонимную статистику использования</string>
 </resources>

@@ -5,13 +5,11 @@ plugins {
 }
 
 // Thin Android TV counterpart to `:app` (the Android-native equivalent of
-// Apple's `App_iOS`/`App_macOS` split — see docs/architecture-android.md and
-// AGENTS.md). Intentionally skips the Firebase (`google-services`,
-// `firebase-crashlytics`, `firebase-perf`) and `baseline-profile` plugins
-// that `:app` applies: those are per-application-module wiring
-// (google-services.json, a benchmark target) this module doesn't have yet,
-// not a divergence in what's approved. `:core:analytics` still carries its
-// own Firebase dependency internally regardless.
+// Apple's `App_iOS`/`App_macOS` split — see docs/architecture-android.md).
+// Intentionally skips the `google-services`, `sentry` and `baseline-profile`
+// plugins `:app` applies: those are per-application-module wiring
+// (google-services.json, R8 mapping upload, a benchmark target) this module
+// doesn't have yet. Sentry/PostHog still run here through `:core:analytics`.
 android {
     namespace = "com.aedst.android.tv"
 

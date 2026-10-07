@@ -29,11 +29,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
+import com.aedst.core.ui.R
 import com.aedst.core.ui.theme.AedstSpacing
 import com.aedst.core.ui.theme.AedstTheme
 
@@ -54,7 +56,9 @@ fun AedstExpandableSection(
         targetValue = if (isExpanded) 0f else -90f,
         label = "AedstExpandableSectionChevron",
     )
-    val toggleDescription = if (isExpanded) "Collapse" else "Expand"
+    val toggleDescription = stringResource(
+        if (isExpanded) R.string.aedst_a11y_collapse else R.string.aedst_a11y_expand,
+    )
 
     Column(modifier = modifier) {
         Row(

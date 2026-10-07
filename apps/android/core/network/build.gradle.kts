@@ -4,6 +4,12 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Release TLS pins: comma-separated `sha256/<base64 SPKI hash>` values (live key + at least one backup), passed as
+// `-Paedst.certPins=...` (CI secret / ~/.gradle/gradle.properties). Never committed: they are per-environment.
+val certPins = providers.gradleProperty("aedst.certPins").orElse("")
+val allowUnpinnedRelease = providers.gradleProperty("aedst.allowUnpinnedRelease").map(String::toBoolean).orElse(false)
+val clientVersion = providers.gradleProperty("aedst.versionName").orElse("1.0.0")
+
 android {
     namespace = "com.aedst.core.network"
 
@@ -11,12 +17,18 @@ android {
         buildConfig = true
     }
 
+    defaultConfig {
+        buildConfigField("String", "CLIENT_VERSION", "\"${clientVersion.get()}\"")
+    }
+
     buildTypes {
         debug {
             buildConfigField("String", "BASE_URL", "\"https://api.dev.aedst.example/\"")
+            buildConfigField("String", "CERT_PINS", "\"\"")
         }
         release {
             buildConfigField("String", "BASE_URL", "\"https://api.aedst.example/\"")
+            buildConfigField("String", "CERT_PINS", "\"${certPins.get()}\"")
         }
     }
 
@@ -26,7 +38,10 @@ android {
     // Nothing under kotlin-gen is committed (see .gitignore); run `make
     // generate` after cloning, before opening the project.
     sourceSets {
-        getByName("main").kotlin.srcDir("src/main/kotlin-gen")
+        // Java (protobuf messages) and Kotlin (DSL + connect client) gencode share one
+        // directory; each compiler only takes its own file type.
+        getByName("main").java.directories.add("src/main/kotlin-gen")
+        getByName("main").kotlin.directories.add("src/main/kotlin-gen")
     }
 }
 
@@ -50,4 +65,21 @@ dependencies {
     testImplementation(libs.junit4)
     testImplementation(libs.okhttp.mockwebserver)
     testImplementation(libs.kotlinx.coroutines.test)
+}
+
+// A release build without TLS pinning is a security regression, so refuse to produce one by accident. `app/` wires
+// this into its `preReleaseBuild`. Opt out explicitly with -Paedst.allowUnpinnedRelease=true (e.g. a staging flavour).
+tasks.register("verifyReleaseCertPins") {
+    group = "verification"
+    description = "Fails if a release build would ship without TLS certificate pins."
+    val pins = certPins
+    val allowUnpinned = allowUnpinnedRelease
+    doLast {
+        if (pins.get().isBlank() && !allowUnpinned.get()) {
+            throw GradleException(
+                "Release build has no TLS pins. Pass -Paedst.certPins=sha256/<live>,sha256/<backup> " +
+                    "(or -Paedst.allowUnpinnedRelease=true for a non-production build).",
+            )
+        }
+    }
 }

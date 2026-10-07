@@ -13,4 +13,11 @@
     <string name="common_error_title">Хатое рух дод</string>
     <string name="common_error_not_found_title">Саҳифа ёфт нашуд</string>
     <string name="common_error_not_found_description">Саҳифае, ки шумо меҷӯед, вуҷуд надорад ё кӯчонида шудааст.</string>
+
+    <string name="nav_tasks">Вазифаҳо</string>
+    <string name="nav_search">Ҷустуҷӯ</string>
+    <string name="nav_notifications">Огоҳиномаҳо</string>
+    <string name="nav_media">Файлҳо</string>
+    <string name="nav_account">Ҳисоб</string>
+    <string name="nav_admin">Маъмур</string>
 </resources>

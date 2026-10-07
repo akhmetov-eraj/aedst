@@ -28,7 +28,7 @@ Declared as an `api(project(":core:ui"))` dependency (so `:app-tv` gets these tr
 
 All four are thin wrappers, analogous to how `core:ui`'s `Aedst*` components wrap Material3 primitives — no business logic, no duplicated layout engine, just TV-appropriate defaults (Aedst spacing tokens, sane arrangement/state defaults) around the official `androidx.tv` primitives.
 
-Only `androidx.tv:tv-material` is declared in `build.gradle.kts`; `androidx.tv:tv-foundation` (which provides `TvLazyRow`/`TvLazyColumn`) comes in transitively through it.
+Only `androidx.tv:tv-material` is declared in `build.gradle.kts`; `androidx.tv:tv-foundation` is no longer needed (deprecated; `TvLazyRow`/`TvLazyColumn` wrap the standard Compose Foundation `LazyRow`/`LazyColumn`).
 
 ## Verification status
 

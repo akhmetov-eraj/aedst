@@ -13,14 +13,18 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.Button as Material3Button
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
+import com.aedst.core.ui.R
 import com.aedst.core.ui.theme.AedstShapesScale
+import androidx.compose.material3.Button as Material3Button
 
 /** Visual treatment of [AedstButton], mirroring web's `button.tsx` `variant` prop. */
 enum class AedstButtonVariant {
@@ -70,7 +74,15 @@ fun AedstButton(
         AedstButtonSize.DEFAULT -> Modifier.height(40.dp)
     }
     val shape = AedstShapesScale.medium
-    val buttonModifier = modifier.then(heightModifier).semantics { if (!isEnabled) disabled() }
+    // While loading the visible content is a spinner; keep the button named and announce its state.
+    val loadingDescription = stringResource(R.string.aedst_a11y_loading)
+    val buttonModifier = modifier.then(heightModifier).semantics {
+        if (!isEnabled) disabled()
+        if (loading) {
+            contentDescription = text
+            stateDescription = loadingDescription
+        }
+    }
 
     val label: @Composable () -> Unit = {
         ButtonContent(text = text, loading = loading, leadingIcon = leadingIcon)
@@ -144,11 +156,7 @@ fun AedstButton(
 }
 
 @Composable
-private fun ButtonContent(
-    text: String,
-    loading: Boolean,
-    leadingIcon: (@Composable RowScope.() -> Unit)?,
-) {
+private fun ButtonContent(text: String, loading: Boolean, leadingIcon: (@Composable RowScope.() -> Unit)?) {
     if (loading) {
         CircularProgressIndicator(
             modifier = Modifier.size(16.dp),

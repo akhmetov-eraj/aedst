@@ -4,6 +4,7 @@
     <string name="auth_login_password_label">كلمة المرور</string>
     <string name="auth_login_invalid_email">أدخل بريدًا إلكترونيًا صحيحًا.</string>
     <string name="auth_login_invalid_password">أدخل كلمة المرور.</string>
+    <string name="auth_login_password_too_long">يجب ألا تتجاوز كلمة المرور 128 حرفًا.</string>
     <string name="auth_login_submit">تسجيل الدخول</string>
     <string name="auth_login_switch_prompt">ليس لديك حساب؟</string>
     <string name="auth_login_switch_action">إنشاء حساب</string>
@@ -21,4 +22,5 @@
 
     <string name="auth_sign_out">تسجيل الخروج</string>
     <string name="auth_signed_in_as">تم تسجيل الدخول باسم %1$s</string>
+    <string name="auth_analytics_consent">مشاركة إحصاءات استخدام مجهولة الهوية</string>
 </resources>

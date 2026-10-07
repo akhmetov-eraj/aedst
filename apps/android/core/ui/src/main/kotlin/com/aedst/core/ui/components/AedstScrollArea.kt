@@ -27,10 +27,7 @@ import com.aedst.core.ui.theme.AedstTheme
  * later without touching every call site.
  */
 @Composable
-fun AedstScrollArea(
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit,
-) {
+fun AedstScrollArea(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = modifier.verticalScroll(rememberScrollState()),
         content = content,
@@ -39,10 +36,7 @@ fun AedstScrollArea(
 
 /** Horizontal counterpart of [AedstScrollArea]; see its KDoc for why this wrapper exists. */
 @Composable
-fun AedstHorizontalScrollArea(
-    modifier: Modifier = Modifier,
-    content: @Composable RowScope.() -> Unit,
-) {
+fun AedstHorizontalScrollArea(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
         modifier = modifier.horizontalScroll(rememberScrollState()),
         content = content,

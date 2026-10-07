@@ -1,12 +1,11 @@
 plugins {
     alias(libs.plugins.android.test)
-    alias(libs.plugins.kotlin.android)
-    alias(libs.plugins.androidx.benchmark)
+    alias(libs.plugins.baseline.profile)
 }
 
 android {
     namespace = "com.aedst.benchmark"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 28
@@ -16,22 +15,17 @@ android {
 
     targetProjectPath = ":app"
 
-    testOptions {
-        managedDevices {
-            devices {
-                // register a Gradle Managed Device here once CI has an emulator image pinned;
-                // local `connectedCheck` against a physical/emulated device works without one.
-            }
-        }
-    }
+    // Register a Gradle Managed Device via `testOptions.managedDevices.localDevices`
+    // once CI has an emulator image pinned; local `connectedCheck` against a
+    // physical/emulated device works without one.
 
-    buildTypes {
-        create("benchmark") {
-            isDebuggable = true
-            signingConfig = signingConfigs.getByName("debug")
-            matchingFallbacks += listOf("release")
-        }
-    }
+    // Build types (`benchmarkRelease`, `nonMinifiedRelease`) are created by the
+    // androidx.baselineprofile plugin on both this producer and `:app`.
+}
+
+baselineProfile {
+    // Physical device / emulator required; no Gradle Managed Device is pinned yet.
+    useConnectedDevices = true
 }
 
 dependencies {

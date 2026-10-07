@@ -5,6 +5,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.rememberNavController
 import com.aedst.core.navigation.AedstNavGraph
+import com.aedst.core.navigation.AedstRoutes
 import com.aedst.feature.auth.navigation.AuthNavGraph
 
 /**
@@ -17,7 +18,8 @@ import com.aedst.feature.auth.navigation.AuthNavGraph
  * docs/architecture-android.md).
  */
 private val featureGraphs: List<AedstNavGraph> = listOf(
-    AuthNavGraph(),
+    // The TV app does not register the tasks graph yet, so sign-in lands on the account screen.
+    AuthNavGraph(homeRoute = AedstRoutes.AUTH_ACCOUNT),
 )
 
 @Composable

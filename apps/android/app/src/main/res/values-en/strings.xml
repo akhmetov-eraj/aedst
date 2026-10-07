@@ -13,4 +13,11 @@
     <string name="common_error_title">Something went wrong</string>
     <string name="common_error_not_found_title">Page not found</string>
     <string name="common_error_not_found_description">The page you\'re looking for doesn\'t exist or has been moved.</string>
+
+    <string name="nav_tasks">Tasks</string>
+    <string name="nav_search">Search</string>
+    <string name="nav_notifications">Inbox</string>
+    <string name="nav_media">Files</string>
+    <string name="nav_account">Account</string>
+    <string name="nav_admin">Admin</string>
 </resources>

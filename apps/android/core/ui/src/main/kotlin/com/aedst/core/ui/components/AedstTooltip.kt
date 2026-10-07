@@ -26,11 +26,7 @@ import com.aedst.core.ui.theme.AedstTheme
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AedstTooltip(
-    tooltipText: String,
-    modifier: Modifier = Modifier,
-    content: @Composable () -> Unit,
-) {
+fun AedstTooltip(tooltipText: String, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     TooltipBox(
         positionProvider = TooltipDefaults.rememberTooltipPositionProvider(),
         tooltip = { PlainTooltip { Text(tooltipText) } },

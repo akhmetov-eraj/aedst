@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accessibility descriptions for design-system components -->
+    <string name="aedst_a11y_collapse">Collapse</string>
+    <string name="aedst_a11y_expand">Expand</string>
+    <string name="aedst_a11y_avatar">Avatar</string>
+    <string name="aedst_a11y_avatar_named">Avatar: %1$s</string>
+    <string name="aedst_a11y_otp_progress">One-time passcode: %1$d of %2$d digits entered</string>
+    <string name="aedst_a11y_previous_page">Previous page</string>
+    <string name="aedst_a11y_next_page">Next page</string>
+    <string name="aedst_a11y_page">Page %1$d</string>
+    <string name="aedst_a11y_hide_password">Hide password</string>
+    <string name="aedst_a11y_show_password">Show password</string>
+    <string name="aedst_a11y_loading">Loading</string>
+
+    <!-- User-facing text for each AedstError kind (see AedstError.userMessageRes) -->
+    <string name="aedst_error_offline">No internet connection. Check your network and try again.</string>
+    <string name="aedst_error_network">Couldn’t reach the server. Please try again later.</string>
+    <string name="aedst_error_unauthorized">Incorrect details or your session has expired. Please sign in again.</string>
+    <string name="aedst_error_not_found">The requested data wasn’t found.</string>
+    <string name="aedst_error_validation">Please check the information you entered.</string>
+    <string name="aedst_error_unknown">Something went wrong. Please try again.</string>
+    <string name="aedst_error_forbidden">You don’t have access to this.</string>
+    <string name="aedst_error_conflict">This item has changed. Refresh and try again.</string>
+    <string name="aedst_error_rate_limited">Too many requests. Wait a moment and try again.</string>
+
+    <string name="aedst_offline_banner">No internet connection</string>
+</resources>

@@ -9,11 +9,11 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import androidx.tv.material3.Surface
 import androidx.tv.material3.Text
 import com.aedst.core.ui.theme.AedstSpacing
 import com.aedst.core.ui.theme.AedstTheme
+import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 
 /**
  * 10-foot-UI header bar. `tv-material3` has no `TopAppBar` composable of its
@@ -24,11 +24,7 @@ import com.aedst.core.ui.theme.AedstTheme
  * which wraps Material3's phone-oriented `TopAppBar` — see this module's README.
  */
 @Composable
-fun TvTopAppBar(
-    title: String,
-    modifier: Modifier = Modifier,
-    actions: @Composable RowScope.() -> Unit = {},
-) {
+fun TvTopAppBar(title: String, modifier: Modifier = Modifier, actions: @Composable RowScope.() -> Unit = {}) {
     Surface(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier

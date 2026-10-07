@@ -13,4 +13,11 @@
     <string name="common_error_title">حدث خطأ ما</string>
     <string name="common_error_not_found_title">الصفحة غير موجودة</string>
     <string name="common_error_not_found_description">الصفحة التي تبحث عنها غير موجودة أو تم نقلها.</string>
+
+    <string name="nav_tasks">المهام</string>
+    <string name="nav_search">بحث</string>
+    <string name="nav_notifications">الإشعارات</string>
+    <string name="nav_media">الملفات</string>
+    <string name="nav_account">الحساب</string>
+    <string name="nav_admin">الإدارة</string>
 </resources>

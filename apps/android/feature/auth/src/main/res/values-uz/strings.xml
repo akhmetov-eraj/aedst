@@ -4,6 +4,7 @@
     <string name="auth_login_password_label">Parol</string>
     <string name="auth_login_invalid_email">To\'g\'ri email manzilini kiriting.</string>
     <string name="auth_login_invalid_password">Parolni kiriting.</string>
+    <string name="auth_login_password_too_long">Parol 128 belgidan oshmasligi kerak.</string>
     <string name="auth_login_submit">Kirish</string>
     <string name="auth_login_switch_prompt">Hisobingiz yo\'qmi?</string>
     <string name="auth_login_switch_action">Yaratish</string>
@@ -21,4 +22,5 @@
 
     <string name="auth_sign_out">Chiqish</string>
     <string name="auth_signed_in_as">%1$s sifatida kirdingiz</string>
+    <string name="auth_analytics_consent">Anonim foydalanish statistikasini yuborish</string>
 </resources>

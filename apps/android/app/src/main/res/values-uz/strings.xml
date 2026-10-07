@@ -13,4 +13,11 @@
     <string name="common_error_title">Xatolik yuz berdi</string>
     <string name="common_error_not_found_title">Sahifa topilmadi</string>
     <string name="common_error_not_found_description">Siz izlagan sahifa mavjud emas yoki koʻchirilgan.</string>
+
+    <string name="nav_tasks">Vazifalar</string>
+    <string name="nav_search">Qidiruv</string>
+    <string name="nav_notifications">Xabarlar</string>
+    <string name="nav_media">Fayllar</string>
+    <string name="nav_account">Hisob</string>
+    <string name="nav_admin">Admin</string>
 </resources>

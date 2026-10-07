@@ -9,4 +9,6 @@ android {
 
 dependencies {
     implementation(libs.navigation.compose)
+
+    testImplementation(libs.junit4)
 }

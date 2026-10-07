@@ -1,6 +1,7 @@
 package com.aedst.core.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -26,22 +27,18 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import androidx.compose.animation.core.animateFloatAsState
+import com.aedst.core.ui.R
 import com.aedst.core.ui.theme.AedstSpacing
 import com.aedst.core.ui.theme.AedstTheme
 
 /** A single expandable entry rendered by [AedstAccordion]. */
-data class AedstAccordionItem(
-    val id: String,
-    val title: String,
-    val content: @Composable () -> Unit,
-)
+data class AedstAccordionItem(val id: String, val title: String, val content: @Composable () -> Unit)
 
 /**
  * Vertical list of expandable items, distinct from the single-section [AedstExpandableSection].
@@ -79,11 +76,7 @@ fun AedstAccordion(
 }
 
 @Composable
-private fun AccordionRow(
-    item: AedstAccordionItem,
-    isExpanded: Boolean,
-    onToggle: () -> Unit,
-) {
+private fun AccordionRow(item: AedstAccordionItem, isExpanded: Boolean, onToggle: () -> Unit) {
     val rotation by animateFloatAsState(targetValue = if (isExpanded) 180f else 0f, label = "chevronRotation")
 
     Column(modifier = Modifier.fillMaxWidth()) {
@@ -104,7 +97,9 @@ private fun AccordionRow(
             )
             Icon(
                 imageVector = Icons.Default.KeyboardArrowDown,
-                contentDescription = if (isExpanded) "Collapse" else "Expand",
+                contentDescription = stringResource(
+                    if (isExpanded) R.string.aedst_a11y_collapse else R.string.aedst_a11y_expand,
+                ),
                 modifier = Modifier.rotate(rotation),
             )
         }

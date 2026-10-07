@@ -4,15 +4,18 @@ Compose equivalent of the web app's shadcn/ui component library (`apps/web/src/s
 
 ## Tokens (`theme/`)
 
+Design tokens are **generated** from `packages/design-tokens/tokens` (single source for all platforms; see that README). Do not edit the `Aedst*` files marked GENERATED — edit the JSON and run `pnpm --dir packages/design-tokens build`.
+
 | File | Purpose |
 |---|---|
-| `theme/Color.kt` | Full light+dark semantic palette, ported from web's `globals.css` OKLCH values (background/foreground, card, popover, primary/secondary/muted/accent + foregrounds, destructive, border/input/ring, chart-1..5, sidebar-*). |
-| `theme/Spacing.kt` | `AedstSpacing` scale (`none`..`giant`). |
-| `theme/Radius.kt` | `AedstRadius` scale + `AedstShapesScale` (small/medium/large/extraLarge/pill). |
-| `theme/Elevation.kt` | `AedstElevation` scale (`none`..`level5`). |
+| `theme/AedstLightPalette.kt`, `theme/AedstDarkPalette.kt` | GENERATED. Full light/dark semantic palettes (background/foreground, card, popover, primary/secondary/muted/accent + foregrounds, destructive, success, warning, border/input/ring, chart1..5, sidebar*). |
+| `theme/AedstSpacing.kt`, `AedstRadius.kt`, `AedstElevation.kt` | GENERATED. `Dp` scales (`AedstSpacing.none`..`giant`, `AedstRadius.xs`..`full`, `AedstElevation.none`..`level5`). |
+| `theme/AedstTypeScale.kt` | GENERATED. Font size (`sp`), line height (`Dp`) and weight (`const val`) per Material text style. |
+| `theme/AedstMotion.kt` | GENERATED. Animation durations in ms (`const val`). |
+| `theme/AedstShapesScale.kt` | `RoundedCornerShape`s built from the generated radius scale. |
 | `theme/ExtendedColors.kt` | `AedstExtendedColors` + `LocalAedstExtendedColors` CompositionLocal for tokens with no Material3 `ColorScheme` slot (chart series, sidebar family). Access via `AedstThemeExtras.extendedColors` inside any `@Composable`. |
-| `theme/Theme.kt` | `AedstTheme` — builds `lightColorScheme`/`darkColorScheme` from the palette and provides both the Material3 scheme and `LocalAedstExtendedColors`. |
-| `theme/Type.kt` | `AedstTypography` (display/headline/title/body/label scales). |
+| `theme/Theme.kt` | `AedstTheme` — builds `lightColorScheme`/`darkColorScheme` from the generated palettes and provides both the Material3 scheme and `LocalAedstExtendedColors`. |
+| `theme/Type.kt` | `AedstTypography` built from `AedstTypeScale`. |
 | `theme/Shape.kt` | Built from `AedstShapesScale`. |
 
 ## Components (`components/`)

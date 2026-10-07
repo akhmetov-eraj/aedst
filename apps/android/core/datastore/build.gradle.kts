@@ -26,6 +26,7 @@ protobuf {
 dependencies {
     implementation(project(":core:common"))
 
-    implementation(libs.datastore.core)
-    implementation(libs.protobuf.javalite)
+    // DataStore<UserPrefs> and the generated UserPrefs type are this module's API (core/analytics, feature/notifications).
+    api(libs.datastore.core)
+    api(libs.protobuf.javalite)
 }

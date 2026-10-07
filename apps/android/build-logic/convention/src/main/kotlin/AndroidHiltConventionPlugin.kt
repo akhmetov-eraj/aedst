@@ -10,8 +10,8 @@ class AndroidHiltConventionPlugin : Plugin<Project> {
             pluginManager.apply("com.google.dagger.hilt.android")
 
             dependencies {
-                add("implementation", libs.findLibrary("hilt-android").get())
-                add("ksp", libs.findLibrary("hilt-compiler").get())
+                add("implementation", versionCatalog.findLibrary("hilt-android").get())
+                add("ksp", versionCatalog.findLibrary("hilt-compiler").get())
             }
         }
     }

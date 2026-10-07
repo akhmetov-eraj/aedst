@@ -24,6 +24,8 @@ class DetektConventionPlugin : Plugin<Project> {
             // analyze generated code.
             tasks.withType(Detekt::class.java).configureEach {
                 exclude("**/kotlin-gen/**")
+                // detekt 1.23 rejects newer JDK targets; sources are compiled for 17 anyway.
+                jvmTarget = "17"
             }
             extensions.configure<KtlintExtension> {
                 filter {

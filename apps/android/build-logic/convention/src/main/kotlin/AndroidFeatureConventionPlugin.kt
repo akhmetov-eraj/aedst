@@ -19,15 +19,15 @@ class AndroidFeatureConventionPlugin : Plugin<Project> {
                 add("implementation", project(":core:common"))
                 add("implementation", project(":core:ui"))
                 add("implementation", project(":core:navigation"))
-                add("implementation", libs.findLibrary("navigation-compose").get())
-                add("implementation", libs.findLibrary("hilt-navigation-compose").get())
-                add("implementation", libs.findLibrary("kotlinx-coroutines-android").get())
+                add("implementation", versionCatalog.findLibrary("navigation-compose").get())
+                add("implementation", versionCatalog.findLibrary("hilt-navigation-compose").get())
+                add("implementation", versionCatalog.findLibrary("kotlinx-coroutines-android").get())
 
                 add("testImplementation", project(":core:testing"))
-                add("testImplementation", libs.findLibrary("junit4").get())
-                add("testImplementation", libs.findLibrary("mockk").get())
-                add("testImplementation", libs.findLibrary("turbine").get())
-                add("testImplementation", libs.findLibrary("kotlinx-coroutines-test").get())
+                add("testImplementation", versionCatalog.findLibrary("junit4").get())
+                add("testImplementation", versionCatalog.findLibrary("mockk").get())
+                add("testImplementation", versionCatalog.findLibrary("turbine").get())
+                add("testImplementation", versionCatalog.findLibrary("kotlinx-coroutines-test").get())
             }
         }
     }

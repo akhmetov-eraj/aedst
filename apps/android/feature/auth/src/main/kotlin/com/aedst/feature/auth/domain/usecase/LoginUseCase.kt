@@ -7,12 +7,12 @@ import com.aedst.feature.auth.domain.model.Credentials
 import com.aedst.feature.auth.domain.repository.AuthRepository
 import javax.inject.Inject
 
-data class LoginParams(val email: String, val password: String, val deviceId: String)
+data class LoginParams(val email: String, val password: String)
 
 class LoginUseCase @Inject constructor(
     private val authRepository: AuthRepository,
     dispatcherProvider: DispatcherProvider,
 ) : UseCase<LoginParams, AuthSession>(dispatcherProvider) {
     override suspend fun execute(params: LoginParams): AuthSession =
-        authRepository.login(Credentials(params.email, params.password), params.deviceId)
+        authRepository.login(Credentials(params.email, params.password))
 }

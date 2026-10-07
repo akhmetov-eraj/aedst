@@ -10,12 +10,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.aedst.core.ui.R
 import com.aedst.core.ui.theme.AedstTheme
 
 /** Diameter of [AedstAvatar], mirroring web's `avatar.tsx` size variants. */
@@ -42,6 +44,7 @@ private fun AedstAvatarSize.toFontSize() = when (this) {
  * [imageUrl] is accepted for future use but is not dereferenced — the component always renders
  * an initials fallback.
  */
+@Suppress("UnusedParameter")
 @Composable
 fun AedstAvatar(
     modifier: Modifier = Modifier,
@@ -51,11 +54,16 @@ fun AedstAvatar(
 ) {
     val diameter = size.toDp()
     val label = initials?.trim()?.take(2)?.uppercase().orEmpty()
+    val description = if (label.isNotEmpty()) {
+        stringResource(R.string.aedst_a11y_avatar_named, label)
+    } else {
+        stringResource(R.string.aedst_a11y_avatar)
+    }
     Box(
         modifier = modifier
             .size(diameter)
             .background(MaterialTheme.colorScheme.secondary, CircleShape)
-            .semantics { contentDescription = if (label.isNotEmpty()) "Avatar: $label" else "Avatar" },
+            .semantics { contentDescription = description },
         contentAlignment = Alignment.Center,
     ) {
         Text(

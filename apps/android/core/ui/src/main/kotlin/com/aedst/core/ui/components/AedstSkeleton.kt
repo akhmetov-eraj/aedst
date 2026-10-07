@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
@@ -33,10 +34,7 @@ import com.aedst.core.ui.theme.AedstTheme
  * default height is imposed) so this can stand in for anything from a text line to an avatar.
  */
 @Composable
-fun AedstSkeleton(
-    modifier: Modifier = Modifier,
-    shape: Shape = AedstShapesScale.medium,
-) {
+fun AedstSkeleton(modifier: Modifier = Modifier, shape: Shape = AedstShapesScale.medium) {
     val baseColor = MaterialTheme.colorScheme.surfaceVariant
     val highlightColor = baseColor.copy(alpha = 0.4f)
     val transition = rememberInfiniteTransition(label = "aedstSkeletonShimmer")

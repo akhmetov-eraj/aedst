@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
@@ -21,13 +22,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
+import com.aedst.core.ui.R
 import com.aedst.core.ui.theme.AedstShapesScale
 import com.aedst.core.ui.theme.AedstSpacing
 import com.aedst.core.ui.theme.AedstTheme
@@ -53,6 +55,7 @@ fun AedstTextField(
     trailingIcon: (@Composable () -> Unit)? = null,
     visualTransformation: VisualTransformation = VisualTransformation.None,
     keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
     OutlinedTextField(
         value = value,
@@ -68,6 +71,7 @@ fun AedstTextField(
         trailingIcon = trailingIcon,
         visualTransformation = visualTransformation,
         keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
         singleLine = singleLine,
         shape = AedstShapesScale.medium,
     )
@@ -88,6 +92,7 @@ fun AedstPasswordTextField(
     isError: Boolean = false,
     enabled: Boolean = true,
     keyboardOptions: KeyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+    keyboardActions: KeyboardActions = KeyboardActions.Default,
 ) {
     var isVisible by remember { mutableStateOf(false) }
 
@@ -103,11 +108,14 @@ fun AedstPasswordTextField(
         singleLine = true,
         visualTransformation = if (isVisible) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
         trailingIcon = {
             IconButton(onClick = { isVisible = !isVisible }, enabled = enabled) {
                 Icon(
                     imageVector = if (isVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                    contentDescription = if (isVisible) "Hide password" else "Show password",
+                    contentDescription = stringResource(
+                        if (isVisible) R.string.aedst_a11y_hide_password else R.string.aedst_a11y_show_password,
+                    ),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }

@@ -1,7 +1,6 @@
 package com.aedst.core.ui.components
 
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -29,11 +28,7 @@ data class AedstChartPoint(val label: String, val value: Float)
  * to the largest value; labels are rendered below via a [Row] of [Text] sharing equal weights.
  */
 @Composable
-fun AedstBarChart(
-    points: List<AedstChartPoint>,
-    modifier: Modifier = Modifier,
-    barColor: Color? = null,
-) {
+fun AedstBarChart(points: List<AedstChartPoint>, modifier: Modifier = Modifier, barColor: Color? = null) {
     val resolvedColor = barColor ?: AedstThemeExtras.extendedColors.chart2
     val axisColor = MaterialTheme.colorScheme.outlineVariant
     val maxValue = points.maxOfOrNull { it.value }?.takeIf { it > 0f } ?: 1f
@@ -85,11 +80,7 @@ fun AedstBarChart(
  * normalized to the range of [points]' values.
  */
 @Composable
-fun AedstLineChart(
-    points: List<AedstChartPoint>,
-    modifier: Modifier = Modifier,
-    lineColor: Color? = null,
-) {
+fun AedstLineChart(points: List<AedstChartPoint>, modifier: Modifier = Modifier, lineColor: Color? = null) {
     val resolvedColor = lineColor ?: AedstThemeExtras.extendedColors.chart1
     val axisColor = MaterialTheme.colorScheme.outlineVariant
 

@@ -3,6 +3,7 @@ import org.gradle.api.JavaVersion
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.kotlin.dsl.configure
+import org.gradle.kotlin.dsl.dependencies
 
 /**
  * Base convention for every Android library module (`core`, `feature`).
@@ -14,7 +15,6 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
     override fun apply(target: Project) {
         with(target) {
             pluginManager.apply("com.android.library")
-            pluginManager.apply("org.jetbrains.kotlin.android")
             pluginManager.apply("aedst.detekt")
 
             extensions.configure<LibraryExtension> {
@@ -23,7 +23,11 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
                 defaultConfig {
                     minSdk = ANDROID_MIN_SDK
                     testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-                    consumerProguardFiles("consumer-rules.pro")
+                    if (file("consumer-rules.pro").exists()) consumerProguardFiles("consumer-rules.pro")
+                }
+
+                testOptions {
+                    unitTests.isIncludeAndroidResources = true
                 }
 
                 compileOptions {
@@ -37,6 +41,10 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
                 compilerOptions {
                     jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17)
                 }
+            }
+
+            dependencies {
+                add("coreLibraryDesugaring", versionCatalog.findLibrary("desugar-jdk-libs").get())
             }
         }
     }

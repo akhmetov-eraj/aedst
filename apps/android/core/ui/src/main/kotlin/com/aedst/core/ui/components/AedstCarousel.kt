@@ -25,11 +25,7 @@ import com.aedst.core.ui.theme.AedstTheme
  * Mirrors web's `carousel.tsx`.
  */
 @Composable
-fun <T> AedstCarousel(
-    items: List<T>,
-    modifier: Modifier = Modifier,
-    itemContent: @Composable (T) -> Unit,
-) {
+fun <T> AedstCarousel(items: List<T>, modifier: Modifier = Modifier, itemContent: @Composable (T) -> Unit) {
     val pagerState = rememberPagerState { items.size }
 
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -47,11 +43,7 @@ fun <T> AedstCarousel(
 }
 
 @Composable
-private fun PagerIndicator(
-    pageCount: Int,
-    currentPage: Int,
-    modifier: Modifier = Modifier,
-) {
+private fun PagerIndicator(pageCount: Int, currentPage: Int, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(AedstSpacing.xs),

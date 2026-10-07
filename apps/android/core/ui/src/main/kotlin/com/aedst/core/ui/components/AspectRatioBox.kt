@@ -21,11 +21,7 @@ import com.aedst.core.ui.theme.AedstTheme
  * reach for one shared name instead of applying the modifier ad hoc at each call site.
  */
 @Composable
-fun AspectRatioBox(
-    ratio: Float,
-    modifier: Modifier = Modifier,
-    content: @Composable BoxScope.() -> Unit,
-) {
+fun AspectRatioBox(ratio: Float, modifier: Modifier = Modifier, content: @Composable BoxScope.() -> Unit) {
     Box(
         modifier = modifier
             .fillMaxWidth()

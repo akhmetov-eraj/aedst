@@ -5,8 +5,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.semantics
@@ -29,6 +30,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.aedst.core.ui.R
 import com.aedst.core.ui.theme.AedstShapesScale
 import com.aedst.core.ui.theme.AedstSpacing
 import com.aedst.core.ui.theme.AedstTheme
@@ -48,15 +50,19 @@ fun AedstOtpInput(
     enabled: Boolean = true,
 ) {
     var isFocused by remember { mutableStateOf(false) }
+    val otpDescription = stringResource(R.string.aedst_a11y_otp_progress, value.length, length)
 
-    Box(modifier = modifier.semantics {
-        contentDescription = "One-time passcode, ${value.length} of $length digits entered"
-        if (!enabled) disabled()
-    }) {
+    Box(
+        modifier = modifier.semantics {
+            contentDescription = otpDescription
+            if (!enabled) disabled()
+        },
+    ) {
         Row(horizontalArrangement = Arrangement.spacedBy(AedstSpacing.sm)) {
             for (index in 0 until length) {
                 val char = value.getOrNull(index)?.toString() ?: ""
-                val isActiveCell = isFocused && (index == value.length || (index == length - 1 && value.length == length))
+                val isActiveCell =
+                    isFocused && (index == value.length || (index == length - 1 && value.length == length))
                 OtpCell(char = char, isActive = isActiveCell, enabled = enabled)
             }
         }

@@ -16,7 +16,7 @@ import javax.inject.Singleton
 abstract class SecurityModule {
 
     @Binds
-    abstract fun bindEncryptedPreferences(impl: EncryptedPreferencesImpl): EncryptedPreferences
+    abstract fun bindEncryptedPreferences(impl: TinkEncryptedPreferences): EncryptedPreferences
 
     @Binds
     abstract fun bindIntegrityFacade(impl: PlayIntegrityFacade): IntegrityFacade

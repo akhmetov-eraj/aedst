@@ -16,8 +16,19 @@ class ApiErrorTest {
     }
 
     @Test
-    fun `PERMISSION_DENIED maps to Unauthorized`() {
-        assertTrue(connectError(Code.PERMISSION_DENIED).toAedstError() is AedstError.Unauthorized)
+    fun `PERMISSION_DENIED maps to Forbidden`() {
+        assertTrue(connectError(Code.PERMISSION_DENIED).toAedstError() is AedstError.Forbidden)
+    }
+
+    @Test
+    fun `ABORTED and ALREADY_EXISTS map to Conflict`() {
+        assertTrue(connectError(Code.ABORTED).toAedstError() is AedstError.Conflict)
+        assertTrue(connectError(Code.ALREADY_EXISTS).toAedstError() is AedstError.Conflict)
+    }
+
+    @Test
+    fun `RESOURCE_EXHAUSTED maps to RateLimited`() {
+        assertTrue(connectError(Code.RESOURCE_EXHAUSTED).toAedstError() is AedstError.RateLimited)
     }
 
     @Test

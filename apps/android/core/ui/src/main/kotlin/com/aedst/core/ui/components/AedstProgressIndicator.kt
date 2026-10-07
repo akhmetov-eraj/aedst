@@ -49,11 +49,7 @@ fun AedstLinearProgressIndicator(progress: Float?, modifier: Modifier = Modifier
  * value in `0f..1f` renders a determinate ring and exposes `progressBarRangeInfo` semantics.
  */
 @Composable
-fun AedstCircularProgressIndicator(
-    progress: Float?,
-    modifier: Modifier = Modifier,
-    strokeWidth: Dp = 4.dp,
-) {
+fun AedstCircularProgressIndicator(progress: Float?, modifier: Modifier = Modifier, strokeWidth: Dp = 4.dp) {
     val trackedModifier = if (progress != null) {
         modifier.semantics {
             progressBarRangeInfo = ProgressBarRangeInfo(progress.coerceIn(0f, 1f), 0f..1f)

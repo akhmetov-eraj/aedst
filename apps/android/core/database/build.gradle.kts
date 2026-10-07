@@ -10,7 +10,17 @@ android {
 dependencies {
     implementation(project(":core:common"))
 
-    implementation(libs.room.runtime)
+    // The DAO/entity types are part of this module's API (core:sync builds on them).
+    api(libs.room.runtime)
     implementation(libs.room.ktx)
     ksp(libs.room.compiler)
+
+    testImplementation(project(":core:testing"))
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.room.testing)
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }

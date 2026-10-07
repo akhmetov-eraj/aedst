@@ -7,9 +7,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.tooling.preview.Preview
 import com.aedst.core.ui.theme.AedstSpacing
 import com.aedst.core.ui.theme.AedstTheme
@@ -20,11 +20,7 @@ import com.aedst.core.ui.theme.AedstTheme
  * forms without callers building the asterisk themselves.
  */
 @Composable
-fun AedstLabel(
-    text: String,
-    modifier: Modifier = Modifier,
-    required: Boolean = false,
-) {
+fun AedstLabel(text: String, modifier: Modifier = Modifier, required: Boolean = false) {
     val errorColor = MaterialTheme.colorScheme.error
     val content = if (required) {
         buildAnnotatedString {

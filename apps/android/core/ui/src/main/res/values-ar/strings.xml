@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accessibility descriptions for design-system components -->
+    <string name="aedst_a11y_collapse">طي</string>
+    <string name="aedst_a11y_expand">توسيع</string>
+    <string name="aedst_a11y_avatar">الصورة الرمزية</string>
+    <string name="aedst_a11y_avatar_named">الصورة الرمزية: %1$s</string>
+    <string name="aedst_a11y_otp_progress">رمز لمرة واحدة: تم إدخال %1$d من %2$d أرقام</string>
+    <string name="aedst_a11y_previous_page">الصفحة السابقة</string>
+    <string name="aedst_a11y_next_page">الصفحة التالية</string>
+    <string name="aedst_a11y_page">الصفحة %1$d</string>
+    <string name="aedst_a11y_hide_password">إخفاء كلمة المرور</string>
+    <string name="aedst_a11y_show_password">إظهار كلمة المرور</string>
+    <string name="aedst_a11y_loading">جارٍ التحميل</string>
+
+    <!-- User-facing text for each AedstError kind (see AedstError.userMessageRes) -->
+    <string name="aedst_error_offline">لا يوجد اتصال بالإنترنت. تحقق من الشبكة وحاول مرة أخرى.</string>
+    <string name="aedst_error_network">تعذر الاتصال بالخادم. حاول لاحقًا.</string>
+    <string name="aedst_error_unauthorized">بيانات غير صحيحة أو انتهت الجلسة. سجّل الدخول مرة أخرى.</string>
+    <string name="aedst_error_not_found">لم يتم العثور على البيانات المطلوبة.</string>
+    <string name="aedst_error_validation">يرجى التحقق من البيانات المدخلة.</string>
+    <string name="aedst_error_unknown">حدث خطأ ما. حاول مرة أخرى.</string>
+    <string name="aedst_error_forbidden">ليس لديك صلاحية الوصول إلى هذا.</string>
+    <string name="aedst_error_conflict">تغيّرت البيانات. حدّث الصفحة وحاول مرة أخرى.</string>
+    <string name="aedst_error_rate_limited">طلبات كثيرة جدًا. انتظر قليلًا ثم حاول مرة أخرى.</string>
+
+    <string name="aedst_offline_banner">لا يوجد اتصال بالإنترنت</string>
+</resources>

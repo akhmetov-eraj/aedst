@@ -19,6 +19,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
@@ -26,6 +27,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.aedst.core.ui.R
 import com.aedst.core.ui.theme.AedstSpacing
 import com.aedst.core.ui.theme.AedstTheme
 
@@ -34,12 +36,7 @@ import com.aedst.core.ui.theme.AedstTheme
  * collapsing extra pages with an ellipsis. Mirrors web's `pagination.tsx`.
  */
 @Composable
-fun AedstPagination(
-    currentPage: Int,
-    totalPages: Int,
-    onPageChange: (Int) -> Unit,
-    modifier: Modifier = Modifier,
-) {
+fun AedstPagination(currentPage: Int, totalPages: Int, onPageChange: (Int) -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(AedstSpacing.xs),
@@ -49,7 +46,10 @@ fun AedstPagination(
             onClick = { if (currentPage > 1) onPageChange(currentPage - 1) },
             enabled = currentPage > 1,
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Previous page")
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = stringResource(R.string.aedst_a11y_previous_page),
+            )
         }
 
         visiblePages(currentPage, totalPages).forEach { entry ->
@@ -71,19 +71,20 @@ fun AedstPagination(
             onClick = { if (currentPage < totalPages) onPageChange(currentPage + 1) },
             enabled = currentPage < totalPages,
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "Next page")
+            Icon(
+                Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = stringResource(R.string.aedst_a11y_next_page),
+            )
         }
     }
 }
 
 @Composable
-private fun PageChip(
-    page: Int,
-    isSelected: Boolean,
-    onClick: () -> Unit,
-) {
-    val background = if (isSelected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent
+private fun PageChip(page: Int, isSelected: Boolean, onClick: () -> Unit) {
+    val background =
+        if (isSelected) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Transparent
     val contentColor = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    val pageDescription = stringResource(R.string.aedst_a11y_page, page)
 
     Box(
         modifier = Modifier
@@ -93,7 +94,7 @@ private fun PageChip(
             .clickable(onClick = onClick)
             .semantics {
                 role = Role.Button
-                contentDescription = "Page $page"
+                contentDescription = pageDescription
             },
         contentAlignment = Alignment.Center,
     ) {

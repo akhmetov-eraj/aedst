@@ -4,6 +4,7 @@
     <string name="auth_login_password_label">Парол</string>
     <string name="auth_login_invalid_email">Email-и дурустро ворид кунед.</string>
     <string name="auth_login_invalid_password">Паролро ворид кунед.</string>
+    <string name="auth_login_password_too_long">Парол набояд аз 128 аломат зиёд бошад.</string>
     <string name="auth_login_submit">Ворид шудан</string>
     <string name="auth_login_switch_prompt">Ҳисоб надоред?</string>
     <string name="auth_login_switch_action">Сохтан</string>
@@ -21,4 +22,5 @@
 
     <string name="auth_sign_out">Баромадан</string>
     <string name="auth_signed_in_as">Шумо ҳамчун %1$s ворид шудед</string>
+    <string name="auth_analytics_consent">Фиристодани омори беноми истифода</string>
 </resources>

@@ -6,6 +6,7 @@ import androidx.navigation.compose.composable
 import com.aedst.core.navigation.AedstNavGraph
 import com.aedst.core.navigation.AedstRoutes
 import com.aedst.core.navigation.Route
+import com.aedst.feature.auth.presentation.account.AccountRoute
 import com.aedst.feature.auth.presentation.login.LoginRoute
 
 /**
@@ -13,28 +14,37 @@ import com.aedst.feature.auth.presentation.login.LoginRoute
  * feature) may import from this module. Nothing in `domain/`, `data/` or
  * `presentation/` above is reachable from outside this package; see
  * docs/architecture-android.md.
- *
- * TODO: the standalone users/profile business modules were removed and
- * there is no post-login destination yet (a future tasks module is
- * expected to provide one). Until then, `onLoggedIn` is a no-op and this
- * graph stays on [AuthRoute].
  */
 object AuthRoute : Route {
     override val path: String = AedstRoutes.AUTH_LOGIN
 }
 
-class AuthNavGraph : AedstNavGraph {
+object AccountDestination : Route {
+    override val path: String = AedstRoutes.AUTH_ACCOUNT
+}
+
+/**
+ * @param homeRoute where a successful sign-in lands. The phone app uses the tasks list ([AedstRoutes.HOME]); the TV
+ *   app, which does not register the tasks graph yet, uses the account screen.
+ */
+class AuthNavGraph(private val homeRoute: String = AedstRoutes.HOME) : AedstNavGraph {
     override fun register(builder: NavGraphBuilder, navController: NavHostController) {
         builder.composable(AuthRoute.path) {
             LoginRoute(
                 onLoggedIn = {
-                    // TODO: navigate to the tasks landing page once it exists.
+                    navController.navigate(homeRoute) {
+                        popUpTo(AuthRoute.path) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 },
             )
         }
+        // Signing out needs no navigation callback: it clears the session and `app/` reacts to SessionState.
+        builder.composable(AccountDestination.path) { AccountRoute() }
     }
 
     companion object {
         const val ROUTE: String = AedstRoutes.AUTH_LOGIN
+        const val HOME_ROUTE: String = AedstRoutes.HOME
     }
 }

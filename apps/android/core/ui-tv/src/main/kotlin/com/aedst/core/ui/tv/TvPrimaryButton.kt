@@ -6,10 +6,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.tv.material3.Button
 import androidx.tv.material3.ButtonDefaults
-import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 import androidx.tv.material3.Text
 import com.aedst.core.ui.theme.AedstSpacing
 import com.aedst.core.ui.theme.AedstTheme
+import androidx.tv.material3.MaterialTheme as TvMaterialTheme
 
 /**
  * D-pad-focusable primary action control for 10-foot UI. Thin wrapper around
@@ -22,12 +22,7 @@ import com.aedst.core.ui.theme.AedstTheme
  * README).
  */
 @Composable
-fun TvPrimaryButton(
-    text: String,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-) {
+fun TvPrimaryButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
     Button(
         onClick = onClick,
         modifier = modifier,

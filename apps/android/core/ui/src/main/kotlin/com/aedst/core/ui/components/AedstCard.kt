@@ -62,10 +62,7 @@ fun AedstCard(
 
 /** Top slot of [AedstCard]: stacks [AedstCardTitle] and [AedstCardDescription]. */
 @Composable
-fun AedstCardHeader(
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit,
-) {
+fun AedstCardHeader(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -92,10 +89,7 @@ fun AedstCardDescription(text: String, modifier: Modifier = Modifier) {
 
 /** Main body slot of [AedstCard]. */
 @Composable
-fun AedstCardContent(
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit,
-) {
+fun AedstCardContent(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
     Column(
         modifier = modifier
             .fillMaxWidth()
@@ -106,10 +100,7 @@ fun AedstCardContent(
 
 /** Bottom slot of [AedstCard], typically holding action buttons. */
 @Composable
-fun AedstCardFooter(
-    modifier: Modifier = Modifier,
-    content: @Composable RowScope.() -> Unit,
-) {
+fun AedstCardFooter(modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
     Row(
         modifier = modifier
             .fillMaxWidth()

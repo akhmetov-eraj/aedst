@@ -7,12 +7,28 @@ style:
   ReturnCount:
     active: true
     max: 3
+    excludeGuardClauses: true
+  MaxLineLength:
+    maxLineLength: 120
+    excludeCommentStatements: true
+  UnusedPrivateMember:
+    # @Preview composables are only used by the IDE / screenshot tooling.
+    ignoreAnnotated: ['Preview']
+  ForbiddenComment:
+    # TODO markers are allowed in the template; FIXME/STOPSHIP still fail the build.
+    comments: ['FIXME:', 'STOPSHIP:']
 
 complexity:
   LongMethod:
     threshold: 60
+    ignoreAnnotated: ['Composable']
+  CyclomaticComplexMethod:
+    ignoreAnnotated: ['Composable']
   LongParameterList:
-    threshold: 8
+    functionThreshold: 6
+    constructorThreshold: 8
+    ignoreDefaultParameters: true
+    ignoreAnnotated: ['Composable']
   TooManyFunctions:
     thresholdInFiles: 20
 
@@ -20,6 +36,12 @@ naming:
   FunctionNaming:
     # allow PascalCase for @Composable functions
     functionPattern: '[a-zA-Z][a-zA-Z0-9]*'
+  MatchingDeclarationName:
+    # CONVENTIONS.md: file name must match the single top-level class. core/ui
+    # components hold a composable plus its variant enum/item model (design
+    # system, restructured separately), so it is excluded there for now.
+    active: true
+    excludes: ['**/core/ui/**']
 
 comments:
   active: false

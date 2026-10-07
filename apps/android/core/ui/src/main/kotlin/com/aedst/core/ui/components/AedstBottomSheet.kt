@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.SheetState
@@ -21,6 +22,7 @@ import com.aedst.core.ui.theme.AedstTheme
  * Modal bottom sheet primitive, mirroring web's `sheet.tsx` (bottom side). Thin wrapper over
  * Material3's [ModalBottomSheet] with AEDST theming for its inner content column.
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AedstBottomSheet(
     onDismissRequest: () -> Unit,

@@ -10,9 +10,7 @@ import org.junit.runner.Description
 
 /** Swaps `Dispatchers.Main` for a test dispatcher for the duration of a test, per feature ViewModel test suite. */
 @OptIn(ExperimentalCoroutinesApi::class)
-class MainDispatcherRule(
-    private val testDispatcher: TestDispatcher = StandardTestDispatcher(),
-) : TestWatcher() {
+class MainDispatcherRule(val testDispatcher: TestDispatcher = StandardTestDispatcher()) : TestWatcher() {
     override fun starting(description: Description) {
         kotlinx.coroutines.Dispatchers.setMain(testDispatcher)
     }

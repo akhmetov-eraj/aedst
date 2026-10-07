@@ -1,12 +1,13 @@
 package com.aedst.core.analytics
 
-/** Used in debug builds and `core/testing` fixtures so no event/trace ever leaves the device outside release builds. */
+/** Test double / disabled implementation: no event ever leaves the device. */
 class NoOpAnalyticsTracker : AnalyticsTracker {
     override fun logEvent(name: String, params: Map<String, Any?>) = Unit
-    override fun setUserId(userId: String?) = Unit
-    override fun recordException(throwable: Throwable) = Unit
-    override fun startTrace(name: String): PerformanceTrace = object : PerformanceTrace {
-        override fun putAttribute(key: String, value: String) = Unit
-        override fun stop() = Unit
-    }
+    override fun screen(name: String) = Unit
+}
+
+/** Test double: every flag returns its default. */
+class NoOpFeatureFlags : FeatureFlags {
+    override fun isEnabled(key: String, default: Boolean): Boolean = default
+    override fun reload() = Unit
 }

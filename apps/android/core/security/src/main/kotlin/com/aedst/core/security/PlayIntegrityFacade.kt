@@ -8,6 +8,7 @@ import kotlinx.coroutines.tasks.await
  * needed at call time in production, not at build time.
  */
 interface IntegrityFacade {
+    /** [requestHash] is sent as the classic-request nonce (URL-safe Base64), binding the token to one request. */
     suspend fun requestIntegrityToken(requestHash: String): Result<String>
 }
 
@@ -16,7 +17,7 @@ class PlayIntegrityFacade @javax.inject.Inject constructor(
 ) : IntegrityFacade {
     override suspend fun requestIntegrityToken(requestHash: String): Result<String> = runCatching {
         val request = com.google.android.play.core.integrity.IntegrityTokenRequest.builder()
-            .setRequestHash(requestHash)
+            .setNonce(requestHash)
             .build()
         integrityManager.requestIntegrityToken(request).await().token()
     }

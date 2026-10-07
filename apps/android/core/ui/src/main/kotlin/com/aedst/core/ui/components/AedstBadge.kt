@@ -25,11 +25,7 @@ enum class AedstBadgeVariant {
     OUTLINE,
 }
 
-private data class AedstBadgeColors(
-    val container: Color,
-    val content: Color,
-    val border: BorderStroke?,
-)
+private data class AedstBadgeColors(val container: Color, val content: Color, val border: BorderStroke?)
 
 @Composable
 private fun colorsFor(variant: AedstBadgeVariant): AedstBadgeColors {
@@ -63,11 +59,7 @@ private fun colorsFor(variant: AedstBadgeVariant): AedstBadgeColors {
 
 /** Small status pill, mirroring web's `badge.tsx`. */
 @Composable
-fun AedstBadge(
-    text: String,
-    modifier: Modifier = Modifier,
-    variant: AedstBadgeVariant = AedstBadgeVariant.DEFAULT,
-) {
+fun AedstBadge(text: String, modifier: Modifier = Modifier, variant: AedstBadgeVariant = AedstBadgeVariant.DEFAULT) {
     val colors = colorsFor(variant)
 
     Surface(

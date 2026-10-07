@@ -19,4 +19,7 @@ object DatabaseModule {
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase =
         Room.databaseBuilder(context, AppDatabase::class.java, DATABASE_NAME).build()
+
+    @Provides
+    fun provideOutboxDao(database: AppDatabase): OutboxDao = database.outboxDao()
 }

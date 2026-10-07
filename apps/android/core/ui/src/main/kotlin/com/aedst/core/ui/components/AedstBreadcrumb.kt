@@ -18,20 +18,14 @@ import com.aedst.core.ui.theme.AedstSpacing
 import com.aedst.core.ui.theme.AedstTheme
 
 /** A single crumb in [AedstBreadcrumb]. A `null` [onClick] renders the label as plain text. */
-data class AedstBreadcrumbItem(
-    val label: String,
-    val onClick: (() -> Unit)? = null,
-)
+data class AedstBreadcrumbItem(val label: String, val onClick: (() -> Unit)? = null)
 
 /**
  * Horizontal trail of navigation crumbs separated by `/`. The last item is always rendered as
  * the current, non-clickable page, mirroring web's `breadcrumb.tsx`.
  */
 @Composable
-fun AedstBreadcrumb(
-    items: List<AedstBreadcrumbItem>,
-    modifier: Modifier = Modifier,
-) {
+fun AedstBreadcrumb(items: List<AedstBreadcrumbItem>, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(AedstSpacing.xs),
