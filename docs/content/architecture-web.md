@@ -24,7 +24,11 @@ onto.
   platform's design system is built to match; see [ui-kit.md](/ui-kit).
 - React Hook Form + Zod, date-fns, dnd-kit, and the rest of the approved
   stack in [library-first.md](/library-first).
-- Sentry, Biome, Vitest + Testing Library, Playwright.
+- Sentry, Vitest + Testing Library, Playwright.
+- **Biome is the only linter/formatter** (no ESLint/Prettier); feature isolation is enforced by `apps/web/scripts/check-feature-boundaries.sh`; **knip** (`apps/web/knip.jsonc`) fails CI on unused dependencies/exports, its allowlist being the approved-not-yet-used libraries (adding to it requires a [library-first](/library-first) update).
+- **No RxJS**: use TanStack Query, `AbortController`, async iterators, or Connect server streaming.
+- Environment variables are parsed with Zod in `src/shared/env/{client,server}.ts`.
+- Static CSP and security headers live in `next.config.ts`; any new third-party origin must be added to the CSP (nonce-based CSP is a known follow-up).
 
 ## Project structure
 
@@ -67,3 +71,38 @@ Every page lives under a `[locale]` dynamic segment
 (`app/(pages)/[locale]/...`); `next-intl`'s routing config
 (`src/app/config/i18n/routing.ts`) drives locale detection/redirect and
 `sitemap.ts` emits one entry per locale with `hreflang` alternates.
+
+## Auth, data and security model
+
+The browser never holds a token and never talks to `apps/server`.
+
+```
+browser ──same-origin──▶ Next.js server ──API_BASE_URL──▶ apps/server
+        cookies (httpOnly)   │
+                             ├─ proxy.ts        nonce CSP · route guard · token refresh · next-intl
+                             ├─ Server Actions  login / register / logout → set or clear cookies
+                             ├─ /api/rpc/*      BFF proxy: bearer from cookie, one refresh+retry on 401
+                             └─ Server Components  prefetch → HydrationBoundary → client useQuery
+```
+
+- **Session.** Two httpOnly, SameSite=Lax cookies (`__Host-` prefixed over HTTPS): access and refresh token. `AuthProvider` only mirrors *who* is signed in (seeded by the server layout) and feeds Sentry's user context.
+- **Refresh.** `proxy.ts` rotates an expired access token before render (Server Components cannot set cookies); `/api/rpc` does the same for client requests. Refresh is single-flight per token. A rejected refresh clears the cookies; the client then shows a toast and redirects to `/?next=<where you were>`.
+- **Route protection.** `proxy.ts` redirects anonymous visitors from `/[locale]/tasks/**` to `/[locale]?next=…` and signed-in visitors away from the login page. `next` is validated by `safeRedirectPath`.
+- **CSRF.** Server Actions carry Next's Origin check; `/api/rpc` requires a same-origin `Origin`, rejects cross-site `Sec-Fetch-Site`, and refuses the four token-minting AuthService procedures.
+- **Server data.** `createRpcPrefetcher()` + `HydrationBoundary` (see `modules/tasks/ui/TasksSections.tsx`); sections stream independently through `<Suspense>`. Server and browser transports share a static query key so hydrated data is found.
+- **URL state.** The task list's filters, sort, search and page cursors are nuqs parsers shared by server and client.
+- **Errors.** Unauthenticated responses are handled globally in `QueryProvider`; other mutation errors toast (opt out per mutation with `meta: { silent: true }` when it renders its own error); unexpected errors go to Sentry with breadcrumbs. Trace headers flow browser → `/api/rpc` → apps/server.
+- **Privacy.** Measurement (Vercel Analytics, Speed Insights, Sentry Replay) is opt-in via the `aedst_consent` cookie.
+
+## Quality gates
+
+| Gate | Where | What it enforces |
+|---|---|---|
+| Biome, knip, feature boundaries, naming | `web-ci` lint job | style, unused code, module isolation |
+| `tsc` | typecheck job | types (after `next typegen`) |
+| Vitest + MSW, coverage thresholds | unit job | behaviour; coverage cannot fall |
+| Bundle budget | build job (`pnpm check:bundle`) | gzip JS/CSS ceilings |
+| Playwright ×5 projects + axe | e2e matrix | flows behind auth, a11y (WCAG 2.2 AA), responsive, security headers, SEO |
+| Lighthouse CI | lighthouse job | category scores, Core Web Vitals, script weight, no third parties |
+
+Supported browsers (`browserslist`): Chrome/Edge ≥ 111, Firefox ≥ 128, Safari/iOS ≥ 16.4 — Tailwind CSS 4's baseline.

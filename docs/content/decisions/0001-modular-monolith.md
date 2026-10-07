@@ -4,8 +4,9 @@
 Accepted
 
 ## Context
-AEDST needs to support a growing set of domains (auth, users, profile, social,
-messenger, marketplace, payments, ...) across five client platforms. A
+AEDST is a template: it ships the global modules almost every product needs
+(auth, tasks as the worked example, search, notifications, media, admin), and
+each product built on it adds its own domains, across five client platforms. A
 microservices-first approach would front-load distributed-systems complexity
 (service discovery, distributed transactions, network failure modes, per-service
 CI/CD and observability) before any domain has proven it needs independent

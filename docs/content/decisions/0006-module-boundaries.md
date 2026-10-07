@@ -6,7 +6,7 @@ Accepted
 ## Context
 ADR-0001 depends entirely on module boundaries actually holding over time.
 Code review alone does not scale as a guarantee — it's easy for an import of
-`modules/messenger/infrastructure/postgres` from `modules/marketplace` to slip
+`modules/media/infrastructure/postgres` from `modules/search` to slip
 through, and once one exists, extraction stops being mechanical.
 
 ## Decision

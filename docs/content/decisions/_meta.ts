@@ -8,6 +8,12 @@ const meta: MetaRecord = {
   "0005-river-for-jobs": "0005 — River for jobs",
   "0006-module-boundaries": "0006 — Module boundaries",
   "0007-merge-users-into-auth": "0007 — Merge users into auth",
+  "0008-realtime-and-media-extraction": "0008 — Realtime and media extraction",
+  "0009-api-compatibility-and-client-versioning": "0009 — API compatibility and client versioning",
+  "0010-caching-and-data-partitioning": "0010 — Caching and data partitioning",
+  "0011-outbox-relay-and-in-process-bus": "0011 — Outbox relay and in-process bus",
+  "0012-shared-platform-messaging-tables": "0012 — Shared platform messaging tables",
+  "0013-android-offline-and-client-security": "0013 — Android offline and client security",
 };
 
 export default meta;

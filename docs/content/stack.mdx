@@ -1,0 +1,249 @@
+---
+title: Stack
+description: The complete AEDST stack per platform, with exact versions.
+---
+
+import { Tabs } from "nextra/components";
+
+# Stack
+
+The complete stack of each platform, with the versions pinned in the repository
+(checked against the registries on **2026-10-07**). Pick a platform:
+
+<Tabs items={["Server", "Web", "Android", "Apple", "Desktop"]} storageKey="aedst-stack-platform">
+<Tabs.Tab>
+
+### Language and HTTP
+
+| Area | Tool | Version |
+|---|---|---|
+| Language | Go | **1.27.1** |
+| HTTP | `net/http` (h2c; TLS ≥ 1.2 via `AEDST_TLS_*` or at the ingress) | stdlib |
+| Router | Chi v5 (+ `go-chi/cors`) | **5.3.2** (cors 1.2.2) |
+
+### API
+
+| Area | Tool | Version |
+|---|---|---|
+| Contract | Protobuf (`google.golang.org/protobuf`) | **1.36.12** |
+| Codegen / lint / breaking | Buf | **1.73.0** |
+| RPC | ConnectRPC (`connectrpc.com/connect`) | **1.21.0** |
+| Validation | Protovalidate via `connectrpc.com/validate` interceptor | **0.7.0** (protovalidate-go 1.4.0) |
+| Health / reflection | `grpchealth` / `grpcreflect` | 1.5.0 / 1.3.1 |
+
+Rule: **Proto contract → Protovalidate → ConnectRPC interceptor.** Every service is
+mounted through `mountService`, which always installs the validation interceptor.
+
+### Database
+
+| Area | Tool | Version |
+|---|---|---|
+| Database | PostgreSQL | **18** (`postgres:18`) |
+| Driver | pgx v5 | **5.11.0** |
+| Queries | sqlc (`sqlc vet` in CI) | **1.31.1** |
+| Migrations | Goose (one version table per module) + squawk lint | **3.28.0** (squawk 2.66.0) |
+| Pooler | PgBouncer | `edoburu/pgbouncer:v1.24.1-p1` |
+
+### Cache, jobs, events
+
+| Area | Tool | Version |
+|---|---|---|
+| Cache / rate limit | **Valkey** + go-redis client + redis_rate (never a source of correctness) | `valkey/valkey:9`, go-redis **9.23.0**, redis_rate 10.0.1 |
+| Jobs | River (queues `default`, `media`) | **0.49.0** |
+| Events | Postgres outbox → relay → in-process bus → inbox | in-repo |
+| Locks | Postgres advisory locks | in-repo |
+| Resilience | gobreaker v2 (circuit breaker) | **2.4.0** |
+
+### Auth
+
+| Area | Tool | Version |
+|---|---|---|
+| Tokens (OIDC resource server) | jwx v4 + jwkfetch | **4.5.0** (jwkfetch 4.0.4) |
+| Identity provider | Keycloak (MFA, WebAuthn/passkeys, social login live in the IdP) | `keycloak:26.7` |
+| First-party compatibility mode | Argon2id | 1.0.0 |
+
+### Storage, media, push
+
+| Area | Tool | Version |
+|---|---|---|
+| Object storage | `ObjectStorage` port → aws-sdk-go-v2 S3 (presets: AWS S3, MinIO, Cloudflare R2) | **1.47.1** (s3 1.114.1) |
+| Image processing | `golang.org/x/image` | 0.46.0 |
+| Video / audio | ffmpeg / ffprobe (optional, external) | — |
+| Push | Web Push (stdlib crypto + jwx), FCM HTTP v1 (`x/oauth2/jwt`), APNs HTTP/2 | x/oauth2 0.37.0 |
+
+### Observability
+
+| Area | Tool | Version |
+|---|---|---|
+| Traces / metrics / logs | OpenTelemetry SDK (OTLP via `OTEL_*`), otelhttp, otelconnect | **1.47.0** (contrib 0.72.0, otelconnect 0.10.0) |
+| Logging | `log/slog` + otelslog bridge | stdlib |
+| Metrics endpoint | Prometheus `/metrics` — optional, off by default | exporter 0.69.0 |
+| Backends | any OTLP backend; locally `grafana/otel-lgtm` (Grafana + Tempo + Loki + Prometheus + Pyroscope in one container) | `0.34.0` |
+
+### Testing and security
+
+| Area | Tool | Version |
+|---|---|---|
+| Unit / integration | `go test` + Testcontainers | **0.44.0** |
+| Load | k6 (`test/load/api.js`) | `grafana/k6:2.3.0` |
+| Static analysis | `go vet`, staticcheck (golangci-lint v2), govulncheck | golangci-lint 2.14.0, govulncheck 1.8.0 |
+
+### Infrastructure
+
+| Area | Tool |
+|---|---|
+| Containers | Docker / Docker Compose (profiles: `observability`, `idp`, `minio`) |
+| Orchestration | Kubernetes + Helm chart (`apps/server/deployments/helm`) |
+| Postgres in k8s | CloudNativePG (3 instances, sync replica, PITR) |
+| GitOps | Argo CD |
+| Cloud infra | Terraform / OpenTofu (written once the cloud target is chosen) |
+
+</Tabs.Tab>
+<Tabs.Tab>
+
+### Framework
+
+| Area | Tool | Version |
+|---|---|---|
+| Framework | Next.js (App Router, Turbopack) | **16.4.0** |
+| UI library | React | **19.3** |
+| Language | TypeScript | **7.0.2** |
+| Styling | Tailwind CSS | **4.3** |
+| Components | shadcn/ui (`@base-ui/react`) | shadcn **4.21.4**, base-ui 1.8 |
+
+### Data and state
+
+| Area | Tool | Version |
+|---|---|---|
+| API client | Connect-ES (`@connectrpc/connect`, `connect-web`) + `@bufbuild/protobuf` | **2.2.0** / **2.16.0** |
+| Server state | TanStack Query + connect-query | **5.104.1** / 2.3.1 |
+| Client UI state | Zustand | **5.0.15** |
+| URL state | nuqs | 2.10 |
+| Tables / virtualization | TanStack Table / Virtual | **9.2.6** / 3.14 |
+| Forms / validation | React Hook Form + Zod | 7.89 / 4.6 |
+| Dates | date-fns | 4.4 |
+| Drag & drop | dnd-kit | 0.5 |
+| i18n | next-intl | **4.14.9** |
+| AI | Vercel AI SDK (`ai`) | **7.0.130** |
+
+### UX
+
+| Area | Tool | Version |
+|---|---|---|
+| Animation | Motion | **14.0.0** |
+| Toasts | Sonner | 2.0 |
+| Command palette | cmdk | 1.1 |
+| Charts | Recharts | 3.10 |
+| Date picker | react-day-picker | **10.0.2** |
+| Panels | react-resizable-panels | **4.14.2** |
+
+### Observability, analytics, PWA
+
+| Area | Tool | Version |
+|---|---|---|
+| Errors, tracing, releases, source maps, replay | Sentry (`@sentry/nextjs`) | **11.5.0** |
+| Product analytics + feature flags | PostHog (`posthog-js`, consent-gated) | **1.438.2** |
+| Service worker / offline / push | Serwist (`serwist`, `@serwist/turbopack`) | **9.5.13** |
+| Web Push | Push API + VAPID | platform |
+
+### Tooling and tests
+
+| Area | Tool | Version |
+|---|---|---|
+| Lint / format | Biome | **2.5.15** |
+| Unused deps / exports | knip | **6.40.0** |
+| Unit / component | Vitest + Testing Library + jsdom | **5.0.3** / 16.3 / **30.1.2** |
+| API mocking | MSW | **3.0.2** |
+| E2E | Playwright (`chromium`, `firefox`, `webkit`, `mobile-chrome`, `mobile-safari`) + axe-core | 1.63 / **4.14.0** |
+| Contract test | mock API vs. proto descriptors (`pnpm test:contract`) | in-repo |
+| Budgets | bundle-size script + Lighthouse CI | in-repo |
+| Package manager | pnpm (Node 24) | **12.6.0** |
+
+</Tabs.Tab>
+<Tabs.Tab>
+
+| Area | Tool | Version |
+|---|---|---|
+| Language | Kotlin | **2.4.20** |
+| Build | AGP / Gradle / KSP | **9.4.1** / **9.8.0** / 2.3.12 |
+| JDK | Temurin | **21** |
+| UI | Jetpack Compose (BOM) | **2026.09.00** |
+| DI | Hilt | **2.60.1** (androidx.hilt 1.4.0) |
+| Async | Coroutines + Flow | **1.11.0** |
+| Navigation | Navigation Compose | 2.10.2 |
+| API client | connect-kotlin over OkHttp | **0.9.0** / **5.5.0** |
+| Protobuf | protobuf-javalite / Gradle plugin | 4.36.2 / 0.10.0 |
+| Serialization | kotlinx.serialization | 1.11.0 |
+| Database | Room | 2.8.5 |
+| Preferences | DataStore + Protobuf | 1.2.1 |
+| Secrets | Android Keystore + Tink | 1.23.0 |
+| Background work | WorkManager | 2.12.0 |
+| Images | Coil 3 | **3.6.3** |
+| Video / player / compression | AndroidX Media3 (ExoPlayer, Compose UI, Transformer) | **1.11.1** |
+| Push | Firebase Cloud Messaging (Firebase BoM) | BoM **34.19.0** |
+| Errors / performance / tracing | Sentry Android + Gradle plugin | **8.59.0** / 6.23.0 |
+| Analytics + feature flags | PostHog Android | **3.72.0** |
+| Anti-abuse | Play Integrity | 1.6.0 |
+| Static analysis | detekt / ktlint-gradle / Android Lint | 1.23.8 / 14.2.0 |
+| Dependency updates | ben-manes versions / version-catalog-update | 0.65.0 / 1.1.1 |
+
+</Tabs.Tab>
+<Tabs.Tab>
+
+Minimum OS: **iOS / iPadOS 15**, **macOS 12**.
+
+| Area | Tool | Version |
+|---|---|---|
+| Language / UI | Swift 6 + SwiftUI | Xcode **26.6** |
+| Project generation | Tuist | **4.211.0** |
+| API client | connect-swift + swift-protobuf | **1.2.3** / **1.38.1** |
+| Persistence | GRDB | **7.11.1** |
+| Observation | swift-perception | **2.0.11** (`< 2.0.12`) |
+| Navigation | FlowStacks | **0.9.x** |
+| Errors / crashes / tracing | Sentry Cocoa | **9.30.0** |
+| Analytics + feature flags | PostHog iOS | **3.90.2** |
+| Push | APNs (`UserNotifications`) | platform |
+| Media | AVKit, PhotosUI (PHPicker), ImageIO, AVFoundation, QuickLookThumbnailing, background `URLSession` | platform |
+| Secrets / biometrics / network | Keychain (`Security`), `LocalAuthentication`, `Network` | platform |
+| Diagnostics | MetricKit, `os.Logger` / `OSSignposter` | platform |
+| Lint / dead code | SwiftLint / periphery | **0.65.1** / 3.8.0 |
+| Symbols upload | sentry-cli | 3.8.0 |
+
+</Tabs.Tab>
+<Tabs.Tab>
+
+| Area | Tool | Version |
+|---|---|---|
+| Language | C++ | **C++23** |
+| UI framework | Qt (QML via `qt_add_qml_module`, Widgets for the tray) | **6.12.0** |
+| Build | CMake + presets, Ninja | ≥ 3.25 (CI 3.30.5) |
+| Packages | vcpkg (manifest mode) | baseline `2cfff9c4` |
+| API | protoc-generated messages + Qt-Network `ConnectClient` | protobuf **6.33.4** |
+| Logging | spdlog + fmt (and Qt logging, bridged) | **1.17.0** / 12.2.0 |
+| Local DB | SQLite | 3.53.4 |
+| Crypto / TLS | OpenSSL | 3.6.5 |
+| Crashes / errors | sentry-native (crashpad) | 0.17.1 |
+| Analytics + flags | PostHog HTTP API over `QNetworkAccessManager` | — |
+| Media | Qt Multimedia, `QImageReader` / `QImageWriter` | Qt 6.12 |
+| Notifications | `QSystemTrayIcon` (polling; no push service on desktop) | Qt 6.12 |
+| Tests | GoogleTest, Qt Test, Qt Quick Test | gtest **1.18.0** |
+| Optional transport | Boost.Asio (`AEDST_ENABLE_ASIO`) | 1.92.0 |
+| Packaging | CPack (NSIS/ZIP, DEB/RPM/TGZ, DMG/PKG), Flatpak | — |
+
+Qt 6.12 requires **macOS 14.4+** for the desktop app.
+
+</Tabs.Tab>
+</Tabs>
+
+## Keeping it current
+
+```bash
+task deps:check            # report what is outdated, per platform
+task deps:update           # bump everything to the latest stable, then build/test
+task deps:update -- web    # one platform
+```
+
+`scripts/update-deps.sh` uses each ecosystem's own tool (go get, pnpm, Gradle
+version-catalog-update, SwiftPM, vcpkg, mise). Renovate keeps opening PRs between
+manual runs. After a bump, update the versions on this page and in
+[library-first](/library-first).

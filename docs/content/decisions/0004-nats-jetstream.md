@@ -1,11 +1,10 @@
 # ADR-0004: NATS JetStream for domain/integration events
 
 ## Status
-Accepted
+Superseded by [ADR-0011](/decisions/0011-outbox-relay-and-in-process-bus). The broker was never introduced: events flow through the Postgres outbox, an in-process bus and per-consumer inboxes. The reasoning below is kept for the record and applies again if a consumer becomes its own service.
 
 ## Context
-Several planned modules (`notifications`, `search`, `recommendations`,
-`moderation`) must react to state changes in other modules without a
+Several modules (`notifications`, `search`, `media`, `admin`) must react to state changes in other modules without a
 synchronous dependency, and without those producer modules knowing who
 consumes their events — required both for module boundary rules (see
 [ADR-0006](/decisions/0006-module-boundaries)) and for future independent scaling.

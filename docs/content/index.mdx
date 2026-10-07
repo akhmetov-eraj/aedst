@@ -4,14 +4,16 @@ title: Overview
 
 # AEDST docs
 
-Architecture, module boundaries and decision records for the `aedst` monorepo — a Go backend (`apps/server`) plus five clients (`apps/web`, `apps/android`, `apps/apple`, `apps/desktop`) built around one shared principle: **monolith first, boundaries first, microservices later**.
+Architecture, module boundaries and decision records for the `aedst` monorepo — a Go backend (`apps/server`) plus four clients (`apps/web`, `apps/android`, `apps/apple`, `apps/desktop`) built around one shared principle: **monolith first, boundaries first, microservices later**.
 
 ## Start here
 
+- **[Platform status & profiles](/status)** — what has actually been built and run (Server and Web; Android, Apple and Desktop are not yet), and the Core profile for projects that only need Server + Web.
 - **[Backend architecture](/architecture)** — the modular monolith, its module boundary rule (ADR‑0006), and the extraction path to real services.
 - **[Modules](/modules)** — the full planned module set, which ones are implemented, and their dependency graph.
 - **[Database](/database)** — schema ownership and per-module data boundaries.
-- **[Events](/events)** — NATS JetStream event conventions: subject naming, versioning, idempotency.
+- **[Events](/events)** — the transactional outbox, relay and inbox: event naming, versioning, delivery guarantees, lag metrics.
+- **[Scaling guide](/scaling)** — what to measure, when to extract a module, pool budgets, load testing, known limits.
 - **[Deployment](/deployment)** — how `aedst-server` ships and sits behind the edge.
 
 ## Clients
@@ -24,4 +26,4 @@ Each native client translates the backend's module-boundary rule to its own buil
 
 ## Decision records
 
-**[Decisions](/decisions)** holds the ADRs behind the stack choices referenced throughout these docs — why ConnectRPC over REST/GraphQL, why PostgreSQL, why NATS JetStream, why River for background jobs, and the module-boundary rule itself.
+**[Decisions](/decisions)** holds the ADRs behind the stack choices referenced throughout these docs — why ConnectRPC over REST/GraphQL, why PostgreSQL, why the outbox relay replaced NATS, why River for background jobs, and the module-boundary rule itself.

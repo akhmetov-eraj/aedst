@@ -8,13 +8,15 @@ and [architecture-apple.md](/architecture-apple)) — translated here to a
 C++23 / Qt 6 / CMake project. This doc only covers where desktop diverges and
 how it maps onto the other clients; read those first.
 
-> **This environment had no Qt/Conan toolchain installed** (no `cmake`,
-> `conan`, or Qt on `PATH`). Nothing under `apps/desktop` was configured,
-> built, or run — every `CMakeLists.txt`, header, source, and QML file was
-> written by hand to be internally consistent (target graph, include roots,
-> Qt 6.8 CMake API, Conan 2 package/target names). Follow "Getting started" in
-> [`../apps/desktop/README.md`](../../apps/desktop/README.md) and fix anything the
-> first real configure/compile flags.
+> **Verification status: statically reviewed, never compiled.** No
+> Qt/CMake/vcpkg toolchain was available in the authoring environment. Nothing
+> under `apps/desktop` was configured, built, or run — every `CMakeLists.txt`,
+> header, source, and QML file was checked by reading only (target graph,
+> include roots, Qt 6.8 CMake API, vcpkg port/target names). **The first real
+> configure/build is the acceptance test**: follow "Getting started" in
+> [`../apps/desktop/README.md`](../../apps/desktop/README.md) and fix whatever
+> it flags. The connectrpc conformance suite for the client is a pending
+> follow-up.
 
 ## Module map
 
@@ -32,9 +34,14 @@ how it maps onto the other clients; read those first.
 | Target | Folder | Purpose |
 |---|---|---|
 | `Aedst::Core` | `Modules/Core/Common` | Qt-free foundation: `Outcome<T>` (`std::expected`), `Error`, `UseCase`, `Clock`, `AedstLogger` |
-| `Aedst::Network` | `Modules/Core/Network` | `ApiClient` (Qt Network, Connect-JSON), `AuthInterceptor`, `ApiError`, procedure paths, hand-mirrored DTOs |
-| `Aedst::Persistence` | `Modules/Core/Persistence` | RAII SQLite (`SqliteConnection`/`SqliteStatement`), `SecureStorage` (DPAPI / OpenSSL), `TokenStore` |
+| `Aedst::Contract` | `Modules/Core/Contract` | `methods.hpp` RPC descriptors; generated Protobuf messages (protoc at build time) |
+| `Aedst::Network` | `Modules/Core/Network` | `ConnectClient` (Connect protocol on Qt Network), `AuthInterceptor`, `ApiError`, call options/envelopes |
+| `Aedst::Persistence` | `Modules/Core/Persistence` | RAII SQLite (`SqliteConnection`/`SqliteStatement`, vcpkg `sqlite3`), `SecureStorage` + `MasterKeyProvider` (DPAPI / Keychain / libsecret / file fallback), `Migrator`, `TokenStore` |
 | `Aedst::Navigation` | `Modules/Core/Navigation` | well-known route names, `NavGraph` (route → QML view), `Router` (back stack driving QML's `StackView`) |
+| `Aedst::Connectivity` | `Modules/Core/Connectivity` | `QNetworkInformation` wrapper (Offline state for the UI) |
+| `Aedst::Platform` | `Modules/Core/Platform` | single instance, deep-link allow-list parser, autostart, notifications, platform info |
+| `Aedst::CrashReporting` | `Modules/Core/CrashReporting` | local crash capture, consent-gated upload |
+| `Aedst::Update` | `Modules/Core/Update` | Ed25519-signed manifest verification, semver, rollback protection, artifact hash check |
 | `Aedst::Analytics` | `Modules/Core/Analytics` | vendor-neutral `AnalyticsTracker` port + `NoOpAnalyticsTracker` |
 | `Aedst::DesignSystem` | `Modules/Core/DesignSystem` | `ThemeController` + `AedstDesignSystem` QML module (`Theme`, `AedstButton`, `AedstTextField`) |
 | `Aedst::Testing` | `Modules/Core/Testing` | `FakeClock`, `StubTokenProvider`, a gtest `main()` with `QCoreApplication` |
@@ -57,7 +64,7 @@ graph:
   `AedstNavGraph`/`AedstRoutes` and Apple's `AedstRoute`/`Router`.
 - Linkage is `PRIVATE` by default. A Core target is `PUBLIC` on a feature only
   when that feature's own headers expose its types (`Aedst::Core` for
-  `Outcome`/`Error` in every Domain signature, `Aedst::Network` for DTOs and
+  `Outcome`/`Error` in every Domain signature, `Aedst::Network` for generated messages and
   `TokenProvider`, `Aedst::Navigation` for `Route`); `Aedst::Persistence`,
   `Aedst::Analytics`, `Aedst::DesignSystem` and `Qt6::Quick` stay `PRIVATE`
   (headers forward-declare). Core targets follow the same rule — e.g. sqlite3
@@ -93,22 +100,40 @@ navigation — the same UiState-vs-Effect split Android uses. Async completions
 guard `this` with `QPointer`. QML views are stateless renderers of their
 ViewModel singleton (`import Aedst.Feature.Auth`).
 
-## Networking: Connect over Qt Network, no codegen
+## Networking: Connect over Qt Network, generated messages
 
-`Aedst::Network`'s `ApiClient` speaks ConnectRPC's unary JSON protocol directly
-(`POST /<package>.<Service>/<Method>`, `Connect-Protocol-Version: 1`) over
-`QNetworkAccessManager`, against the same `aedst.auth.v1` / `aedst.tasks.v1`
-services `apps/web` (Connect-ES) and `apps/apple` (connect-swift) call.
-Unlike those clients there is no buf/protoc step: the
-DTOs in `include/aedst/network/dto/` are hand-mirrored from
-`apps/server/api/proto` (proto3 JSON mapping) and must be updated with the
-protos. That trade keeps the desktop build to CMake + Conan; revisit if proto
-churn makes hand-mirroring error-prone (a `protoc` + `protobuf` Conan
-dependency with `JsonStringToMessage` would be the replacement).
+`Aedst::Contract` + `Aedst::Network` are a **thin Connect-protocol client on
+Qt Network with build-time protoc-generated C++ messages** — the desktop
+counterpart of Connect-ES / connect-swift / connect-kotlin, against the same
+`aedst.auth.v1` / `aedst.tasks.v1` services. Decision and alternatives:
+[ADR-0001](../../apps/desktop/docs/adr/0001-api-contract-client.md);
+dependency management: [ADR-0002](../../apps/desktop/docs/adr/0002-dependency-management.md).
 
-Boost.Asio is an opt-in Conan/CMake dependency (`with_asio` /
-`AEDST_ENABLE_ASIO`) with a single placeholder header,
-`AsioSupport.hpp` — Qt Network is the primary and only transport today.
+- **Messages** are generated by `protoc` at build time from
+  `apps/server/api/proto` with the same `protoc` that matches libprotobuf.
+  Generated code is **not committed**. The old hand-mirrored DTOs and
+  "no codegen" approach are gone.
+- **`ConnectClient`** (`Modules/Core/Network`) speaks the Connect protocol
+  (unary + server streaming, deadlines, cancellation, retries) over one
+  long-lived `QNetworkAccessManager`, so TLS, HTTP/2, proxies and the OS trust
+  store are Qt's.
+- **`contract/methods.hpp`** (`Modules/Core/Contract`) lists every RPC. A new RPC
+  **requires an entry there**; a descriptor drift test fails otherwise. Retries
+  happen only for methods declared `Idempotent`. Client and bidirectional
+  streaming are unsupported — needing them is the trigger to revisit gRPC.
+- **Protovalidate**: the proto is vendored in `third_party/protovalidate`, pinned
+  to `buf.lock` (`scripts/check-protovalidate-pin.sh`,
+  `scripts/check-proto-freshness.sh`).
+- **Why custom code is allowed here** (Library-First exception, documented in
+  the ADR): no Connect C++ client exists, and gRPC C++ duplicates Qt's
+  HTTP/TLS/proxy stack and bypasses the OS certificate store.
+
+Boost.Asio is an opt-in dependency (`AEDST_ENABLE_ASIO`, default `OFF`) with a
+single placeholder header, `asio_support.hpp` — Qt Network is the only transport
+today. Performance rules for the whole app (LTO, AOT-compiled QML via
+`qt_add_qml_module`, model/role-based lists, no `QT_QML_DEBUG` in shipping
+builds, startup trace, `QBENCHMARK`) live in
+[`performance.md`](../../apps/desktop/docs/performance.md).
 
 ## Logging: spdlog vs Qt logging
 
@@ -126,7 +151,7 @@ Two logging systems, split on purpose:
 
 ## Persistence and secrets
 
-`Aedst::Persistence` wraps the sqlite3 C API (Conan `sqlite3`) instead of
+`Aedst::Persistence` wraps the sqlite3 C API (vcpkg `sqlite3`) instead of
 Qt Sql so it works in Qt-free code and pins one SQLite version. Session tokens
 are encrypted before they reach SQLite: **Windows DPAPI**
 (`CryptProtectData`, user-scoped, no key stored by us) under `#ifdef _WIN32`,
@@ -135,24 +160,23 @@ Flatpak/AppImage path). The latter is weaker than a desktop keyring —
 libsecret/KWallet integration is a scope cut — but has no dependency on a
 Secret Service daemon being reachable from inside a sandbox.
 
-## Build: Conan 2 + CMake Presets, Qt from the Qt installer
+## Build: vcpkg manifest mode + CMake Presets, Qt from official binaries
 
-Conan (`conanfile.py`) provides openssl, sqlite3, spdlog/fmt, boost (asio,
-header-only) and gtest. **Qt is deliberately not a Conan dependency**: the
-ConanCenter `qt` recipe builds Qt from source and is heavy and fragile, so Qt
-6.8+ comes from the official Qt installer or aqtinstall and is found through
-`CMAKE_PREFIX_PATH` (the presets read `$QT_ROOT_DIR`, which
-`jurplel/install-qt-action` also sets in CI).
+vcpkg (`vcpkg.json`, pinned by `builtin-baseline`) provides protobuf, openssl,
+sqlite3, spdlog/fmt, boost (asio, header-only) and gtest in manifest mode —
+dependencies install automatically during `cmake --preset`. **Conan is no
+longer used.** **Qt is deliberately not a vcpkg dependency**: it comes as
+official binaries (Qt installer or aqtinstall) at the version in
+`apps/desktop/qt-version.txt` — the single source of truth, enforced by CMake and
+read by CI — and is found through `CMAKE_PREFIX_PATH` (`$QT_ROOT_DIR`).
 
 ```bash
-conan install . --output-folder=build --build=missing -s build_type=Debug
+export VCPKG_ROOT=~/vcpkg
 cmake --preset debug && cmake --build --preset debug && ctest --preset debug
 ```
 
-`conanfile.py`'s `layout()` pins generators to `build/<preset>/generators`, the
-path `CMakePresets.json`'s `toolchainFile` expects. Flatpak builds skip Conan
-entirely (no network inside `flatpak-builder`) and resolve the same
-`find_package()` names from the KDE runtime and manifest modules.
+Flatpak builds resolve the same `find_package()` names from the KDE runtime and
+manifest modules (no network inside `flatpak-builder`).
 
 ## Boundary enforcement: `check-feature-boundaries.sh`
 
@@ -176,7 +200,7 @@ Flatpak/Flathub publishing needs a repo — both are called out in
 `cmake/packaging/*.cmake` and `.github/workflows/desktop-ci.yml` rather than
 faked.
 
-See [modules.md](/modules) for the full planned module list (`social`,
-`messenger`, `marketplace`, ...) — each, when built, gets a
+See [modules.md](/modules) for the global module set (`auth`, `tasks`,
+`search`, `notifications`, `media`, `admin`). Each has a
 `Modules/Features/<Name>` library following the same four-layer shape as
 `Modules/Features/Auth`, plus its route name in `Aedst::Navigation`.

@@ -43,14 +43,15 @@ choices.
         |               |               |
      auth            config          proto (buf)
      tasks           database        events
-     ...             redis
-                      messaging (NATS)
+     ...             valkey
+                      messaging (in-process bus)
+                      outbox (relay)
                       observability
                       auth (jwx)
                         |
         +---------------+---------------+
         |               |               |
-   PostgreSQL         Redis           NATS JetStream
+   PostgreSQL         Valkey
    (PgBouncer)
 ```
 
@@ -67,11 +68,16 @@ apps/server/
 │   ├── platform/          cross-cutting infrastructure, shared by every module
 │   │   ├── config/        env-driven configuration (caarlos0/env)
 │   │   ├── database/      pgx pool, tx helpers
-│   │   ├── redis/         redis client
-│   │   ├── messaging/     NATS JetStream client + outbox publisher
+│   │   ├── valkey/        Valkey client (go-redis): cache + rate limiting only
+│   │   ├── messaging/     in-process event bus (Publisher seam for a broker)
+│   │   ├── outbox/        transactional outbox writer + batched relay + lag metrics
+│   │   ├── inbox/         consumer-side dedup (exactly-once effect)
+│   │   ├── idempotency/   Idempotency-Key replay (per-caller scope, advisory-locked)
+│   │   ├── retention/     River periodic purge jobs for append-only tables
 │   │   ├── jobs/          River client wiring
-│   │   ├── observability/ slog, OpenTelemetry, Prometheus
-│   │   ├── auth/          JWT issuing/verification (jwx), session/device tokens
+│   │   ├── observability/ slog, OpenTelemetry (OTLP); Prometheus /metrics optional
+│   │   ├── lock/          Postgres advisory locks (no Redlock/RedSync)
+│   │   ├── auth/          OIDC resource-server verification (jwx v4 + jwkfetch); first-party auth is compatibility-only (see [decisions](/decisions))
 │   │   └── httpserver/    chi router, middleware stack, ConnectRPC mounting
 │   ├── modules/           one bounded context per directory, see modules.md
 │   └── shared/            genuinely generic primitives only (ids, pagination,
@@ -138,9 +144,24 @@ is mechanical, not a rewrite:
    ConnectRPC client generated from the same proto contract.
 4. Move the module's package tree to its own `cmd/`, give it its own database
    (its schema already has clean ownership boundaries under rule 1).
-5. Wire NATS integration events where the in-process call was previously
-   synchronous but doesn't need to be.
+5. Where the in-process call was previously synchronous but doesn't need to be,
+   replace it with an integration event. If the event's consumer becomes its own
+   service, plug a broker adapter into the outbox relay's `Publisher` seam
+   ([ADR-0011](/decisions/0011-outbox-relay-and-in-process-bus)); producers and
+   consumers' inboxes do not change.
 6. Deploy independently, measure, and only then consider splitting further.
 
 No module in Phase 1 is extracted preemptively — see
 [ADR-0001](/decisions/0001-modular-monolith).
+
+## Scaling
+
+Two things are decided ahead of measurement because their resource profile is
+known a priori: **realtime** (long-lived connections) and **media** (large
+bodies) are separate deployables from the start — see
+[ADR-0008](/decisions/0008-realtime-and-media-extraction). Everything else stays
+in the monolith until a measured trigger fires. What to measure, the alert
+thresholds, connection-pool budgeting, load-test procedure and known limits are
+in the [scaling guide](/scaling); caching and partitioning strategy is in
+[ADR-0010](/decisions/0010-caching-and-data-partitioning); client compatibility
+in [ADR-0009](/decisions/0009-api-compatibility-and-client-versioning).
