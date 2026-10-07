@@ -47,20 +47,22 @@ struct LoggerConfig {
 
 /// The application's own logger (spdlog: console + rotating file).
 ///
-/// Two logging systems coexist on purpose:
-///  - AedstLogger (this) is for AEDST code — use cases, repositories, network
-///    and persistence. It is Qt-free, so Domain/Data code and GoogleTest
-///    binaries use it without a QCoreApplication, and its rotating file is
-///    what support asks users to attach.
-///  - Qt's qDebug/qWarning/qCritical + QLoggingCategory stay reserved for
-///    Qt/QML framework messages (QML binding warnings, plugin loading, qt.*
-///    categories). They are not forwarded here, so turning on a noisy qt.*
-///    category never floods the product log, and QT_LOGGING_RULES keeps
-///    working exactly as Qt documents it.
+/// One sink, two front doors (ADR-0024):
+///  - AedstLogger (this) is the sink and the front door for Qt-free code:
+///    Domain/Data, Persistence, Update and GoogleTest binaries use it without
+///    a QCoreApplication. Its rotating file (and JSON format) is what support
+///    asks users to attach.
+///  - Qt-aware code logs through QLoggingCategory (`lcApp`, `lcNetwork`, ... in
+///    aedst/logging/log_categories.hpp). The Qt message handler installed by
+///    aedst::telemetry::installQtLogBridge() forwards `aedst.*` categories at
+///    every level into this logger, so redaction, rotation and format apply
+///    uniformly; qt.* / QML framework messages are forwarded from Warning up.
+///    QT_LOGGING_RULES and AEDST_LOG_RULES control categories as Qt documents.
 /// Every record carries the calling thread's correlation id (`[cid:...]`, see
 /// CorrelationScope in correlation.hpp; `-` outside a scope).
 ///
-/// AEDST code should never call qDebug(); Qt code paths never call AedstLogger.
+/// Do not call qDebug() in AEDST code (no category, cannot be filtered); Qt-aware
+/// code should not call AedstLogger directly.
 class AedstLogger final {
 public:
     AedstLogger() = delete;

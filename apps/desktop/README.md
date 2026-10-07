@@ -82,8 +82,7 @@ gcc-release && cmake --build --preset gcc-release` (LTO on, tests off).
 Benchmarks: `cmake --preset bench && cmake --build --preset bench && ctest --preset bench -V`.
 
 The generated Protobuf C++ comes from `../server/api/proto` (override with
-`-DAEDST_PROTO_ROOT=...`). Add `-DVCPKG_MANIFEST_FEATURES=asio -DAEDST_ENABLE_ASIO=ON`
-to make Boost.Asio available (see `Modules/Core/Network/include/aedst/network/asio_support.hpp`).
+`-DAEDST_PROTO_ROOT=...`).
 
 Run it (Debug builds default to `http://localhost:8080`, i.e. `apps/server` running locally; Release builds **require** `AEDST_API_BASE_URL` to be an `https://` URL):
 

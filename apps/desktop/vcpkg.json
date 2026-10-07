@@ -25,12 +25,6 @@
       "dependencies": [
         "gtest"
       ]
-    },
-    "asio": {
-      "description": "Boost.Asio, only for AEDST_ENABLE_ASIO=ON (see asio_support.hpp).",
-      "dependencies": [
-        "boost-asio"
-      ]
     }
   }
 }

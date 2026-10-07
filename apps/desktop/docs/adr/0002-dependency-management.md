@@ -53,8 +53,7 @@ presets, README and the Flatpak manifest were updated.
 Files:
 
 - `vcpkg.json` — dependencies, `builtin-baseline`, features: `tests` (gtest, on
-  by default; the `release` presets turn default features off) and `asio`
-  (`boost-asio`, only with `-DAEDST_ENABLE_ASIO=ON -DVCPKG_MANIFEST_FEATURES=asio`).
+  by default; the `release` presets turn default features off).
 - `CMakePresets.json` — toolchain `$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake`;
   triplets `x64-windows-static-md` (MSVC) and `x64-linux` (GCC/Clang).
 - Bumping a dependency: `vcpkg x-update-baseline` (updates `builtin-baseline`),

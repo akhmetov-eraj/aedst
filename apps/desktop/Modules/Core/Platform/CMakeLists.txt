@@ -32,7 +32,7 @@ target_compile_features(AedstPlatform PUBLIC cxx_std_23)
 
 # PUBLIC: SingleInstanceGuard / InAppNotificationService are QObjects and the
 # guard uses QLocalServer (Qt6::Network); Outcome comes from Aedst::Core.
-target_link_libraries(AedstPlatform PUBLIC Aedst::Core Qt6::Core Qt6::Network PRIVATE Qt6::Gui Qt6::Widgets)
+target_link_libraries(AedstPlatform PUBLIC Aedst::Core Qt6::Core Qt6::Network PRIVATE Aedst::Logging Qt6::Gui Qt6::Widgets)
 
 if(UNIX AND TARGET Qt6::DBus)
     target_sources(AedstPlatform PRIVATE

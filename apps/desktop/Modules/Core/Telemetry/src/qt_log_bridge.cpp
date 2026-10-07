@@ -8,6 +8,7 @@
 #include <QtGlobal>
 
 #include <atomic>
+#include <cstring>
 #include <string>
 
 namespace aedst::telemetry {
@@ -57,6 +58,13 @@ thread_local bool tInHandler = false;
     return spdlog::level::off;
 }
 
+/// First-party categories (aedst.network, ...) are our own product log: every level goes to
+/// spdlog, which applies its configured level. Everything else (qt.*, qml, default) keeps the
+/// quieter QtLogBridgeOptions::forwardFrom threshold.
+[[nodiscard]] bool isAedstCategory(const char* category) noexcept {
+    return category != nullptr && std::strncmp(category, "aedst.", 6) == 0;
+}
+
 void callPrevious(QtMsgType type, const QMessageLogContext& context, const QString& message) {
     if (const QtMessageHandler previous = gPrevious.load(); previous != nullptr) {
         previous(type, context, message);
@@ -67,11 +75,16 @@ void bridgeHandler(QtMsgType type, const QMessageLogContext& context, const QStr
     if (!tInHandler) {
         tInHandler = true;
         const core::LogLevel level = toLevel(type);
-        if (static_cast<int>(level) >= static_cast<int>(gOptions.forwardFrom)) {
-            const char* category = context.category != nullptr ? context.category : "default";
+        const char* category = context.category != nullptr ? context.category : "default";
+        const bool ours = isAedstCategory(category);
+        if (ours || static_cast<int>(level) >= static_cast<int>(gOptions.forwardFrom)) {
             const std::string text = message.toStdString();
             // Through AedstLogger so redaction (tokens, e-mails) applies to Qt text too.
-            core::AedstLogger::get()->log(toSpdlog(level), "[qt:{}] {}", category, text);
+            if (ours) {
+                core::AedstLogger::get()->log(toSpdlog(level), "[{}] {}", category, text);
+            } else {
+                core::AedstLogger::get()->log(toSpdlog(level), "[qt:{}] {}", category, text);
+            }
             if (gOptions.breadcrumbs && level >= core::LogLevel::Warn) {
                 SentryReporter::addBreadcrumb(category, core::redactSecrets(text),
                                               level >= core::LogLevel::Error ? BreadcrumbLevel::Error

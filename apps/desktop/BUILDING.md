@@ -51,12 +51,11 @@ tool presence with clear messages.
 | `AEDST_WARNINGS_AS_ERRORS` | `OFF` (ON in CI) | `-Werror` / `/WX` |
 | `AEDST_ENABLE_LIBSECRET` | `ON` (Linux) | Secret Service master-key backend when libsecret is found |
 | `AEDST_UPDATE_PUBLIC_KEYS` | empty | `keyId:hex64[,keyId:hex64]` Ed25519 keys; empty = updates rejected |
-| `AEDST_ENABLE_ASIO` | `OFF` | Boost.Asio for low-level I/O (needs a documented reason) |
 | `AEDST_DEPLOY_QT` | `ON` | bundle Qt in the install tree (`OFF` for Flatpak) |
 | `AEDST_COVERAGE` | `OFF` | gcov instrumentation (`coverage` preset) |
 
 Runtime environment: `AEDST_API_BASE_URL` (required in Release, https),
-`AEDST_ALLOW_INSECURE_LOCALHOST=1` (permit http to loopback outside Debug).
+`AEDST_ALLOW_INSECURE_LOCALHOST=1` (permit http to loopback outside Debug), `AEDST_LOG_RULES` (Qt category rules, e.g. `aedst.network.debug=true`), `AEDST_LOG_FORMAT=json` (JSON Lines log file).
 `aedst-desktop --version` prints the version and exits without a display.
 
 ## Release builds and packaging

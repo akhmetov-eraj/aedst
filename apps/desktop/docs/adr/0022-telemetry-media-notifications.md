@@ -117,7 +117,7 @@ an "Access denied" state without signing out.
 - vcpkg `builtin-baseline` `2cfff9c458d9dcf642e9fa09ba624f9931bb5358`
   (`git ls-remote https://github.com/microsoft/vcpkg HEAD`). Port versions at that
   baseline: protobuf 6.33.4, abseil 20260107.1, spdlog 1.17.0, fmt 12.2.0,
-  sqlite3 3.53.4, openssl 3.6.5, gtest 1.18.0, sentry-native 0.17.1, boost-asio 1.92.0.
+  sqlite3 3.53.4, openssl 3.6.5, gtest 1.18.0, sentry-native 0.17.1. (boost-asio was removed in ADR-0024.)
 - Qt **6.12.0** (latest in download.qt.io/official_releases/qt/, released
   2026-09-30). Its documented minimums (the macOS 14.4 floor is moot: Desktop no longer targets macOS, ADR-0023):
   Windows 10 1809 (6.12 is the last release supporting Windows 10).

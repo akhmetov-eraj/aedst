@@ -1,7 +1,7 @@
 #include "aedst/network/connect_client.hpp"
 
 #include "aedst/core/correlation.hpp"
-#include "aedst/core/logger.hpp"
+#include "aedst/logging/log_categories.hpp"
 #include "aedst/network/auth_interceptor.hpp"
 #include "aedst/network/connect_envelope.hpp"
 #include "aedst/network/connect_error.hpp"
@@ -24,8 +24,6 @@
 #include <utility>
 
 namespace aedst::network {
-
-using core::AedstLogger;
 
 namespace detail {
 
@@ -396,15 +394,16 @@ ConnectClient::ConnectClient(ClientConfig config, std::shared_ptr<const AuthInte
             [](QNetworkReply* reply, const QList<QSslError>& errors) {
                 const std::string host = reply != nullptr ? reply->url().host().toStdString() : std::string{};
                 for (const QSslError& error : errors) {
-                    AedstLogger::error("TLS certificate validation failed for {}: {}", host,
-                                       loggable(error.errorString().toStdString()));
+                    qCCritical(lcNetwork, "TLS certificate validation failed for %s: %s", host.c_str(),
+                               loggable(error.errorString().toStdString()).c_str());
                 }
             });
 
     auto setup = buildTlsSetup(config_);
     if (!setup) {
         configError_ = std::move(setup.error());
-        AedstLogger::error("API client is disabled, every call will fail: {}", loggable(configError_->message));
+        qCCritical(lcNetwork, "API client is disabled, every call will fail: %s",
+                   loggable(configError_->message).c_str());
         return;
     }
     sslConfig_ = std::move(setup->ssl);
@@ -496,7 +495,8 @@ void ConnectClient::runUnaryAttempt(const std::shared_ptr<detail::CallState>& st
     hardenRequest(request, sslConfig_, call->correlationId);
     {
         const core::CorrelationScope scope(call->correlationId);
-        AedstLogger::debug("POST {} (attempt {}/{})", call->path, attempt, call->retry.maxAttempts);
+        qCDebug(lcNetwork, "POST %s (attempt %d/%d)", call->path.c_str(), static_cast<int>(attempt),
+                static_cast<int>(call->retry.maxAttempts));
     }
 
     QNetworkReply* reply = network_.post(request, call->body);
@@ -527,13 +527,15 @@ void ConnectClient::onUnaryFinished(QNetworkReply& reply, const std::shared_ptr<
         const core::CorrelationScope scope(call->correlationId);
         if (!tlsFailure && attempt < call->retry.maxAttempts && error.isRetryable()) {
             const auto delay = call->retry.delayBefore(attempt + 1, QRandomGenerator::global()->generateDouble());
-            AedstLogger::warn("{} failed (http={} code={} message={}); retrying in {} ms", call->path,
-                              error.httpStatus, loggable(error.connectCode), loggable(error.message), delay.count());
+            qCWarning(lcNetwork, "%s failed (http=%d code=%s message=%s); retrying in %lld ms", call->path.c_str(),
+                      static_cast<int>(error.httpStatus), loggable(error.connectCode).c_str(),
+                      loggable(error.message).c_str(), static_cast<long long>(delay.count()));
             QTimer::singleShot(delay, this, [this, state, call, attempt]() { runUnaryAttempt(state, call, attempt + 1); });
             return;
         }
-        AedstLogger::warn("{} failed: http={} code={} message={}", call->path, error.httpStatus,
-                          loggable(error.connectCode), loggable(error.message));
+        qCWarning(lcNetwork, "%s failed: http=%d code=%s message=%s", call->path.c_str(),
+                  static_cast<int>(error.httpStatus), loggable(error.connectCode).c_str(),
+                  loggable(error.message).c_str());
     }
     completeUnary(state, *call, std::move(result));
 }
@@ -574,7 +576,7 @@ CallHandle ConnectClient::serverStreamRaw(const MethodInfo& method, QByteArray b
     hardenRequest(request, sslConfig_, correlationId);
     {
         const core::CorrelationScope scope(correlationId);
-        AedstLogger::debug("POST {} (server stream)", std::string(method.path));
+        qCDebug(lcNetwork, "POST %s (server stream)", std::string(method.path).c_str());
     }
 
     QNetworkReply* reply = network_.post(request, envelope::encode(0, body));

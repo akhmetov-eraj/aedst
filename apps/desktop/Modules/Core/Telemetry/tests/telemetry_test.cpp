@@ -1,5 +1,8 @@
+#include "aedst/core/logger.hpp"
+#include "aedst/logging/log_categories.hpp"
 #include "aedst/telemetry/error_center.hpp"
 #include "aedst/telemetry/posthog_analytics_tracker.hpp"
+#include "aedst/telemetry/qt_log_bridge.hpp"
 #include "aedst/testing/test_main.hpp"
 
 #include <QJsonArray>
@@ -8,6 +11,12 @@
 #include <QSignalSpy>
 #include <QTimeZone>
 #include <gtest/gtest.h>
+#include <spdlog/sinks/ostream_sink.h>
+
+#include <memory>
+#include <mutex>
+#include <sstream>
+#include <string>
 
 namespace aedst::telemetry {
 namespace {
@@ -100,6 +109,51 @@ TEST(ErrorCenterTest, EmitsOnceForDuplicatesAndNeverForSilentOrCancelled) {
     EXPECT_TRUE(raised.at(1).at(3).toBool());
 }
 
+class QtLogBridgeTest : public ::testing::Test {
+protected:
+    void SetUp() override {
+        auto sink = std::make_shared<spdlog::sinks::ostream_sink_mt>(captured_);
+        core::LoggerConfig config;
+        config.console = false;
+        config.level = core::LogLevel::Debug;
+        core::AedstLogger::init(config, {sink});
+        installQtLogBridge();
+    }
+
+    void TearDown() override {
+        uninstallQtLogBridge();
+        core::AedstLogger::shutdown();
+    }
+
+    [[nodiscard]] std::string output() {
+        core::AedstLogger::flush();
+        return captured_.str();
+    }
+
+    std::ostringstream captured_;
+};
+
+TEST_F(QtLogBridgeTest, FirstPartyCategoriesReachSpdlogAtEveryLevel) {
+    qCInfo(lcNetwork, "hello %d", 7);
+    qCDebug(lcMedia, "detail");
+    const std::string text = output();
+    EXPECT_NE(text.find("[aedst.network] hello 7"), std::string::npos) << text;
+    EXPECT_NE(text.find("[aedst.media] detail"), std::string::npos) << text;
+}
+
+TEST_F(QtLogBridgeTest, FrameworkInfoStaysOutOfTheProductLog) {
+    const QLoggingCategory framework("qt.test.framework");
+    qCInfo(framework, "chatty");
+    qCWarning(framework, "important");
+    const std::string text = output();
+    EXPECT_EQ(text.find("chatty"), std::string::npos) << text;
+    EXPECT_NE(text.find("[qt:qt.test.framework] important"), std::string::npos) << text;
+}
+
+TEST_F(QtLogBridgeTest, SecretsInCategoryMessagesAreRedacted) {
+    qCWarning(lcNetwork, "request failed: Authorization: Bearer abc.def.ghi");
+    EXPECT_EQ(output().find("abc.def.ghi"), std::string::npos);
+}
 } // namespace
 } // namespace aedst::telemetry
 

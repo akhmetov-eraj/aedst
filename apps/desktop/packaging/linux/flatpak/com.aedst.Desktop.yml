@@ -116,7 +116,6 @@ modules:
     config-opts:
       - -DCMAKE_BUILD_TYPE=Release
       - -DBUILD_TESTING=OFF
-      - -DAEDST_ENABLE_ASIO=OFF
       - -DAEDST_DEPLOY_QT=OFF
       - -DAEDST_PROTO_ROOT=/run/build/aedst-desktop/proto
     sources:

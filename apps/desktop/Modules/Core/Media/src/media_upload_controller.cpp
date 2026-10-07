@@ -1,7 +1,7 @@
 #include "aedst/media/media_upload_controller.hpp"
 
 #include "aedst/core/error_sink.hpp"
-#include "aedst/core/logger.hpp"
+#include "aedst/logging/log_categories.hpp"
 #include "aedst/media/media_remote_data_source.hpp"
 
 #include <QCoreApplication>
@@ -19,8 +19,6 @@
 #include <utility>
 
 namespace aedst::media {
-
-using core::AedstLogger;
 
 namespace {
 
@@ -204,8 +202,8 @@ void MediaUploadController::onPrepared(std::expected<CompressedImage, QString> r
     }
     emit fileChanged();
     if (prepared_.compressed) {
-        AedstLogger::info("Upload: image compressed to {} bytes ({}x{})", prepared_.sizeBytes,
-                          prepared_.size.width(), prepared_.size.height());
+        qCInfo(lcMedia, "Upload: image compressed to %lld bytes (%dx%d)", static_cast<long long>(prepared_.sizeBytes),
+                prepared_.size.width(), prepared_.size.height());
     }
     createUpload();
 }
@@ -347,7 +345,7 @@ void MediaUploadController::deleteOrphan() {
     request.set_id(slot_.mediaId.toStdString());
     deps_.remote->deleteMedia(request, [](network::ApiResult<void> result) {
         if (!result) {
-            AedstLogger::debug("Orphaned upload cleanup failed: {}", result.error().message);
+            qCDebug(lcMedia, "Orphaned upload cleanup failed: %s", result.error().message.c_str());
         }
     });
     slot_ = {};

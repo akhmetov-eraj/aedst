@@ -1,12 +1,10 @@
 #include "aedst/navigation/router.hpp"
 
-#include "aedst/core/logger.hpp"
+#include "aedst/logging/log_categories.hpp"
 
 #include <utility>
 
 namespace aedst::navigation {
-
-using core::AedstLogger;
 
 namespace {
 
@@ -64,7 +62,7 @@ std::optional<Route> routeForLink(std::string_view link) {
 bool Router::openLink(const QString& link) {
     const auto route = routeForLink(link.toStdString());
     if (!route) {
-        AedstLogger::warn("Router: ignoring unsupported in-app link");
+        qCWarning(lcNavigation, "Router: ignoring unsupported in-app link");
         return false;
     }
     return push(*route);
@@ -75,7 +73,7 @@ Router::Router(std::shared_ptr<const NavGraph> graph, QObject* parent) : QObject
 bool Router::push(const Route& route) {
     const auto view = graph_->resolve(route.name);
     if (!view) {
-        AedstLogger::warn("Router: no destination registered for '{}'", route.name);
+        qCWarning(lcNavigation, "Router: no destination registered for '%s'", route.name.c_str());
         return false;
     }
     backStack_.push_back(route);
@@ -87,7 +85,7 @@ bool Router::push(const Route& route) {
 bool Router::resetTo(const Route& route) {
     const auto view = graph_->resolve(route.name);
     if (!view) {
-        AedstLogger::warn("Router: no destination registered for '{}'", route.name);
+        qCWarning(lcNavigation, "Router: no destination registered for '%s'", route.name.c_str());
         return false;
     }
     backStack_.clear();

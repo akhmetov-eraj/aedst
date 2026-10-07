@@ -12,6 +12,7 @@
 #include "aedst/crash/consent_store.hpp"
 #include "aedst/crash/crash_handler.hpp"
 #include "aedst/designsystem/translation_loader.hpp"
+#include "aedst/logging/log_categories.hpp"
 #include "aedst/media/media_image_provider.hpp"
 #include "aedst/navigation/route.hpp"
 #include "aedst/network/connect_client.hpp"
@@ -33,6 +34,7 @@
 #include <QQmlEngine>
 #include <QQuickWindow>
 #include <QSettings>
+#include <QSslSocket>
 #include <QStandardPaths>
 #include <QString>
 #include <QUuid>
@@ -135,14 +137,14 @@ void handleActivation(const QStringList& arguments, const QPointer<QQuickWindow>
             continue;
         }
         if (auto link = aedst::platform::parseDeepLink(text)) {
-            AedstLogger::info("Deep link received (route={})", link->route);
+            qCInfo(lcApp, "Deep link received (route=%s)", link->route.c_str());
             // The allow-listed route maps onto the same relative links the server
             // uses ("/tasks/<id>"); Router::openLink ignores anything else.
             if (router != nullptr) {
                 router->openLink(QStringLiteral("/") + QString::fromStdString(link->route));
             }
         } else {
-            AedstLogger::warn("Deep link rejected: {}", link.error().message);
+            qCWarning(lcApp, "Deep link rejected: %s", link.error().message.c_str());
         }
     }
     if (window) {
@@ -157,6 +159,29 @@ void shutdownTelemetry() {
     aedst::crash::CrashHandler::uninstall();
     aedst::telemetry::uninstallQtLogBridge();
     AedstLogger::shutdown();
+}
+
+/// TLS backend (ADR-0024): Schannel on Windows (OS trust store and TLS stack, no OpenSSL
+/// libraries to ship), the system OpenSSL on Linux (the KDE runtime's when sandboxed in
+/// Flatpak). Must run before the first network access. A missing backend is not fatal here:
+/// ConnectClient refuses https when QSslSocket::supportsSsl() is false.
+void selectTlsBackend() {
+#if defined(_WIN32)
+    const QString wanted = QStringLiteral("schannel");
+#else
+    const QString wanted = QStringLiteral("openssl");
+#endif
+    if (!QSslSocket::availableBackends().contains(wanted)) {
+        qCWarning(lcNetwork, "TLS backend '%s' is not available; keeping Qt's default (%s)", qUtf8Printable(wanted),
+                  qUtf8Printable(QSslSocket::activeBackend()));
+        return;
+    }
+    if (QSslSocket::activeBackend() != wanted && !QSslSocket::setActiveBackend(wanted)) {
+        qCWarning(lcNetwork, "Could not activate the '%s' TLS backend; keeping %s", qUtf8Printable(wanted),
+                  qUtf8Printable(QSslSocket::activeBackend()));
+        return;
+    }
+    qCInfo(lcNetwork, "TLS backend: %s", qUtf8Printable(QSslSocket::activeBackend()));
 }
 
 } // namespace
@@ -191,11 +216,16 @@ int main(int argc, char* argv[]) {
 #else
     logConfig.level = aedst::core::LogLevel::Debug;
 #endif
+    if (qEnvironmentVariable("AEDST_LOG_FORMAT").compare(QLatin1String("json"), Qt::CaseInsensitive) == 0) {
+        logConfig.format = aedst::core::LogFormat::Json; // JSON Lines for log shippers / support tooling
+    }
     logConfig.logFile = dataDirectory / "logs" / "aedst.log";
     AedstLogger::init(logConfig);
+    aedst::logging::applyLogRules();
     aedst::telemetry::installQtLogBridge();
-    AedstLogger::info("AEDST desktop {} starting", AEDST_VERSION);
+    qCInfo(lcApp, "AEDST desktop %s starting", AEDST_VERSION);
     startup.mark("logger ready");
+    selectTlsBackend();
 
     // Crash reporting. With a Sentry DSN: sentry-native + crashpad (out-of-process
     // minidumps, uploaded only after the user consented). Without one: the local
@@ -215,7 +245,7 @@ int main(int argc, char* argv[]) {
         crashConsent.state() == aedst::crash::ConsentState::Granted);
     if (!sentryActive) {
         if (auto installed = aedst::crash::CrashHandler::install(dataDirectory, AEDST_VERSION); !installed) {
-            AedstLogger::warn("Crash handler unavailable: {}", installed.error().message);
+            qCWarning(lcApp, "Crash handler unavailable: %s", installed.error().message.c_str());
         }
     }
 
@@ -224,7 +254,7 @@ int main(int argc, char* argv[]) {
     aedst::platform::SingleInstanceGuard instanceGuard(QString::fromUtf8(kAppId),
                                                        QString::fromStdU16String(dataDirectory.u16string()));
     if (instanceGuard.acquire(app.arguments()) == aedst::platform::SingleInstanceGuard::Role::Secondary) {
-        AedstLogger::info("Another instance is running; activation forwarded, exiting");
+        qCInfo(lcApp, "Another instance is running; activation forwarded, exiting");
         shutdownTelemetry();
         return EXIT_SUCCESS;
     }
@@ -245,8 +275,8 @@ int main(int argc, char* argv[]) {
     // Fail fast on an insecure or malformed endpoint (https required; http only for
     // loopback in Debug or with AEDST_ALLOW_INSECURE_LOCALHOST).
     if (auto valid = aedst::network::validateClientConfig({.baseUrl = config.apiBaseUrl}); !valid) {
-        AedstLogger::critical("Invalid API configuration: {} (set AEDST_API_BASE_URL to an https:// URL)",
-                              valid.error().message);
+        qCCritical(lcApp, "Invalid API configuration: %s (set AEDST_API_BASE_URL to an https:// URL)",
+                   valid.error().message.c_str());
         shutdownTelemetry();
         return EXIT_FAILURE;
     }
@@ -260,7 +290,7 @@ int main(int argc, char* argv[]) {
 
     auto dependencies = aedst::app::AppDependencies::create(config, *notifications);
     if (!dependencies) {
-        AedstLogger::critical("Startup failed: {}", dependencies.error().message);
+        qCCritical(lcApp, "Startup failed: %s", dependencies.error().message.c_str());
         shutdownTelemetry();
         return EXIT_FAILURE;
     }
@@ -303,7 +333,7 @@ int main(int argc, char* argv[]) {
     QObject::connect(
         &engine, &QQmlApplicationEngine::objectCreationFailed, &app,
         []() {
-            AedstLogger::critical("Failed to create the QML root object");
+            qCCritical(lcApp, "Failed to create the QML root object");
             QCoreApplication::exit(EXIT_FAILURE);
         },
         Qt::QueuedConnection);
@@ -358,7 +388,7 @@ int main(int argc, char* argv[]) {
     deps.resumeSession();
 
     const int exitCode = QApplication::exec();
-    AedstLogger::info("AEDST desktop exiting with code {}", exitCode);
+    qCInfo(lcApp, "AEDST desktop exiting with code %d", exitCode);
     deps.analytics().flush();
     shutdownTelemetry();
     return exitCode;

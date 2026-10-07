@@ -23,7 +23,7 @@
 #include "Presentation/search_view_model.hpp"
 #include "Presentation/task_detail_view_model.hpp"
 #include "Presentation/task_list_view_model.hpp"
-#include "aedst/core/logger.hpp"
+#include "aedst/logging/log_categories.hpp"
 #include "aedst/media/media_remote_data_source.hpp"
 #include "aedst/network/access_token_claims.hpp"
 #include "aedst/network/transport_policy.hpp"
@@ -38,7 +38,6 @@
 
 namespace aedst::app {
 
-using core::AedstLogger;
 namespace auth = feature::auth;
 namespace tasks = feature::tasks;
 namespace search = feature::search;
@@ -158,8 +157,8 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
     deps->wireSessionLifecycle();
     deps->updateSessionInfo();
 
-    AedstLogger::info("Dependencies ready (api={}, data={})", config.apiBaseUrl.toString().toStdString(),
-                      config.dataDirectory.string());
+    qCInfo(lcApp, "Dependencies ready (api=%s, data=%s)", config.apiBaseUrl.toString().toStdString().c_str(),
+            config.dataDirectory.string().c_str());
     return deps;
 }
 
@@ -174,7 +173,7 @@ void AppDependencies::wireSessionLifecycle() {
     QObject::connect(errorCenter_.get(), &telemetry::ErrorCenter::sessionExpired, errorCenter_.get(), [this]() {
         // isLoading: a sign-out is already running (several in-flight calls can fail at once).
         if (session_->signedIn() && !loginViewModel_->isLoading()) {
-            AedstLogger::info("Session expired; signing out");
+            qCInfo(lcApp, "Session expired; signing out");
             loginViewModel_->logout(); // clears local tokens, emits loggedOut -> onSignedOut
         }
     });
@@ -298,12 +297,12 @@ void AppDependencies::refreshSessionIfNeeded() {
             return;
         }
         if (result.error().code == core::ErrorCode::Unauthenticated) {
-            AedstLogger::info("Stored session was rejected; returning to login");
+            qCInfo(lcApp, "Stored session was rejected; returning to login");
             onSignedOut();
             router_->resetTo(auth::loginRoute());
             return;
         }
-        AedstLogger::warn("Session refresh failed, keeping stored session: {}", result.error().message);
+        qCWarning(lcApp, "Session refresh failed, keeping stored session: %s", result.error().message.c_str());
     });
 }
 

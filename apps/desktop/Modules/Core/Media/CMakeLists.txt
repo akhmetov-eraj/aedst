@@ -75,6 +75,7 @@ target_link_libraries(AedstMedia
         Qt6::Quick
     PRIVATE
         Qt6::Multimedia
+        Aedst::Logging
         Aedst::DesignSystem
 )
 # Same static-QML-module rule as Aedst::DesignSystem: consumers get the plugin.

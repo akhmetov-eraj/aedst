@@ -1,6 +1,6 @@
 #include "aedst/platform/single_instance_guard.hpp"
 
-#include "aedst/core/logger.hpp"
+#include "aedst/logging/log_categories.hpp"
 
 #include <QByteArray>
 #include <QChar>
@@ -82,7 +82,7 @@ QStringList SingleInstanceGuard::sanitizeArguments(const QStringList& arguments)
 
 SingleInstanceGuard::Role SingleInstanceGuard::acquire(const QStringList& arguments) {
     if (!QDir().mkpath(lockDirectory_)) {
-        core::AedstLogger::warn("single instance: cannot create the lock directory");
+        qCWarning(lcPlatform, "single instance: cannot create the lock directory");
         role_ = Role::Unavailable;
         return role_;
     }
@@ -95,7 +95,7 @@ SingleInstanceGuard::Role SingleInstanceGuard::acquire(const QStringList& argume
         return becomePrimary();
     }
     if (lock_->error() != QLockFile::LockFailedError) {
-        core::AedstLogger::warn("single instance: lock file unusable (permissions or I/O error)");
+        qCWarning(lcPlatform, "single instance: lock file unusable (permissions or I/O error)");
         lock_.reset();
         role_ = Role::Unavailable;
         return role_;
@@ -110,10 +110,10 @@ SingleInstanceGuard::Role SingleInstanceGuard::acquire(const QStringList& argume
     // abandoned (unreadable lock file, or written on another host of a roaming
     // profile); a live-but-unreachable owner on this host is left alone.
     if (lockLooksAbandoned() && lock_->removeStaleLockFile() && lock_->tryLock(0)) {
-        core::AedstLogger::warn("single instance: reclaimed an abandoned lock");
+        qCWarning(lcPlatform, "single instance: reclaimed an abandoned lock");
         return becomePrimary();
     }
-    core::AedstLogger::warn("single instance: lock held by an unreachable instance; continuing without the guard");
+    qCWarning(lcPlatform, "single instance: lock held by an unreachable instance; continuing without the guard");
     lock_.reset();
     role_ = Role::Unavailable;
     return role_;
@@ -125,7 +125,7 @@ SingleInstanceGuard::Role SingleInstanceGuard::becomePrimary() {
     // A crashed primary leaves its socket file behind on Unix; no-op on Windows.
     QLocalServer::removeServer(serverName_);
     if (!server_->listen(serverName_)) {
-        core::AedstLogger::warn("single instance: activation channel unavailable; second launches cannot raise us");
+        qCWarning(lcPlatform, "single instance: activation channel unavailable; second launches cannot raise us");
         server_.reset();
     } else {
         connect(server_.get(), &QLocalServer::newConnection, this, &SingleInstanceGuard::onNewConnection);

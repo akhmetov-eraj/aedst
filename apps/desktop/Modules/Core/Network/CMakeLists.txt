@@ -10,7 +10,6 @@ find_package(Protobuf CONFIG REQUIRED)
 add_library(AedstNetwork STATIC
     include/aedst/network/access_token_claims.hpp
     include/aedst/network/api_error.hpp
-    include/aedst/network/asio_support.hpp
     include/aedst/network/auth_interceptor.hpp
     include/aedst/network/call_options.hpp
     include/aedst/network/connect_client.hpp
@@ -31,16 +30,10 @@ target_include_directories(AedstNetwork PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 
 # PUBLIC: ConnectClient is a QObject and its templates use protobuf::MessageLite.
-target_link_libraries(AedstNetwork PUBLIC Aedst::Core Qt6::Core Qt6::Network protobuf::libprotobuf)
+target_link_libraries(AedstNetwork PUBLIC Aedst::Core Qt6::Core Qt6::Network protobuf::libprotobuf PRIVATE Aedst::Logging)
 
 if(WIN32)
     target_compile_definitions(AedstNetwork PUBLIC NOMINMAX WIN32_LEAN_AND_MEAN)
-endif()
-
-if(AEDST_ENABLE_ASIO)
-    find_package(Boost REQUIRED)
-    target_link_libraries(AedstNetwork PUBLIC Boost::headers)
-    target_compile_definitions(AedstNetwork PUBLIC AEDST_WITH_BOOST_ASIO)
 endif()
 
 aedst_set_warnings(AedstNetwork)

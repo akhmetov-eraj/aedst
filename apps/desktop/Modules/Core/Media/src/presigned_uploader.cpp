@@ -1,6 +1,6 @@
 #include "aedst/media/presigned_uploader.hpp"
 
-#include "aedst/core/logger.hpp"
+#include "aedst/logging/log_categories.hpp"
 #include "aedst/network/transport_policy.hpp"
 
 #include <QFile>
@@ -12,8 +12,6 @@
 #include <QSslSocket>
 
 namespace aedst::media {
-
-using core::AedstLogger;
 
 namespace {
 
@@ -88,7 +86,8 @@ bool PresignedUploader::start(const QUrl& url, const QByteArray& method, const Q
     reply_ = network_.sendCustomRequest(request, verb, file_.get());
     connect(reply_, &QNetworkReply::uploadProgress, this, &PresignedUploader::progress);
     connect(reply_, &QNetworkReply::finished, this, &PresignedUploader::onFinished);
-    AedstLogger::info("Upload started ({} bytes to {})", file_->size(), redactedUrl(url));
+    qCInfo(lcMedia, "Upload started (%lld bytes to %s)", static_cast<long long>(file_->size()),
+           redactedUrl(url).c_str());
     return true;
 }
 
@@ -117,7 +116,7 @@ void PresignedUploader::onFinished() {
         emit finished(Outcome::Succeeded, QString());
         return;
     }
-    AedstLogger::warn("Upload failed (HTTP {}, {})", status, reply->errorString().toStdString());
+    qCWarning(lcMedia, "Upload failed (HTTP %d, %s)", status, reply->errorString().toStdString().c_str());
     if (status == 403) {
         emit finished(Outcome::Expired, reply->errorString());
     } else if (status == 0 || status == 408 || status == 429 || status >= 500) {

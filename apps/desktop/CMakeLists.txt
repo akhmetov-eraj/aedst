@@ -30,7 +30,6 @@ option(BUILD_TESTING "Build GoogleTest + Qt Test suites and register them with C
 option(AEDST_BUILD_BENCHMARKS "Build the Qt Test (QBENCHMARK) benchmarks; requires BUILD_TESTING" OFF)
 option(AEDST_WARNINGS_AS_ERRORS "Treat compiler warnings as errors" OFF)
 option(AEDST_ENABLE_CLANG_TIDY "Run clang-tidy as part of the build (slow; CI runs it separately)" OFF)
-option(AEDST_ENABLE_ASIO "Make Boost.Asio available to AedstNetwork (see asio_support.hpp)" OFF)
 option(AEDST_ENABLE_SENTRY "Link sentry-native (crashpad backend) into Aedst::Telemetry; inert at runtime without a DSN" ON)
 # Build-time telemetry keys. The environment variables of the same name override them at
 # runtime. Empty = that integration is disabled. Neither is a secret in the cryptographic
@@ -96,6 +95,7 @@ endif()
 
 # Core: everything depends on these; they never depend on a feature.
 add_subdirectory(Modules/Core/Common)
+add_subdirectory(Modules/Core/Logging)         # Aedst::Logging (Qt logging categories)
 add_subdirectory(Modules/Core/Platform)        # Aedst::Platform (secure storage, notifications, autostart)
 add_subdirectory(Modules/Core/Network)
 add_subdirectory(Modules/Core/Contract)

@@ -54,7 +54,6 @@ target_link_libraries(AedstPersistence
         Aedst::Core
     PRIVATE
         SQLite::SQLite3
-        OpenSSL::SSL
         OpenSSL::Crypto
 )
 
