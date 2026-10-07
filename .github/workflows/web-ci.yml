@@ -3,9 +3,20 @@ name: web-ci
 on:
   push:
     branches: [main]
-    paths: ["apps/web/**", ".github/workflows/web-ci.yml"]
+    # The TypeScript client is generated from apps/server's protos, so a
+    # contract change must re-run this pipeline (codegen, contract test).
+    paths:
+      ["apps/web/**", "apps/server/api/proto/**", ".github/workflows/web-ci.yml"]
   pull_request:
-    paths: ["apps/web/**", ".github/workflows/web-ci.yml"]
+    paths:
+      ["apps/web/**", "apps/server/api/proto/**", ".github/workflows/web-ci.yml"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 defaults:
   run:
@@ -14,6 +25,9 @@ defaults:
 env:
   NODE_VERSION: "24"
   PNPM_VERSION: "12.6.0"
+  # The e2e/Lighthouse servers listen here; NEXT_PUBLIC_* is inlined at build
+  # time, so the build must already know the origin it will be served from.
+  SITE_URL: http://127.0.0.1:3100
 
 jobs:
   lint:
@@ -34,11 +48,19 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Biome (lint + format check)
+      - name: Biome (lint + format check; Biome only, no ESLint/Prettier)
         run: pnpm lint
 
       - name: Feature module boundaries
         run: pnpm check:feature-boundaries
+
+      # Generated ConnectRPC stubs are gitignored/generated; knip needs them
+      # to resolve imports.
+      - name: Generate ConnectRPC client stubs
+        run: pnpm connect:generate
+
+      - name: knip (unused files/exports/deps)
+        run: pnpm knip
 
   typecheck:
     runs-on: ubuntu-latest
@@ -64,10 +86,15 @@ jobs:
       - name: Verify generated stubs are up to date
         run: git diff --exit-code -- src/shared/api/connect/generated || (echo "::error::apps/web/src/shared/api/connect/generated is out of date relative to apps/server/api/proto — run 'pnpm connect:generate' and commit the result" && exit 1)
 
+      # `next typegen` emits the route types (PageProps, RouteContext, …) the
+      # source relies on, which a plain `tsc` on a fresh checkout would miss.
+      - name: Generate Next.js route types
+        run: pnpm exec next typegen
+
       - name: Type check
         run: pnpm typecheck
 
-  test:
+  unit:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -88,12 +115,28 @@ jobs:
       - name: Generate ConnectRPC client stubs
         run: pnpm connect:generate
 
-      - name: Unit tests
-        run: pnpm test
+      # The Playwright mock API must match the proto contract: every mocked
+      # procedure exists in the generated descriptors and its responses parse
+      # strictly as the declared messages (src/test/contract). Run on its own
+      # first so a contract drift is named as such in the PR checks.
+      - name: Contract test (e2e mock API vs proto descriptors)
+        run: pnpm test:contract
+
+      # Fails when coverage drops under the thresholds in vitest.config.mts.
+      - name: Unit + integration tests with coverage
+        run: pnpm test:coverage
+
+      - name: Upload coverage
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-coverage
+          path: apps/web/coverage/
+          retention-days: 7
 
   build:
     runs-on: ubuntu-latest
-    needs: [lint, typecheck, test]
+    needs: [lint, typecheck, unit]
     steps:
       - uses: actions/checkout@v4
 
@@ -113,12 +156,105 @@ jobs:
       - name: Generate ConnectRPC client stubs
         run: pnpm connect:generate
 
+      # Source maps are uploaded to Sentry (and deleted from the output) only
+      # when the secrets exist, e.g. not on pull requests from forks. The
+      # release is the commit SHA, which the SDK also reports at runtime.
       - name: Build
         env:
-          NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+          NEXT_PUBLIC_SITE_URL: ${{ env.SITE_URL }}
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT }}
+          SENTRY_RELEASE: ${{ github.sha }}
         run: pnpm build
 
+      # Performance budget: fails the PR that adds the weight.
+      - name: Client bundle budget
+        run: pnpm check:bundle
+
+      # Defence in depth: no source map may be served publicly, whether or
+      # not the Sentry upload ran.
+      - name: No public source maps
+        run: |
+          if find .next/static -name "*.map" | grep -q .; then
+            echo "::error::source maps found under .next/static"; exit 1
+          fi
+
+      - name: Upload build for the e2e and Lighthouse jobs
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-build
+          path: |
+            apps/web/.next
+            !apps/web/.next/cache
+          include-hidden-files: true
+          retention-days: 1
+
   e2e:
+    runs-on: ubuntu-latest
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Three desktop engines, plus a touch phone on each mobile engine.
+          - project: chromium
+            browser: chromium
+          - project: firefox
+            browser: firefox
+          - project: webkit
+            browser: webkit
+          - project: mobile-chrome
+            browser: chromium
+          - project: mobile-safari
+            browser: webkit
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate ConnectRPC client stubs
+        run: pnpm connect:generate
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: apps/web/.next
+
+      - name: Install Playwright browser
+        run: pnpm exec playwright install --with-deps ${{ matrix.browser }}
+
+      # Playwright starts two servers itself (see playwright.config.ts):
+      # `next start` on the build above, and e2e/mock-api — an in-memory
+      # stand-in for apps/server — so the flows behind authentication (login,
+      # token refresh, dashboard, filters, pagination, CRUD) run without a
+      # database or the Go service.
+      - name: Playwright e2e (${{ matrix.project }})
+        env:
+          CI: "1"
+          NEXT_PUBLIC_SITE_URL: ${{ env.SITE_URL }}
+        run: pnpm exec playwright test --project=${{ matrix.project }}
+
+      - name: Upload Playwright report
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-${{ matrix.project }}
+          path: apps/web/playwright-report/
+          retention-days: 7
+
+  lighthouse:
     runs-on: ubuntu-latest
     needs: [build]
     steps:
@@ -140,22 +276,23 @@ jobs:
       - name: Generate ConnectRPC client stubs
         run: pnpm connect:generate
 
-      - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-build
+          path: apps/web/.next
 
-      # No apps/server backend is available in this job, so this only
-      # exercises pages that don't require a live ConnectRPC call (the login
-      # form on / renders fine; it just isn't submitted).
-      - name: Playwright e2e tests
+      # Budgets for Core Web Vitals, category scores (a11y = 100) and script
+      # weight live in lighthouserc.json. The pages audited are public, so no
+      # backend is needed.
+      - name: Lighthouse CI
         env:
-          CI: "1"
-          NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
-        run: pnpm test:e2e:prod
+          NEXT_PUBLIC_SITE_URL: ${{ env.SITE_URL }}
+        run: pnpm lighthouse
 
-      - name: Upload Playwright report
+      - name: Upload Lighthouse reports
         if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-report
-          path: apps/web/playwright-report/
+          name: lighthouse-reports
+          path: apps/web/.lighthouseci/
           retention-days: 7

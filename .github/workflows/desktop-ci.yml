@@ -58,6 +58,8 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
+          # Add-on module for Aedst::Media (MediaPlayer, VideoOutput, QVideoSink).
+          modules: qtmultimedia
           cache: true
 
       - name: clang-format
@@ -147,6 +149,8 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
+          # Add-on module for Aedst::Media (MediaPlayer, VideoOutput, QVideoSink).
+          modules: qtmultimedia
           cache: true
 
       - name: Restore vcpkg binary cache
@@ -248,6 +252,8 @@ jobs:
       - uses: jurplel/install-qt-action@v4
         with:
           version: ${{ env.QT_VERSION }}
+          # Add-on module for Aedst::Media (MediaPlayer, VideoOutput, QVideoSink).
+          modules: qtmultimedia
           cache: true
 
       - name: Restore vcpkg binary cache
@@ -307,8 +313,17 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple: -k "$kc_password" "$keychain" >/dev/null
           security list-keychains -d user -s "$keychain" login.keychain-db
 
+      # Telemetry keys are baked into release builds from repository secrets (empty on
+      # forks: Sentry and PostHog then stay off at runtime). Neither is a credential
+      # for anything but event ingestion, but they stay out of the repo.
       - name: Configure
-        run: cmake --preset ${{ matrix.preset }}
+        run: >-
+          cmake --preset ${{ matrix.preset }}
+          "-DAEDST_SENTRY_DSN=${AEDST_SENTRY_DSN}"
+          "-DAEDST_POSTHOG_KEY=${AEDST_POSTHOG_KEY}"
+        env:
+          AEDST_SENTRY_DSN: ${{ secrets.AEDST_DESKTOP_SENTRY_DSN }}
+          AEDST_POSTHOG_KEY: ${{ secrets.AEDST_DESKTOP_POSTHOG_KEY }}
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
@@ -387,6 +402,33 @@ jobs:
           path: apps/desktop/build/${{ matrix.preset }}/symbols
           if-no-files-found: error
           retention-days: 90
+
+      # Sentry symbolication: upload this build's PDB / .debug / .dSYM so crashpad
+      # minidumps resolve to functions and lines. The release name must match
+      # SentryConfig.release ("aedst-desktop@<version>", App/src/main.cpp). Skipped
+      # when the secrets are absent (forks, template users without Sentry).
+      # Secrets cannot be used in `if:` (same pattern as "Detect signing secrets").
+      - name: Detect Sentry upload credentials
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_DESKTOP_PROJECT }}
+        run: |
+          if [ -n "$SENTRY_AUTH_TOKEN" ] && [ -n "$SENTRY_ORG" ] && [ -n "$SENTRY_PROJECT" ]; then
+            echo "HAS_SENTRY_UPLOAD=true" >> "$GITHUB_ENV"
+          fi
+
+      - name: Upload debug symbols to Sentry
+        if: env.HAS_SENTRY_UPLOAD == 'true'
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+          SENTRY_PROJECT: ${{ vars.SENTRY_DESKTOP_PROJECT }}
+        run: |
+          version=$(sed -nE 's/^[[:space:]]*VERSION[[:space:]]+([0-9]+\.[0-9]+\.[0-9]+).*/\1/p' CMakeLists.txt | head -1)
+          npx --yes @sentry/cli@3.8.0 debug-files upload --include-sources --wait \
+            "build/${{ matrix.preset }}/symbols" "build/${{ matrix.preset }}/App"
+          npx --yes @sentry/cli@3.8.0 releases new "aedst-desktop@${version}" || true
 
   # ---------------------------------------------------------------------------
   # Install the produced package on a clean runner (no compiler, no Qt), run it,

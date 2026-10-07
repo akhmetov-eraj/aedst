@@ -1,9 +1,23 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": ["config:recommended"],
+  "enabledManagers": [
+    "github-actions",
+    "gomod",
+    "npm",
+    "gradle",
+    "gradle-wrapper",
+    "swift",
+    "vcpkg",
+    "mise",
+    "dockerfile",
+    "docker-compose"
+  ],
   "packageRules": [
     {
+      "description": "Pin GitHub Actions by digest (Renovate keeps the version tag as a comment) and group them.",
       "matchManagers": ["github-actions"],
+      "pinDigests": true,
       "groupName": "GitHub Actions",
       "commitMessagePrefix": "chore(ci):"
     },
@@ -13,9 +27,21 @@
       "commitMessagePrefix": "chore(server):"
     },
     {
-      "matchFileNames": ["apps/web/**"],
+      "description": "Group Go minor/patch updates; majors stay separate PRs.",
+      "matchManagers": ["gomod"],
+      "matchUpdateTypes": ["minor", "patch", "digest"],
+      "groupName": "Go modules (minor/patch)"
+    },
+    {
+      "matchFileNames": ["apps/web/**", "docs/**", "packages/**"],
       "groupName": "web (Next.js)",
       "commitMessagePrefix": "chore(web):"
+    },
+    {
+      "description": "Group npm minor/patch updates; majors stay separate PRs.",
+      "matchManagers": ["npm"],
+      "matchUpdateTypes": ["minor", "patch"],
+      "groupName": "npm (minor/patch)"
     },
     {
       "matchFileNames": ["apps/android/**"],
@@ -23,20 +49,64 @@
       "commitMessagePrefix": "chore(android):"
     },
     {
+      "description": "Kotlin, KSP, Compose compiler (== Kotlin version), AGP and Hilt must move together: one PR, never split.",
+      "matchManagers": ["gradle"],
+      "matchPackageNames": [
+        "org.jetbrains.kotlin{/,}**",
+        "com.google.devtools.ksp{/,}**",
+        "com.android.tools.build{/,}**",
+        "com.android.application",
+        "com.android.library",
+        "com.google.dagger{/,}**",
+        "com.google.dagger.hilt.android"
+      ],
+      "groupName": "android toolchain (Kotlin + KSP + Compose compiler + AGP + Hilt)"
+    },
+    {
       "matchFileNames": ["apps/apple/**"],
       "groupName": "apple (SwiftPM)",
       "commitMessagePrefix": "chore(apple):"
     },
     {
+      "description": "Intent: Perception must stay below 2.0.12 (see apps/apple Package.swift). Do not auto-bump beyond.",
+      "matchManagers": ["swift"],
+      "matchPackageNames": ["pointfreeco/swift-perception", "https://github.com/pointfreeco/swift-perception"],
+      "allowedVersions": "<2.0.12"
+    },
+    {
+      "description": "Intent: swift-protobuf is floored at 1.31.0 (apple-ci SWIFT_PROTOBUF_VERSION) and must match the generator plugin; no auto major bump.",
+      "matchManagers": ["swift"],
+      "matchPackageNames": ["apple/swift-protobuf", "https://github.com/apple/swift-protobuf"],
+      "allowedVersions": ">=1.31.0 <2.0.0"
+    },
+    {
       "matchFileNames": ["apps/desktop/**"],
-      "groupName": "desktop (CMake/Conan)",
+      "groupName": "desktop (CMake/vcpkg)",
       "commitMessagePrefix": "chore(desktop):"
+    },
+    {
+      "description": "vcpkg builtin-baseline: one repo-wide pin, bumped deliberately (vcpkg x-update-baseline); protobuf must match the Flatpak module.",
+      "matchManagers": ["vcpkg"],
+      "groupName": "desktop vcpkg baseline",
+      "commitMessagePrefix": "chore(desktop):"
+    },
+    {
+      "description": "mise.toml toolchain pins. Keep in sync with go.mod, CI env versions and package.json.",
+      "matchManagers": ["mise"],
+      "groupName": "toolchain (mise)",
+      "commitMessagePrefix": "chore(tools):"
     }
   ],
   "gradle": {
-    "fileMatch": ["apps/android/.*\\.gradle\\.kts$", "apps/android/gradle/libs\\.versions\\.toml$"]
+    "managerFilePatterns": ["/^apps/android/.*\\.gradle\\.kts$/", "/^apps/android/gradle/libs\\.versions\\.toml$/"]
   },
   "swift": {
-    "fileMatch": ["apps/apple/.*Package\\.swift$"]
+    "managerFilePatterns": ["/^apps/apple/.*Package\\.swift$/"]
+  },
+  "vcpkg": {
+    "managerFilePatterns": ["/^apps/desktop/vcpkg\\.json$/", "/^apps/desktop/vcpkg-configuration\\.json$/"]
+  },
+  "mise": {
+    "managerFilePatterns": ["/^mise\\.toml$/"]
   }
 }

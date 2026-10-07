@@ -8,6 +8,9 @@ on:
     paths: ["apps/server/**", ".github/workflows/server-ci.yml"]
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 concurrency:
   group: server-ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -39,7 +42,7 @@ jobs:
           cache-dependency-path: apps/server/go.sum
       - run: go install github.com/bufbuild/buf/cmd/buf@v${{ env.BUF_VERSION }}
       - run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v${{ env.SQLC_VERSION }}
-      - run: go install mvdan.cc/gofumpt@latest
+      - run: go install mvdan.cc/gofumpt@v0.12.0
       - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
       - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - run: task gen:check
@@ -53,12 +56,19 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: apps/server/go.sum
       - run: go install github.com/bufbuild/buf/cmd/buf@v${{ env.BUF_VERSION }}
-      - run: go install mvdan.cc/gofumpt@latest
+      - run: go install mvdan.cc/gofumpt@v0.12.0
       - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
       - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - uses: golangci/golangci-lint-action@v6
+      # golangci-lint v2 (the config is `version: "2"`) runs staticcheck,
+      # govet, errcheck, depguard, ...; `task lint` adds gofumpt, `go vet`,
+      # `sqlc vet` and buf lint/format. The action installs the pinned binary
+      # that `task lint` then uses.
+      - uses: golangci/golangci-lint-action@v9
         with:
+          version: v2.14.0
           working-directory: apps/server
+          install-only: true
+      - run: go install github.com/sqlc-dev/sqlc/cmd/sqlc@v${{ env.SQLC_VERSION }}
       - run: task lint
 
   arch:
@@ -81,7 +91,7 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
           cache-dependency-path: apps/server/go.sum
-      - run: go install golang.org/x/vuln/cmd/govulncheck@latest
+      - run: go install golang.org/x/vuln/cmd/govulncheck@v1.8.0
       - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
       - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - run: task vuln
@@ -96,7 +106,7 @@ jobs:
           cache-dependency-path: apps/server/go.sum
       - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
       - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - run: task test
+      - run: task test:race
 
   lint-migrations:
     # squawk runs via Docker inside the task (see Taskfile.yml's
@@ -162,15 +172,22 @@ jobs:
           cache-dependency-path: apps/server/go.sum
       - run: go install github.com/go-task/task/v3/cmd/task@v${{ env.TASK_VERSION }}
       - run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - run: docker compose -f deployments/docker/docker-compose.yml up -d --wait
+      - run: docker compose -f deployments/docker/docker-compose.yml up -d --wait postgres valkey
+      - run: go install github.com/pressly/goose/v3/cmd/goose@v3.28.0
       - run: task migrate
-      - run: |
+      - name: start server
+        run: |
+          set -a; . ./.env.example; set +a
+          # The scenario drives every request as one user; the per-user limit
+          # exists to stop exactly that, so the limits are off for the load test.
+          export AEDST_API_RATE_LIMIT_PER_MINUTE=0 AEDST_AUTH_RATE_LIMIT_PER_MINUTE=0 AEDST_LOGIN_RATE_LIMIT_PER_MINUTE=0
           nohup go run ./cmd/server > server.log 2>&1 &
           for i in $(seq 1 30); do
             curl -sf http://localhost:8080/livez && break
             sleep 1
           done
-      - run: task test:load
+      - run: task load SCENARIO=smoke
+      - run: task load SCENARIO=load RATE=10 DURATION=1m
       - if: always()
         run: docker compose -f deployments/docker/docker-compose.yml down -v
 

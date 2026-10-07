@@ -1,0 +1,47 @@
+name: apple-ai-review
+
+# Runs Claude Code (anthropics/claude-code-action) against every PR that
+# touches apps/apple, applying the same review the architect-reviewer/
+# swiftui-reviewer/concurrency-auditor/security-auditor subagents already
+# do locally (apps/apple/.claude/agents/) — AGENTS.md's architectural
+# rules, so a PR gets that pass even if a human reviewer skips it.
+# Requires an ANTHROPIC_API_KEY secret configured on the repo (or
+# CLAUDE_CODE_OAUTH_TOKEN from `claude setup-token` as an alternative auth
+# method — see the action's own docs). Mirrors server's ai-review.yml —
+# a separate file (not a shared one) because each app's PR-path filter and
+# review prompt are app-specific; see apps/apple/AGENTS.md/docs/adr/0001.
+on:
+  pull_request:
+    paths:
+      - "apps/apple/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review the changes in this pull request under apps/apple/.
+            Read apps/apple/AGENTS.md first for the project's architectural
+            rules, then apply the same checks apps/apple/.claude/agents/
+            describe: module-boundary violations (Features/*, Clients/*,
+            ClientsLive/*, Core/* per AGENTS.md's dependency table),
+            offline-first violations (a write that bypasses
+            pending_changes), banned concurrency constructs (DispatchQueue,
+            Task.detached, @unchecked Sendable, nonisolated(unsafe) without
+            an ADR), logic living in a SwiftUI View instead of its model,
+            and common security issues (a token/PII logged without
+            `privacy: .private`, Keychain bypassed via UserDefaults, a new
+            NSAppTransportSecurity exception). Post findings as a PR
+            review; approve with no comments if nothing is found.
+          claude_args: |
+            --max-turns 30

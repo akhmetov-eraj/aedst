@@ -1,0 +1,51 @@
+name: android-ai-review
+
+# Runs Claude Code (anthropics/claude-code-action) against every PR that
+# touches apps/android, applying the same review the architect-reviewer/
+# compose-reviewer/security-auditor subagents already do locally
+# (apps/android/.claude/agents/) — AGENTS.md's architectural rules, so a PR
+# gets that pass even if a human reviewer skips it. Requires an
+# ANTHROPIC_API_KEY secret configured on the repo (or CLAUDE_CODE_OAUTH_TOKEN
+# from `claude setup-token` as an alternative auth method — see the
+# action's own docs). Mirrors server's/apple's ai-review.yml — a separate
+# file (not a shared one) because each app's PR-path filter and review
+# prompt are app-specific.
+on:
+  pull_request:
+    paths:
+      - "apps/android/**"
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Review the changes in this pull request under apps/android/.
+            Read apps/android/AGENTS.md first for the project's
+            architectural rules, then apply the same checks
+            apps/android/.claude/agents/architect-reviewer.md,
+            compose-reviewer.md, and security-auditor.md describe:
+            module-rules violations (feature:*:impl depending on another
+            feature's impl or any data:*:impl, a data:*:impl depending on
+            another data:*:impl or any feature, core:* reaching outside
+            core:*), a Screen composable taking a ViewModel instead of only
+            UiState + lambdas, hiltViewModel() called anywhere but a
+            default-parameter position, a UI write that skips Room/
+            pending_changes and hits the network directly, a *Dto or
+            *Entity type leaking into a public api-module or feature
+            signature, and common security issues (a token logged, network
+            calls bypassing safeApiCall's typed Outcome<T>, a new Cleartext
+            or exported-component manifest change). Post findings as a PR
+            review; approve with no comments if nothing is found.
+          claude_args: |
+            --max-turns 30

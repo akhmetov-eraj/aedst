@@ -1,0 +1,47 @@
+name: apple-ai-task
+
+# Section 11.11: an Issue labeled both `ai-task` and `apps/apple` (see
+# .github/ISSUE_TEMPLATE/apple-ai-task.yml) runs the write-spec -> ... ->
+# create-pr pipeline (apps/apple/AGENTS.md) when someone mentions @claude
+# on it. Scoped to apps/apple by the label check below, not by path (an
+# Issue has no diff/paths to filter on the way a PR does) — a monorepo
+# with a similar workflow for another app should use its own label
+# instead of also matching `apps/apple`.
+on:
+  issues:
+    types: [opened]
+  issue_comment:
+    types: [created]
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  run-task:
+    if: >
+      contains(github.event.issue.labels.*.name, 'ai-task') &&
+      contains(github.event.issue.labels.*.name, 'apps/apple') &&
+      (
+        github.event_name == 'issues' ||
+        contains(github.event.comment.body, '@claude')
+      )
+    runs-on: xcode-27
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: anthropics/claude-code-action@v1
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            Work this Issue (apps/apple) following the pipeline in
+            apps/apple/AGENTS.md: read apps/apple/.claude/skills/write-spec
+            first and turn this Issue's description into a spec at
+            apps/apple/specs/<feature>/<name>.md, posted as a comment on
+            this Issue — then STOP and wait for a human to approve it
+            before scaffolding or writing any implementation code. Do not
+            open a PR in this run if the spec isn't already approved on a
+            prior run of this workflow (check the Issue's comment history).
+          claude_args: |
+            --max-turns 40

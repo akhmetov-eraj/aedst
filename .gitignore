@@ -24,6 +24,7 @@ apps/web/.yarn/*
 !apps/web/.yarn/releases
 !apps/web/.yarn/versions
 apps/web/coverage/
+apps/web/.lighthouseci/
 apps/web/.next/
 apps/web/out/
 apps/web/build/
@@ -80,3 +81,35 @@ apps/desktop/packaging/**/build/
 apps/desktop/**/*.msix
 apps/desktop/**/*.appimage
 apps/desktop/**/*.AppImage
+
+# --- added: apple (Tuist) ---
+apps/apple/AEDST.xcworkspace/
+apps/apple/**/Derived/
+apps/apple/Tuist/.build/
+apps/apple/Tuist/Package.resolved
+
+# --- added: desktop ---
+apps/desktop/build/
+apps/desktop/vcpkg_installed/
+apps/desktop/**/vcpkg_installed/
+apps/desktop/.cache/
+apps/desktop/**/CMakeFiles/
+apps/desktop/**/CMakeCache.txt
+
+# --- added: android local ---
+apps/android/**/local.properties
+apps/android/.kotlin/
+apps/android/**/*.jks
+apps/android/**/*.keystore
+apps/android/keystore.properties
+
+# --- added: root / tooling ---
+packages/**/node_modules/
+packages/**/dist/
+.mise.local.toml
+mise.local.toml
+apps/apple/Config/Signing.local.xcconfig
+apps/apple/build/
+apps/apple/*.p12
+apps/apple/*.p8
+apps/apple/*.mobileprovision

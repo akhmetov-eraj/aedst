@@ -1,0 +1,47 @@
+name: android-nightly
+
+# A scheduled independent rerun of the same checks android-ci.yml runs on
+# every PR — catches things a green PR can miss: flaky tests that happened
+# to pass once, a transitive dependency that changed underneath an
+# unpinned range, or drift between what's cached and what a clean
+# checkout actually resolves. Not a substitute for android-ci.yml; a
+# safety net alongside it.
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: apps/android
+
+jobs:
+  full-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          # A clean run every night, not the warm cache PRs get — that's
+          # the whole point of catching cache-vs-clean drift.
+          cache-read-only: true
+
+      - run: ./gradlew fullCheck :app:assembleMockDebug :app:assembleProdRelease --configuration-cache --rerun
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: android-nightly-reports
+          path: |
+            apps/android/**/build/reports/tests/
+            apps/android/**/build/reports/kover/
+            apps/android/**/build/test-results/
+          retention-days: 14

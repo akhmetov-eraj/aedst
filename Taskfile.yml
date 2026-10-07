@@ -1,0 +1,209 @@
+version: "3"
+
+# Single entry point (go-task). Per-app logic lives in each app's own
+# Taskfile/Makefile/package.json scripts; this file only delegates.
+# apps/server has a Taskfile and is included; the other apps expose
+# Makefile / pnpm / Gradle / CMake entry points, wrapped in namespaced tasks
+# below (web:*, android:*, apple:*, desktop:*).
+
+includes:
+  server:
+    taskfile: apps/server/Taskfile.yml
+    dir: apps/server
+
+tasks:
+  default:
+    cmds:
+      - task --list
+
+  setup:
+    desc: Install dependencies and git hooks for the current machine.
+    cmds:
+      - lefthook install
+      - pnpm --dir apps/web install --frozen-lockfile
+      - pnpm --dir docs install --frozen-lockfile
+      - task: generate
+
+  generate:
+    desc: Regenerate buf/sqlc outputs (server, web, android; apple on macOS).
+    cmds:
+      - task: server:gen
+      - task: web:generate
+      - task: android:generate
+      - task: apple:generate
+
+  lint:
+    desc: Lint every platform (apple/desktop only where the toolchain exists).
+    cmds:
+      - task: server:lint
+      - task: web:lint
+      - task: android:lint
+      - task: apple:lint
+      - task: desktop:lint
+
+  test:
+    desc: Unit tests for every platform.
+    cmds:
+      - task: server:test
+      - task: web:test
+      - task: android:test
+      - task: apple:test
+      - task: desktop:test
+
+  build:
+    desc: Build every platform (apple/desktop only where the toolchain exists).
+    cmds:
+      - task: server:build
+      - task: web:build
+      - task: android:build
+      - task: desktop:build
+
+  check:
+    desc: Cross-platform static checks (naming, boundaries, knip, migration lint, tokens).
+    cmds:
+      - task: check:naming
+      - task: check:boundaries
+      - task: web:knip
+      - task: server:lint:migrations
+      - task: tokens:check
+
+  check:naming:
+    desc: File/directory naming conventions (CONVENTIONS.md).
+    cmds:
+      - bash scripts/check-naming.sh
+
+  check:boundaries:
+    desc: Feature module boundary checks for all apps.
+    cmds:
+      - bash apps/web/scripts/check-feature-boundaries.sh
+      - bash apps/android/scripts/check-feature-boundaries.sh
+      - bash apps/apple/scripts/check-feature-boundaries.sh
+      - bash apps/desktop/scripts/check-feature-boundaries.sh
+
+  deps:update:
+    desc: Update every platform to the latest stable dependencies (pass platforms as CLI_ARGS, e.g. `task deps:update -- server web`).
+    cmds:
+      - bash scripts/update-deps.sh {{.CLI_ARGS}}
+
+  deps:check:
+    desc: Report outdated dependencies on every platform without changing anything.
+    cmds:
+      - bash scripts/update-deps.sh --check {{.CLI_ARGS}}
+
+  dev:
+    desc: Start local infra + the server (run web:dev in another shell).
+    cmds:
+      - task: server:dev
+
+  # --- design tokens (packages/design-tokens, may not exist yet) ---------
+  tokens:check:
+    desc: Fail if generated design-token outputs drift from their source.
+    status:
+      - test ! -d packages/design-tokens
+    cmds:
+      - pnpm --dir packages/design-tokens install --frozen-lockfile
+      - pnpm --dir packages/design-tokens check
+
+  # --- web -----------------------------------------------------------------
+  web:generate:
+    dir: apps/web
+    cmds: [pnpm connect:generate]
+  web:lint:
+    dir: apps/web
+    cmds: ["pnpm lint", "pnpm typecheck"]
+  web:knip:
+    dir: apps/web
+    cmds: [pnpm knip]
+  web:test:
+    dir: apps/web
+    cmds: [pnpm test]
+  web:test:coverage:
+    desc: Web unit/integration tests with the coverage thresholds CI enforces.
+    dir: apps/web
+    cmds: [pnpm test:coverage]
+  web:test:e2e:
+    desc: Web Playwright suite (all browsers + phones) against the mock API.
+    dir: apps/web
+    cmds: [pnpm test:e2e:prod]
+  web:check:bundle:
+    desc: Client bundle size budget (run after web:build).
+    dir: apps/web
+    cmds: [pnpm check:bundle]
+  web:lighthouse:
+    desc: Lighthouse CI budgets (run after web:build; needs Chrome).
+    dir: apps/web
+    cmds: [pnpm lighthouse]
+  web:build:
+    dir: apps/web
+    cmds: [pnpm build]
+  web:dev:
+    dir: apps/web
+    cmds: [pnpm dev]
+
+  # --- android -------------------------------------------------------------
+  android:generate:
+    dir: apps/android
+    cmds: [make generate]
+  android:lint:
+    dir: apps/android
+    cmds: ["./gradlew ktlintCheck detekt lintDebug"]
+  android:test:
+    dir: apps/android
+    cmds: ["./gradlew testDebugUnitTest"]
+  android:build:
+    dir: apps/android
+    cmds: ["./gradlew assembleDebug"]
+  android:androidtest:
+    desc: Compose UI tests with Accessibility Test Framework checks (needs an emulator/device).
+    dir: apps/android
+    cmds: ["./gradlew connectedDebugAndroidTest"]
+  android:release:
+    desc: R8 release build; pass pins as ARGS="-Paedst.certPins=sha256/<live>,sha256/<backup>" (refuses to build unpinned).
+    dir: apps/android
+    cmds: ["./gradlew :app:assembleRelease {{.CLI_ARGS}}"]
+
+  # --- apple (macOS only) --------------------------------------------------
+  apple:generate:
+    platforms: [darwin]
+    dir: apps/apple
+    cmds: [make generate]
+  apple:lint:
+    platforms: [darwin]
+    dir: apps/apple
+    cmds: [make lint]
+  apple:test:
+    platforms: [darwin]
+    dir: apps/apple
+    cmds: [make test]
+  apple:project:
+    platforms: [darwin]
+    dir: apps/apple
+    cmds: [make project]
+  apple:release-ios:
+    desc: Archive + export the iOS app (UPLOAD=1 for TestFlight). Needs APPLE_TEAM_ID; see docs/content/apple-release.md.
+    platforms: [darwin]
+    dir: apps/apple
+    cmds: [make release-ios]
+  apple:release-macos:
+    desc: Archive, export, notarize and staple the macOS app (DISTRIBUTION=app-store for the Mac App Store).
+    platforms: [darwin]
+    dir: apps/apple
+    cmds: [make release-macos]
+
+  # --- desktop (CMake presets; needs VCPKG_ROOT and QT_ROOT_DIR) -------------
+  desktop:lint:
+    dir: apps/desktop
+    cmds:
+      - bash scripts/check-feature-boundaries.sh
+      - bash scripts/check-proto-freshness.sh
+      - bash scripts/check-protovalidate-pin.sh
+  desktop:build:
+    dir: apps/desktop
+    cmds:
+      - cmake --preset {{.PRESET | default "debug"}}
+      - cmake --build --preset {{.PRESET | default "debug"}}
+  desktop:test:
+    dir: apps/desktop
+    cmds:
+      - task: desktop:build
+      - ctest --preset {{.PRESET | default "debug"}}

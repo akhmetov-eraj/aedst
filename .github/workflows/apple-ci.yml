@@ -3,9 +3,12 @@ name: apple-ci
 on:
   push:
     branches: [main]
-    paths: ["apps/apple/**", ".github/workflows/apple-ci.yml"]
+    paths: ["apps/apple/**", "apps/server/api/proto/**", ".github/workflows/apple-ci.yml", ".github/actions/apple-codegen/**"]
   pull_request:
-    paths: ["apps/apple/**", ".github/workflows/apple-ci.yml"]
+    paths: ["apps/apple/**", "apps/server/api/proto/**", ".github/workflows/apple-ci.yml", ".github/actions/apple-codegen/**"]
+
+permissions:
+  contents: read
 
 concurrency:
   group: apple-ci-${{ github.workflow }}-${{ github.ref }}
@@ -16,78 +19,58 @@ defaults:
     working-directory: apps/apple
 
 env:
-  # `lint`/`test` below don't need the generated Connect client — the local
-  # Swift packages compile without it (see each feature's
-  # `ConnectAuthRemoteDataSource`-style pending-codegen file). Codegen itself
-  # is verified by the `connect-generate-check` job.
-  DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
-  SWIFTLINT_VERSION: "0.57.0"
+  # Runner + Xcode verified 2026-10-07 against actions/runner-images
+  # (images/macos/macos-26-Readme.md: Xcode 26.6 is the default). App Store
+  # uploads require the current SDK; Swift 6.1+ is needed for GRDB 7.11's
+  # tools-version. swift-perception 2.0.12 (tools 6.4) is held back — see
+  # Core/AedstNavigation/Package.swift.
+  XCODE_VERSION: "26.6"
+  # Latest stable, verified 2026-10-07 via the GitHub releases API.
+  SWIFTLINT_VERSION: "0.65.1"
+  # Generator versions == runtime floors in Core/AedstNetwork/Package.swift.
+  SWIFT_PROTOBUF_VERSION: "1.38.1"
+  CONNECT_SWIFT_VERSION: "1.2.3"
 
 jobs:
-  # Mirrors apps/web's `pnpm connect:generate && git diff --exit-code` job
-  # (see web-ci.yml's `typecheck` job): regenerate the Connect-Swift stubs
-  # from apps/server/api/proto and fail if that changes anything checked in.
-  # Like apps/web's generated/ dir, AedstNetwork/Sources/AedstNetwork/Generated
-  # is gitignored (nothing is committed there), so `git diff --exit-code` is
-  # a safety net rather than a real drift check on its own — the meaningful
-  # check here is the `swift build` below, which proves the stubs buf just
-  # generated from the *current* protos actually compile against AedstNetwork.
-  # buf itself needs no special auth for the public protovalidate BSR module
-  # (server-ci.yml's gen-check job does the same `buf generate` fine on
-  # ubuntu-latest) — a real `xcodebuild` of the app targets is a separate,
-  # bigger gap (see the `xcodegen-validate` job's comment below), not a
-  # buf/codegen limitation.
-  connect-generate-check:
-    runs-on: macos-14
-    env:
-      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
-      SWIFT_PROTOBUF_VERSION: "1.28.0"
-      CONNECT_SWIFT_VERSION: "0.13.0"
-      # Keep in sync with apps/server-ci.yml's BUF_VERSION.
-      BUF_VERSION: "1.73.0"
+  # The Connect-Swift client stubs are a *build input*: every feature's
+  # Connect*Repository / Connect*RemoteDataSource calls the generated
+  # Aedst_*_V1_* types (auth, tasks, notifications, search, media, admin), so
+  # nothing that compiles a feature can run before this job. It generates them
+  # once from apps/server/api/proto and shares them as an artifact with every
+  # downstream job (they are gitignored, never committed).
+  generate:
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-go@v5
+      - uses: maxim-lobanov/setup-xcode@v1
         with:
-          go-version-file: ../server/go.mod
+          xcode-version: ${{ env.XCODE_VERSION }}
 
-      - name: Install buf
-        run: go install github.com/bufbuild/buf/cmd/buf@v${{ env.BUF_VERSION }}
-
-      # protoc-gen-swift and protoc-gen-connect-swift have no Homebrew
-      # formula; build them from the same tagged sources AedstNetwork's
-      # Package.swift already pins (see its `dependencies:`), the Swift-side
-      # equivalent of `go install`/npm for the other platforms' buf plugins.
-      - name: Build protoc-gen-swift
-        run: |
-          git clone --depth 1 --branch "${SWIFT_PROTOBUF_VERSION}" https://github.com/apple/swift-protobuf.git /tmp/swift-protobuf
-          swift build -c release --package-path /tmp/swift-protobuf --product protoc-gen-swift
-          echo "/tmp/swift-protobuf/.build/release" >> "$GITHUB_PATH"
-
-      - name: Build protoc-gen-connect-swift
-        run: |
-          git clone --depth 1 --branch "${CONNECT_SWIFT_VERSION}" https://github.com/connectrpc/connect-swift.git /tmp/connect-swift
-          swift build -c release --package-path /tmp/connect-swift --product protoc-gen-connect-swift
-          echo "/tmp/connect-swift/.build/release" >> "$GITHUB_PATH"
-
-      - name: go env PATH
-        run: echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-
-      - name: Generate Connect-Swift client stubs
-        run: make generate
-
-      - name: Verify generated stubs are up to date
-        run: git diff --exit-code -- Core/AedstNetwork/Sources/AedstNetwork/Generated || (echo "::error::apps/apple's Generated stubs are out of date relative to apps/server/api/proto — run 'make generate' from apps/apple" && exit 1)
+      - uses: ./.github/actions/apple-codegen
+        with:
+          swift-protobuf-version: ${{ env.SWIFT_PROTOBUF_VERSION }}
+          connect-swift-version: ${{ env.CONNECT_SWIFT_VERSION }}
 
       - name: swift build (AedstNetwork, with real generated stubs)
-        working-directory: Core/AedstNetwork
+        working-directory: apps/apple/Core/AedstNetwork
         run: swift build
 
+      - uses: actions/upload-artifact@v7
+        with:
+          name: connect-swift-stubs
+          path: apps/apple/Core/AedstNetwork/Sources/AedstNetwork/Generated
+          if-no-files-found: error
+          retention-days: 3
+
   lint:
-    runs-on: macos-14
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
 
       - name: Install SwiftLint (pinned)
         run: |
@@ -102,9 +85,23 @@ jobs:
       - name: Feature package boundaries
         run: ./scripts/check-feature-boundaries.sh
 
+      # Release-critical resources: a malformed plist / privacy manifest / entitlements
+      # file is an App Store rejection (or a crash at launch) found far too late.
+      - name: Lint plists, privacy manifests and entitlements
+        run: |
+          plutil -lint App/iOS/Info.plist App/macOS/Info.plist \
+            App/iOS/PrivacyInfo.xcprivacy App/macOS/PrivacyInfo.xcprivacy \
+            App/iOS/AEDST.entitlements App/macOS/AEDST.entitlements ExportOptions/*.plist
+          plutil -lint App/iOS/Resources/*.lproj/InfoPlist.strings
+
+      - name: Release scripts parse
+        run: for script in scripts/*.sh; do bash -n "$script"; done
+
   test:
-    runs-on: macos-14
+    needs: generate
+    runs-on: macos-26
     strategy:
+      fail-fast: false
       matrix:
         package:
           - Core/AedstCore
@@ -113,47 +110,113 @@ jobs:
           - Core/AedstDesignSystem
           - Core/AedstNavigation
           - Core/AedstAnalytics
+          - Core/AedstMedia
+          - Core/AedstTelemetry
           - Features/Auth
+          - Features/Tasks
+          - Features/Search
+          - Features/Notifications
+          - Features/Media
+          - Features/Admin
           - App/Shared
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/cache@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: connect-swift-stubs
+          path: apps/apple/Core/AedstNetwork/Sources/AedstNetwork/Generated
+
+      - uses: actions/cache@v6
         with:
           path: |
             apps/apple/${{ matrix.package }}/.build
             ~/Library/Caches/org.swift.swiftpm
-          key: spm-${{ runner.os }}-${{ matrix.package }}-${{ hashFiles(format('apps/apple/{0}/Package.resolved', matrix.package)) }}
+          key: spm-${{ runner.os }}-xcode${{ env.XCODE_VERSION }}-${{ matrix.package }}-${{ hashFiles(format('apps/apple/{0}/Package.resolved', matrix.package), format('apps/apple/{0}/Package.swift', matrix.package)) }}
           restore-keys: |
-            spm-${{ runner.os }}-${{ matrix.package }}-
+            spm-${{ runner.os }}-xcode${{ env.XCODE_VERSION }}-${{ matrix.package }}-
 
       - name: swift test (${{ matrix.package }})
         working-directory: apps/apple/${{ matrix.package }}
-        run: swift test
+        run: swift test --enable-code-coverage
 
-  # xcodegen-validate catches project.yml / target-graph mistakes (unknown
-  # package refs, bad target settings) without needing the generated Connect
-  # stubs — it only runs `xcodegen generate`, not a real `xcodebuild`.
-  #
-  # Building the .xcodeproj app targets and archiving each app is a further
-  # step beyond this: it needs a full Xcode project build (simulator/device
-  # provisioning, signing config), not just `swift build` on the local
-  # packages that `connect-generate-check`/`test` already cover — intentionally
-  # not wired up here yet, same reasoning as apps/android's instrumented-tests
-  # gap (see apps/android/README.md's "Distribution" note). Extend this job
-  # with `xcodebuild build -scheme App_iOS -destination
-  # 'platform=iOS Simulator,name=iPhone 15'` (and the macOS equivalent) when
-  # that's prioritized.
-  xcodegen-validate:
-    runs-on: macos-14
+  # The real acceptance test for the app: generate the Xcode workspace with
+  # Tuist and BUILD both app targets (Release configuration, no signing), so
+  # target wiring, resources (xcstrings, privacy manifests), Info.plist and
+  # entitlements are all exercised — not just the SwiftPM packages.
+  app-build:
+    needs: generate
+    runs-on: macos-26
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - scheme: App_iOS
+            destination: "generic/platform=iOS Simulator"
+          - scheme: App_macOS
+            destination: "generic/platform=macOS"
+    env:
+      # Optional: set these repository secrets/variables to upload dSYMs to
+      # Sentry from main. Without them the step is skipped (forks stay green).
+      SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      SENTRY_ORG: ${{ vars.SENTRY_ORG }}
+      SENTRY_PROJECT: ${{ vars.SENTRY_PROJECT_APPLE }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      # Homebrew core doesn't keep versioned formulas for xcodegen, unlike
-      # SwiftLint's GitHub release zips above — this installs whatever
-      # brew's current formula resolves to.
-      - name: Install XcodeGen
-        run: brew install xcodegen
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: ${{ env.XCODE_VERSION }}
 
-      - name: xcodegen generate
-        run: xcodegen generate
+      - uses: actions/download-artifact@v8
+        with:
+          name: connect-swift-stubs
+          path: apps/apple/Core/AedstNetwork/Sources/AedstNetwork/Generated
+
+      # Tuist is pinned in apps/apple/mise.toml (overrides the repo-root "latest").
+      - uses: jdx/mise-action@v5
+        with:
+          install_args: tuist
+          working_directory: apps/apple
+
+      - name: tuist install
+        run: tuist install
+
+      - name: tuist generate
+        run: tuist generate --no-open
+
+      - name: xcodebuild (${{ matrix.scheme }}, Release, unsigned)
+        run: |
+          set -o pipefail
+          xcodebuild build \
+            -workspace AEDST.xcworkspace \
+            -scheme "${{ matrix.scheme }}" \
+            -configuration Release \
+            -destination "${{ matrix.destination }}" \
+            -derivedDataPath "$RUNNER_TEMP/DerivedData" \
+            CODE_SIGNING_ALLOWED=NO \
+            | tee "$RUNNER_TEMP/xcodebuild-${{ matrix.scheme }}.log"
+
+      - name: Privacy manifest is inside the built app
+        run: |
+          app=$(find "$RUNNER_TEMP/DerivedData" -path "*Release*" -name "AEDST.app" -type d | head -1)
+          echo "built app: $app"
+          test -n "$app"
+          find "$app" -name PrivacyInfo.xcprivacy | grep -q .
+
+      # Symbol upload path is exercised on main so a broken script is caught
+      # before a release needs it (apple-release.yml should call the same script
+      # on the archive's dSYMs).
+      - name: Upload dSYMs to Sentry
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main' && env.SENTRY_AUTH_TOKEN != ''
+        run: ./scripts/upload-dsyms.sh "$RUNNER_TEMP/DerivedData/Build/Products"
+
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: xcodebuild-log-${{ matrix.scheme }}
+          path: ${{ runner.temp }}/xcodebuild-${{ matrix.scheme }}.log

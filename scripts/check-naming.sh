@@ -26,6 +26,8 @@ while IFS= read -r f; do
   [[ -f "$f" ]] || continue  # skip files deleted-but-not-yet-committed
   base=$(basename -- "$f")
   name="${base%.*}"
+  name="${name%.d}" # `foo.d.ts` declaration files: the stem is `foo`
+  case "$f" in apps/web/*) name="${name%.test}"; name="${name%.spec}"; name="${name%.contract}" ;; esac # `foo.contract.test.ts`: the stem is `foo`
 
   case "$f" in
     # --- Generated code: naming is owned by the generator, not us ---
@@ -38,6 +40,7 @@ while IFS= read -r f; do
     apps/web/src/app/*/page.tsx|apps/web/src/app/*/layout.tsx|apps/web/src/app/*/loading.tsx|apps/web/src/app/*/error.tsx|apps/web/src/app/*/not-found.tsx|apps/web/src/app/*/route.ts|apps/web/src/app/*/global-error.tsx)
       ;; # Next.js framework-mandated literal file names
     apps/web/src/modules/*/ui/*.tsx)
+      name="${name%.test}" # <Component>.test.tsx sits next to its component
       [[ "$name" =~ $pascal ]] || err "$f: component file must be PascalCase.tsx"
       ;;
     apps/web/src/*.ts)

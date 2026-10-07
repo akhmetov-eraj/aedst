@@ -15,10 +15,10 @@
 # `{staged_files}` to be relative to it instead of the repo root —
 # verified empirically (not just from the docs) before relying on it here.
 #
-# apps/web is the only app wired up today. Add a same-shaped block for
-# another app (e.g. `apps/server/**/*.go` running `gofumpt -l .` +
-# `go vet ./...` with `root: "apps/server/"`) the same way, once that app
-# wants hooks.
+# Wired apps: web (Biome, tsc, knip) and server (gofmt, go vet). Android,
+# Apple and Desktop are gated in CI only: their toolchains (JDK/Gradle, Xcode,
+# Qt/vcpkg) are too heavy for a pre-commit hook; run `task lint` locally.
+# Biome is the only JS linter/formatter (no ESLint/Prettier).
 pre-commit:
   parallel: true
   commands:
@@ -42,3 +42,32 @@ pre-commit:
       # exactly what it changed so the commit includes the fix.
       run: pnpm biome check --write --no-errors-on-unmatched {staged_files}
       stage_fixed: true
+
+    # Whole-project by nature (unused exports/files/deps). Slower than the
+    # others, so it only runs when web sources/config change.
+    web-knip:
+      root: "apps/web/"
+      glob:
+        - "apps/web/**/*.{ts,tsx,js,jsx,mjs,json,jsonc}"
+        - "apps/web/*.{ts,tsx,js,jsx,mjs,json,jsonc}"
+      run: pnpm knip
+    # File/directory naming (CONVENTIONS.md). --staged keeps it fast.
+    naming:
+      run: bash scripts/check-naming.sh --staged
+
+    # Go: formatting on staged files, vet on the whole module (a type error can
+    # be caused by a change in another package). gen/ is sqlc/buf output
+    # (already gofmt-clean); regenerate it instead of editing it by hand.
+    server-fmt:
+      root: "apps/server/"
+      glob:
+        - "apps/server/**/*.go"
+        - "apps/server/*.go"
+      # Prints the unformatted files and fails; silent and green otherwise.
+      run: "! gofmt -l {staged_files} | grep ."
+    server-vet:
+      root: "apps/server/"
+      glob:
+        - "apps/server/**/*.go"
+        - "apps/server/*.go"
+      run: go vet ./...

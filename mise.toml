@@ -1,0 +1,34 @@
+# mise (https://mise.jdx.dev) toolchain pins. `mise install` gives every
+# contributor the same versions CI uses. Taskfile.yml is the entry point for
+# commands; mise only provides tools. Keep versions in sync with:
+#   go        -> apps/server/go.mod
+#   node/pnpm -> .github/workflows/web-ci.yml, docs-ci.yml
+#   buf       -> apps/web/package.json (@bufbuild/buf), server-ci.yml
+#   task/sqlc -> server-ci.yml
+[tools]
+go = "1.27.1"
+node = "24"
+pnpm = "12.6.0"
+java = "temurin-21"      # Android (AGP 9 / Gradle)
+buf = "1.73.0"
+task = "3.53.1"
+sqlc = "1.31.1"
+golangci-lint = "2"      # apps/server/.golangci.yml is `version: "2"`
+lefthook = "latest"
+cmake = "3.30.5"         # apps/desktop (desktop-ci CMAKE_VERSION)
+ninja = "latest"
+# squawk has no mise registry entry; scripts/lint-migrations.sh uses the npm package.
+"npm:squawk-cli" = "2.66.0"
+
+# Apple: Tuist is only useful on macOS (Xcode required).
+[tools.tuist]
+version = "latest"
+os = ["macos"]
+
+# Not managed here (install separately):
+#   Qt 6 (apps/desktop/qt-version.txt, via aqtinstall / Qt installer),
+#   vcpkg (set VCPKG_ROOT), Xcode 16.3+ (macOS), Android SDK, Docker.
+
+[tasks.setup]
+description = "Install pinned tools and run the repo-wide setup"
+run = "task setup"
