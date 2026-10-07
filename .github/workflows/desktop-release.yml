@@ -155,6 +155,9 @@ jobs:
           mkdir -p bundle
           cp -r parts/velopack-win parts/velopack-linux bundle/ 2>/dev/null || true
           cp parts/aedst-desktop-Windows/* parts/aedst-desktop-Linux/* bundle/ 2>/dev/null || true
+          # SPDX SBOM and third-party notices of each platform build travel with the release.
+          mkdir -p bundle/compliance
+          cp -r parts/compliance-Windows parts/compliance-Linux bundle/compliance/ 2>/dev/null || true
 
           # --- update manifest (Ed25519) -----------------------------------------------------------------
           if [ -z "$AEDST_UPDATE_SIGNING_KEY" ] || [ -z "$DOWNLOAD_BASE" ]; then

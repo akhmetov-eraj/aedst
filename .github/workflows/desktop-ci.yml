@@ -51,6 +51,13 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
+      # License gate: no GPL-only Qt module without a documented waiver (compliance/policy.json, docs/compliance.md).
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Qt module licenses
+        run: node scripts/compliance/compliance.mjs qt
+
       - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1
 
       - name: Install clang-format and Qt runtime libraries
@@ -397,6 +404,24 @@ jobs:
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
+
+      # Third-party notices + SPDX SBOM from vcpkg's per-port SBOMs and compliance/components.json; strict = an undeclared,
+      # denied or unlisted license fails the build. They are installed into the package by cmake/AedstPackaging.cmake.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Third-party notices and SBOM
+        run: >-
+          node scripts/compliance/compliance.mjs notices
+          --installed build/${{ matrix.preset }}/vcpkg_installed --build-dir build/${{ matrix.preset }}
+          --out build/${{ matrix.preset }}/compliance --strict
+      - name: FFmpeg build flags (Qt Multimedia backend)
+        run: node scripts/compliance/compliance.mjs ffmpeg --dir "$QT_ROOT_DIR"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: compliance-${{ runner.os }}
+          path: apps/desktop/build/${{ matrix.preset }}/compliance/*
+          if-no-files-found: error
 
       # Sign the binary BEFORE cpack so the installer embeds the signed exe.
       - name: Sign aedst-desktop.exe (Authenticode)

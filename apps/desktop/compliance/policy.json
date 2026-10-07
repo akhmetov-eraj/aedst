@@ -1,0 +1,13 @@
+{
+  "_comment": "License policy enforced by scripts/compliance/compliance.mjs (docs/compliance.md, ADR-0032).",
+  "qtGplOnlyModules": {
+    "_source": "https://doc.qt.io/qt-6/licensing.html (checked 2026-10-08): modules available only under GPLv3/commercial, not LGPL",
+    "modules": ["CanvasPainter", "Coap", "Graphs", "Grpc", "HttpServer", "Lottie", "Mqtt", "NetworkAuth", "QmlCompiler", "Quick3D", "Quick3DPhysics", "QuickTimeline", "VirtualKeyboard", "WaylandCompositor"],
+    "waivers": {
+      "NetworkAuth": "OWNER DECISION PENDING (ADR-0032): Aedst::Oidc links QtNetworkAuth, which Qt licenses only under GPLv3 or a commercial license. Shipping it in a closed-source build needs either a commercial Qt license or replacing it with a Qt Network based flow. Remove this waiver when decided."
+    }
+  },
+  "allowedLicenses": ["MIT", "MIT-0", "BSD-2-Clause", "BSD-3-Clause", "Apache-2.0", "Zlib", "BSL-1.0", "ISC", "curl", "OpenSSL", "Unlicense", "CC0-1.0", "libpng-2.0", "bzip2-1.0.6", "LGPL-3.0-only", "LGPL-3.0-or-later", "LGPL-2.1-only", "LGPL-2.1-or-later", "Python-2.0", "BlueOak-1.0.0", "MPL-2.0"],
+  "deniedLicensePrefixes": ["GPL-", "AGPL-", "SSPL-", "BUSL-", "CC-BY-NC", "Commons-Clause"],
+  "dynamicLinkOnly": ["LGPL-3.0-only", "LGPL-3.0-or-later", "LGPL-2.1-only", "LGPL-2.1-or-later"]
+}

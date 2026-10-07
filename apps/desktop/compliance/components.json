@@ -1,0 +1,40 @@
+{
+  "_comment": "Components that vcpkg does not install (Qt official binaries, FetchContent dependencies). licenseFile is relative to the build directory; the Qt and FFmpeg entries have no file because the LGPL/GPL texts ship in compliance/licenses/.",
+  "components": [
+    {
+      "name": "Qt",
+      "versionFile": "qt-version.txt",
+      "license": "LGPL-3.0-only",
+      "supplier": "The Qt Company",
+      "homepage": "https://www.qt.io/",
+      "linking": "dynamic",
+      "note": "Official Qt binaries, shipped as shared libraries next to the executable (users can replace them). Source: https://download.qt.io/official_releases/qt/"
+    },
+    {
+      "name": "qtkeychain",
+      "version": "0.17.0",
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/frankosterfeld/qtkeychain",
+      "linking": "static",
+      "licenseFile": "_deps/qtkeychain-src/COPYING"
+    },
+    {
+      "name": "velopack",
+      "version": "1.2.161",
+      "license": "MIT",
+      "homepage": "https://github.com/velopack/velopack",
+      "linking": "dynamic",
+      "optional": true,
+      "licenseFile": "_deps/velopack-src/LICENSE"
+    },
+    {
+      "name": "FFmpeg (Qt Multimedia backend)",
+      "version": "as bundled by Qt",
+      "license": "LGPL-2.1-or-later",
+      "homepage": "https://ffmpeg.org/",
+      "linking": "dynamic",
+      "optional": true,
+      "note": "Bundled with the Qt Multimedia FFmpeg backend; scripts/compliance/compliance.mjs ffmpeg verifies the shipped libraries were not built with --enable-gpl or --enable-nonfree."
+    }
+  ]
+}

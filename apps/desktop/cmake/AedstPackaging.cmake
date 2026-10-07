@@ -5,6 +5,13 @@ include_guard(GLOBAL)
 # per-platform module, then include(CPack) — so `cpack` / the `package` target
 # work from any configured build tree.
 
+# Legal files travel with every package (docs/compliance.md): the LGPL/GPL texts always, and the generated
+# THIRD_PARTY_NOTICES.txt when CI produced it before cpack (scripts/compliance/compliance.mjs notices --out <build>/compliance).
+install(FILES "${PROJECT_SOURCE_DIR}/compliance/licenses/LGPL-3.0.txt" "${PROJECT_SOURCE_DIR}/compliance/licenses/GPL-3.0.txt"
+    DESTINATION "${CMAKE_INSTALL_DOCDIR}/licenses")
+install(FILES "${CMAKE_BINARY_DIR}/compliance/THIRD_PARTY_NOTICES.txt" "${CMAKE_BINARY_DIR}/compliance/sbom.spdx.json"
+    DESTINATION "${CMAKE_INSTALL_DOCDIR}" OPTIONAL)
+
 set(AEDST_PACKAGING_DIR "${PROJECT_SOURCE_DIR}/packaging")
 set(AEDST_APP_ID "com.aedst.Desktop")
 set(AEDST_DISPLAY_NAME "AEDST")
