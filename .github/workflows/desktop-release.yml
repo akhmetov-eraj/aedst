@@ -165,7 +165,7 @@ jobs:
             # AppImage are first-install downloads for people and are not part of the manifest.
             win_pkg=$(ls bundle/velopack-win/*-full.nupkg | head -1)
             linux_pkg=$(ls bundle/velopack-linux/*-full.nupkg | head -1)
-            apps/desktop/scripts/release/sign-update-manifest.sh \
+            bash apps/desktop/scripts/release/sign-update-manifest.sh \
               --version "$version" --channel "$channel" --min-supported "${MIN_SUPPORTED:-1.0.0}" \
               --notes-url "https://aedst.com/releases/$version" \
               --artifact "windows:x86_64:$DOWNLOAD_BASE/$version/$(basename "$win_pkg"):$win_pkg" \
@@ -177,7 +177,7 @@ jobs:
           if [ -z "$AEDST_GPG_PRIVATE_KEY" ]; then
             echo "::warning::AEDST_GPG_PRIVATE_KEY missing: the APT/RPM repositories were not built"
           else
-            apps/desktop/scripts/release/build-linux-repos.sh \
+            bash apps/desktop/scripts/release/build-linux-repos.sh \
               $(for f in parts/aedst-desktop-Linux/*.deb; do echo --deb "$f"; done) \
               $(for f in parts/aedst-desktop-Linux/*.rpm; do echo --rpm "$f"; done) \
               --out bundle/repo --suite "$channel"

@@ -28,7 +28,7 @@ there is no UI switch yet.
 Build the previous tag again (or reuse its `*-full.nupkg`) and sign a rollback manifest with the same channel:
 
 ```bash
-scripts/release/sign-update-manifest.sh --rollback --version 1.5.2 --channel stable --min-supported 1.0.0 \
+bash scripts/release/sign-update-manifest.sh --rollback --version 1.5.2 --channel stable --min-supported 1.0.0 \
   --notes-url https://aedst.com/releases/1.5.2 --artifact windows:x86_64:<url>:<file> --artifact linux:x86_64:<url>:<file> \
   --key-id k1 --out stable.json
 ```
