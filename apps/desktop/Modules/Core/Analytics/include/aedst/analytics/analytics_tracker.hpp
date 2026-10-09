@@ -13,14 +13,14 @@ using AnalyticsProperties = std::map<std::string, std::string, std::less<>>;
 /// greppable vocabulary for whatever backend eventually receives them.
 namespace events {
 
-inline constexpr std::string_view kLoginSucceeded = "auth_login_succeeded";
-inline constexpr std::string_view kLoginFailed = "auth_login_failed";
-inline constexpr std::string_view kLogout = "auth_logout";
-inline constexpr std::string_view kTaskCreated = "tasks_task_created";
-inline constexpr std::string_view kTaskCompleted = "tasks_task_completed";
+inline constexpr std::string_view kLoginSucceeded = "login_success";
+inline constexpr std::string_view kLoginFailed = "login_failure";
+inline constexpr std::string_view kLogout = "logout";
+inline constexpr std::string_view kTaskCreated = "task_created";
+inline constexpr std::string_view kTaskCompleted = "task_completed";
 inline constexpr std::string_view kSearchPerformed = "search_performed";
 inline constexpr std::string_view kSearchResultOpened = "search_result_opened";
-inline constexpr std::string_view kNotificationOpened = "notifications_opened";
+inline constexpr std::string_view kNotificationOpened = "notification_opened";
 inline constexpr std::string_view kMediaUploaded = "media_uploaded";
 inline constexpr std::string_view kAdminBroadcastSent = "admin_broadcast_sent";
 

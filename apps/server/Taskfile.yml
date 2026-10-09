@@ -1,10 +1,11 @@
 version: "3"
 
 vars:
-  # platform first: the shared outbox/inbox/idempotency tables must exist before
-  # any module migration that references them. Rollback runs in reverse.
-  MODULES: platform auth tasks notifications search media admin
-  MODULES_REVERSE: admin media search notifications tasks auth platform
+  # platform first: the shared idempotency table (platform schema) must exist before
+  # any module migration that references it. Rollback runs in reverse.
+  MODULES: platform auth tasks notifications search media admin integrity appattest
+  RIVER_VERSION: v0.49.0 # == github.com/riverqueue/river in go.mod and Dockerfile.migrate (architecturetest)
+  MODULES_REVERSE: appattest integrity admin media search notifications tasks auth platform
 
 tasks:
   default:
@@ -14,7 +15,7 @@ tasks:
   # --- local infra -----------------------------------------------------
 
   up:
-    desc: Start Postgres + Valkey for local development (add PROFILES="--profile observability --profile idp" for otel-lgtm and Keycloak).
+    desc: Start Postgres + Valkey for local development (add PROFILES="--profile observability --profile idp" for otel-lgtm and ZITADEL).
     vars:
       PROFILES: '{{.PROFILES | default ""}}'
     cmds:
@@ -48,9 +49,10 @@ tasks:
 
   gen:check:
     desc: Fail if generated code is out of date with its sources.
+    # Compares gen/ before and after regeneration (not `git diff`, which also flags
+    # uncommitted but already-regenerated output on a dirty tree); see the script.
     cmds:
-      - task: gen
-      - git diff --exit-code -- gen/
+      - bash scripts/gen-check.sh
 
   # --- quality gates -------------------------------------------------------
 
@@ -59,15 +61,42 @@ tasks:
     cmds:
       - gofumpt -l -w .
 
-  lint:
-    desc: gofumpt check, vet, golangci-lint, sqlc vet, buf lint/format.
+  docs:config:
+    desc: Regenerate docs/content/server/config.md from the env tags of config.Config.
     cmds:
+      - go run ./scripts/gen-config-docs
+
+  docs:config:check:
+    desc: Fail if docs/content/server/config.md is out of date.
+    cmds:
+      - bash scripts/docs-config-check.sh
+
+  # Works on a dirty tree: compares go.mod/go.sum before and after `go mod tidy`
+  # (not `git diff`, which would also flag unrelated uncommitted edits), then restores them.
+  tidy:check:
+    desc: Fail if go.mod/go.sum are not tidy (go mod tidy would change them); the files are restored either way.
+    cmds:
+      - bash scripts/tidy-check.sh
+
+  lint:
+    desc: tidy:check, gofumpt check, vet, golangci-lint, sqlc vet, buf lint/format.
+    cmds:
+      - task: tidy:check
+      - task: docs:config:check
       - test -z "$(gofumpt -l .)"
       - go vet ./...
       - golangci-lint run ./...
       - sqlc vet
       - buf lint
       - buf format -d --exit-code
+
+  # Negative test of .golangci.yml: bad fixtures (scripts/lint-selftest) must trip every
+  # enforced rule (forbidigo, sloglint, exhaustive, spancheck, nilerr, nolintlint, depguard).
+  lint:selftest:
+    desc: Prove the golangci-lint rules fire on deliberately bad fixtures (do not run beside "task arch").
+    cmds:
+      - bash scripts/lint-selftest.sh
+      - bash scripts/sqlc-selftest.sh
 
   arch:
     desc: Architecture boundary tests (module/layer isolation).
@@ -78,6 +107,13 @@ tasks:
     desc: Dependency vulnerability scan.
     cmds:
       - govulncheck ./...
+
+  alerts:test:
+    desc: Check and unit-test the Prometheus alert rules with promtool (deployments/helm/aedst-server/files).
+    dir: deployments/helm/aedst-server/files
+    cmds:
+      - promtool check rules alerts.rules.yaml
+      - promtool test rules alerts.rules.test.yaml
 
   # squawk is a Rust binary: scripts/lint-migrations.sh uses it from PATH, else
   # `npx squawk-cli`, else Docker. It lints only the `-- +goose Up` half of each
@@ -99,13 +135,27 @@ tasks:
     cmds:
       - go test ./internal/... ./cmd/...
 
+  test:vips:
+    desc: Media tests with the real libvips path (-tags vips). Needs cgo, gcc and libvips-dev (Debian/Ubuntu apt install libvips-dev pkg-config); not runnable on a CGO_ENABLED=0 machine.
+    env:
+      CGO_ENABLED: "1"
+    cmds:
+      - go test -tags vips -count=1 ./internal/modules/media/...
+
+  test:vips:integration:
+    desc: Media integration tests that process a real image (-tags "vips integration"). Needs libvips plus Docker or AEDST_TEST_DATABASE_URL; the default integration run skips them.
+    env:
+      CGO_ENABLED: "1"
+    cmds:
+      - go test -tags "vips integration" -count=1 ./internal/modules/media/...
+
   test:race:
     desc: Unit tests with the race detector (needs cgo/gcc; CI runs this).
     cmds:
       - go test -race -count=1 ./internal/... ./cmd/...
 
   test:integration:
-    desc: Tests against a real Postgres via Testcontainers (advisory locks, outbox->River, session CAS, repositories, migrations) with the race detector and a coverage gate (COVERAGE_MIN, default 70). Requires Docker, or AEDST_TEST_DATABASE_URL pointing at a Postgres (NORACE=1 when there is no cgo toolchain).
+    desc: Tests against a real Postgres via Testcontainers (advisory locks, River event delivery, session CAS, repositories, migrations) with the race detector and a coverage gate (COVERAGE_MIN, default 70). Requires Docker, or AEDST_TEST_DATABASE_URL pointing at a Postgres (NORACE=1 when there is no cgo toolchain).
     vars:
       RACE: '{{if .NORACE}}{{else}}-race{{end}}'
     cmds:
@@ -138,12 +188,13 @@ tasks:
       RATE: '{{.RATE | default "20"}}'
       DURATION: '{{.DURATION | default "2m"}}'
       TOKEN: '{{.TOKEN | default ""}}'
+      K6_ARGS: '{{.K6_ARGS | default ""}}' # extra local-k6 flags, e.g. --summary-export=out.json (CI)
       REPO_ROOT:
         sh: pwd
     cmds:
       - |
         if command -v k6 >/dev/null 2>&1; then
-          k6 run -e SCENARIO={{.SCENARIO}} -e BASE_URL={{.BASE_URL}} -e RATE={{.RATE}} -e DURATION={{.DURATION}} -e TOKEN={{.TOKEN}} test/load/api.js
+          k6 run {{.K6_ARGS}} -e SCENARIO={{.SCENARIO}} -e BASE_URL={{.BASE_URL}} -e RATE={{.RATE}} -e DURATION={{.DURATION}} -e TOKEN={{.TOKEN}} test/load/api.js
         else
           docker run --rm -v "{{.REPO_ROOT}}/test/load:/scripts:ro" --network host grafana/k6:2.3.0 run \
             -e SCENARIO={{.SCENARIO}} -e BASE_URL={{.BASE_URL}} -e RATE={{.RATE}} -e DURATION={{.DURATION}} -e TOKEN={{.TOKEN}} /scripts/api.js
@@ -162,6 +213,54 @@ tasks:
       BASE_URL: '{{.BASE_URL | default "http://localhost:8080"}}'
     cmds:
       - k6 run -e BASE_URL={{.BASE_URL}} -e RATE={{.RATE}} -e DURATION={{.DURATION}} test/load/scenario_tasks.js
+
+  # k6 through PgBouncer (transaction pooling) with REPLICAS server pods:
+  # compose profiles pgbouncer+loadtest, nginx on :8088, a watcher that samples
+  # SHOW POOLS / pg_stat_activity and greps logs/River afterwards. Needs Docker
+  # and k6 on PATH. Sizing guide and failure signatures: docs/content/server/scaling.md.
+  #   task loadtest:pgbouncer REPLICAS=6 RATE=80 DURATION=5m
+  #   task loadtest:pgbouncer KEEP=1      # leave the stack running afterwards
+  loadtest:pgbouncer:
+    desc: k6 against N server replicas behind PgBouncer + pool health assertions (REPLICAS, RATE, DURATION, KEEP).
+    vars:
+      REPLICAS: '{{.REPLICAS | default "4"}}'
+      RATE: '{{.RATE | default "40"}}'
+      DURATION: '{{.DURATION | default "2m"}}'
+      KEEP: '{{.KEEP | default ""}}'
+    cmds:
+      - |
+        set -eu
+        export MSYS_NO_PATHCONV=1
+        f=deployments/docker/docker-compose.yml
+        dc() { docker compose -f "$f" --profile pgbouncer --profile loadtest "$@"; }
+        samples="$(mktemp)"
+        sampler=""
+        cleanup() {
+          [ -z "$sampler" ] || kill "$sampler" 2>/dev/null || true
+          rm -f "$samples"
+          [ -n "{{.KEEP}}" ] || dc down >/dev/null 2>&1 || true
+        }
+        trap cleanup EXIT
+        dc up -d --wait postgres valkey pgbouncer
+        task migrate
+        dc up -d --build --scale server={{.REPLICAS}} server loadbalancer
+        for i in $(seq 1 60); do curl -fsS http://localhost:8088/readyz >/dev/null 2>&1 && break; sleep 2; done
+        curl -fsS http://localhost:8088/readyz >/dev/null
+        scripts/loadtest-pgbouncer-watch.sh check-config
+        scripts/loadtest-pgbouncer-watch.sh sample "$samples" &
+        sampler=$!
+        status=0
+        k6 run -e BASE_URL=http://localhost:8088 -e RATE={{.RATE}} -e DURATION={{.DURATION}} test/load/pgbouncer.js || status=$?
+        sleep 5 # let reminder jobs and the relay drain
+        kill "$sampler" 2>/dev/null || true
+        sampler=""
+        scripts/loadtest-pgbouncer-watch.sh assert "$samples" || status=$?
+        exit "$status"
+
+  loadtest:pgbouncer:inspect:
+    desc: Validate the PgBouncer k6 script without running it (k6 inspect).
+    cmds:
+      - k6 inspect test/load/pgbouncer.js >/dev/null
 
   # --- composite gates -----------------------------------------------------
 
@@ -190,9 +289,12 @@ tasks:
     cmds:
       - |
         set -eu
+        # River's own schema first (deployed servers only verify it at startup).
+        go run github.com/riverqueue/river/cmd/river@{{.RIVER_VERSION}} migrate-up --database-url "{{.DB_URL}}"
         for m in {{.MODULES}}; do
           PGOPTIONS="-c lock_timeout=5s" goose -dir migrations/$m -table goose_$m postgres "{{.DB_URL}}" up
         done
+        go run ./scripts/check-invalid-indexes "{{.DB_URL}}"
 
   migrate:down:
     desc: Roll back the latest migration for every module schema.
@@ -210,6 +312,7 @@ tasks:
   secrets:edit:
     desc: Edit an encrypted secrets file (task secrets:edit ENV=staging).
     cmds:
+      - bash scripts/check-sops-recipient.sh
       - sops deployments/secrets/secrets.{{.ENV}}.enc.yaml
 
   secrets:view:
@@ -218,6 +321,13 @@ tasks:
       - sops -d deployments/secrets/secrets.{{.ENV}}.enc.yaml
 
   # --- build ---------------------------------------------------------------
+
+  build:vips:
+    desc: Compile the server with libvips image processing (what the Docker image ships). Needs cgo + libvips-dev.
+    env:
+      CGO_ENABLED: "1"
+    cmds:
+      - go build -tags vips -o bin/aedst-server ./cmd/server
 
   build:
     desc: Compile the server binary.

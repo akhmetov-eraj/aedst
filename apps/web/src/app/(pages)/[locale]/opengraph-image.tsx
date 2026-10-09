@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 import { getTranslations } from "next-intl/server";
-
 import { siteConfig } from "@/app/config/seo";
+import { requireLocale } from "@/shared/i18n/require-locale";
 
 export const alt = siteConfig.name;
 export const size = { width: 1200, height: 630 };
@@ -12,7 +12,7 @@ export default async function Image({
 }: {
   params: Promise<{ locale: string }>;
 }) {
-  const { locale } = await params;
+  const locale = requireLocale((await params).locale);
   const t = await getTranslations({ locale, namespace: "common" });
 
   return new ImageResponse(

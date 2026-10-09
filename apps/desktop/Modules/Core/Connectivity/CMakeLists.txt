@@ -12,6 +12,11 @@ add_library(AedstConnectivity STATIC
 )
 add_library(Aedst::Connectivity ALIAS AedstConnectivity)
 
+# Declarative QML singletons (QML_ELEMENT + QML_SINGLETON, Aedst::QmlSupport); the module URI is the import name QML uses.
+# Only App links AedstConnectivityplugin, so QML test executables keep registering their fakes under this URI.
+target_link_libraries(AedstConnectivity PUBLIC Aedst::QmlSupport)
+qt_add_qml_module(AedstConnectivity URI Aedst.Connectivity VERSION 1.0 RESOURCE_PREFIX /qt/qml)
+
 target_include_directories(AedstConnectivity PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 

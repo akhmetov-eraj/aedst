@@ -15,7 +15,7 @@ import (
 
 // Repository reads and updates a user's notifications, devices and
 // preferences. Event-driven creation happens in infrastructure/events inside
-// the inbox transaction (Store.InsertTx), not through this port.
+// the consumer transaction (Store.InsertTx), not through this port.
 type Repository interface {
 	List(ctx context.Context, params ListParams) (ListResult, error)
 	CountUnread(ctx context.Context, userID ids.ID, limit int) (int, error)
@@ -48,7 +48,7 @@ type ListParams struct {
 }
 
 // SortToken names the ordering; embedded in cursors (see internal/shared/pagination).
-const SortToken = "created_at:desc"
+const SortToken = "created_at:desc" //nolint:gosec // G101 false positive: a pagination sort-token name, not a credential
 
 // UnreadSortToken keeps unread-only cursors from being replayed on the full feed.
 const UnreadSortToken = "unread:created_at:desc"

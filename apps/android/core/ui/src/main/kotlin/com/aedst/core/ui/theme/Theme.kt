@@ -6,6 +6,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.ReadOnlyComposable
 
 private val LightColors = lightColorScheme(
     background = AedstLightPalette.background,
@@ -65,7 +66,10 @@ fun AedstTheme(useDarkTheme: Boolean = isSystemInDarkTheme(), content: @Composab
     val colorScheme = if (useDarkTheme) DarkColors else LightColors
     val extendedColors = if (useDarkTheme) AedstDarkExtendedColors else AedstLightExtendedColors
 
-    CompositionLocalProvider(LocalAedstExtendedColors provides extendedColors) {
+    CompositionLocalProvider(
+        LocalAedstExtendedColors provides extendedColors,
+        LocalAedstDarkTheme provides useDarkTheme,
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = AedstTypography,
@@ -78,5 +82,7 @@ fun AedstTheme(useDarkTheme: Boolean = isSystemInDarkTheme(), content: @Composab
 /** Convenience accessor: `AedstTheme.extendedColors` from inside any `@Composable`. */
 object AedstThemeExtras {
     val extendedColors: AedstExtendedColors
-        @Composable get() = LocalAedstExtendedColors.current
+        @Composable
+        @ReadOnlyComposable
+        get() = LocalAedstExtendedColors.current
 }

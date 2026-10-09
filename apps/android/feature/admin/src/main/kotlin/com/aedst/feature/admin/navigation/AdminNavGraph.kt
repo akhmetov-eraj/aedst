@@ -1,10 +1,10 @@
 package com.aedst.feature.admin.navigation
 
-import androidx.navigation.NavGraphBuilder
-import androidx.navigation.NavHostController
-import androidx.navigation.compose.composable
+import androidx.navigation3.runtime.EntryProviderScope
+import androidx.navigation3.runtime.NavKey
+import com.aedst.core.navigation.AdminKey
 import com.aedst.core.navigation.AedstNavGraph
-import com.aedst.core.navigation.AedstRoutes
+import com.aedst.core.navigation.AedstNavigator
 import com.aedst.feature.admin.presentation.AdminRoute
 
 /**
@@ -12,7 +12,7 @@ import com.aedst.feature.admin.presentation.AdminRoute
  * and the screen re-checks it; the server enforces the role on every AdminService RPC regardless.
  */
 class AdminNavGraph : AedstNavGraph {
-    override fun register(builder: NavGraphBuilder, navController: NavHostController) {
-        builder.composable(AedstRoutes.ADMIN) { AdminRoute() }
+    override fun register(scope: EntryProviderScope<NavKey>, navigator: AedstNavigator) {
+        scope.entry<AdminKey> { AdminRoute() }
     }
 }

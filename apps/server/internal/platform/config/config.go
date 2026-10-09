@@ -1,7 +1,7 @@
 // Package config loads process configuration from the environment. All
 // configuration is environment-driven (12-factor) so the same binary/image
 // runs unchanged in development, test, staging and production — see
-// docs/content/deployment.md.
+// docs/content/server/deployment.md.
 //
 // Load parses AND validates: the process refuses to start on a missing,
 // malformed or unsafe value (e.g. the development signing key in production)
@@ -17,11 +17,12 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"os"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/caarlos0/env/v11"
-	"golang.org/x/mod/semver"
 )
 
 // Env identifies the deployment environment.
@@ -56,7 +57,6 @@ type Config struct {
 	Auth      AuthConfig
 	OIDC      OIDCConfig
 	Obs       ObservabilityConfig
-	Outbox    OutboxConfig
 	Client    ClientConfig
 	Retention RetentionConfig
 	Server    ServerConfig
@@ -64,15 +64,22 @@ type Config struct {
 	Storage   StorageConfig
 	Push      PushConfig
 	Media     MediaConfig
+	Imgproxy  ImgproxyConfig
 	Tasks     TasksConfig
+	Integrity IntegrityConfig
+	AppAttest AppAttestConfig
 }
 
 type HTTPConfig struct {
 	Addr string `env:"AEDST_HTTP_ADDR" envDefault:":8080"`
 	// MetricsAddr is the listen address of the optional Prometheus scrape
 	// endpoint (/metrics). Empty disables it; OTLP push is unaffected.
-	MetricsAddr     string `env:"AEDST_METRICS_ADDR" envDefault:""`
-	ShutdownTimeout int    `env:"AEDST_SHUTDOWN_TIMEOUT_SECONDS" envDefault:"15"`
+	MetricsAddr string `env:"AEDST_METRICS_ADDR" envDefault:""`
+	// PprofEnabled serves net/http/pprof under /debug/pprof/ on the metrics
+	// listener (never the public port). It needs AEDST_METRICS_ADDR. Heap and
+	// goroutine profiles expose process internals: reach it by port-forward only.
+	PprofEnabled    bool `env:"AEDST_PPROF_ENABLED" envDefault:"false"`
+	ShutdownTimeout int  `env:"AEDST_SHUTDOWN_TIMEOUT_SECONDS" envDefault:"15"`
 	// ShutdownDrainSeconds is how long /readyz reports not-ready before the
 	// listener stops accepting, so a load balancer can drain the instance.
 	// Set to the LB's health-check interval x threshold in production.
@@ -88,11 +95,16 @@ type HTTPConfig struct {
 	// TrustedProxyHops is the exact number of reverse proxies between the
 	// public internet and this server (Cloudflare -> ALB = 2). 0 means the
 	// socket peer is the client. Wrong values let clients spoof the IP used for
-	// rate limiting, so verify after deploying (see chi ClientIPFromXFFTrustedProxies).
+	// rate limiting, so verify after deploying (see internal/platform/clientip).
 	TrustedProxyHops int `env:"AEDST_TRUSTED_PROXY_HOPS" envDefault:"0"`
 	// AuthRateLimitPerMinute is the per-client-IP budget for the public
 	// authentication RPCs (register/login/refresh). 0 disables.
 	AuthRateLimitPerMinute int `env:"AEDST_AUTH_RATE_LIMIT_PER_MINUTE" envDefault:"30"`
+	// AuthFailRateLimitPerMinute is the per-client-IP budget of failed
+	// authentications (missing or invalid bearer token) on authenticated RPCs;
+	// once spent, that address gets RESOURCE_EXHAUSTED until the window passes.
+	// Successful requests cost nothing. 0 disables.
+	AuthFailRateLimitPerMinute int `env:"AEDST_AUTH_FAIL_RATE_LIMIT_PER_MINUTE" envDefault:"60"`
 	// APIRateLimitPerMinute is the per-user budget for authenticated RPCs,
 	// shared by every replica through Valkey. It bounds what one account (or one
 	// leaked token) can take from everyone else. 0 disables.
@@ -122,19 +134,50 @@ type DatabaseConfig struct {
 	IdleInTxTimeoutMs int `env:"AEDST_DATABASE_IDLE_IN_TX_TIMEOUT_MS" envDefault:"30000"`
 
 	// JobsMaxConns sizes the second pool used by background work (River,
-	// outbox relay, event consumers). Keeping it apart from MaxConns means a
+	// event consumers). Keeping it apart from MaxConns means a
 	// burst of jobs can only exhaust its own connections, never the ones
 	// request handlers need — and a slow request storm cannot starve the
-	// relay either. Budget: replicas x (MaxConns + JobsMaxConns) must stay
+	// workers either. Budget: replicas x (MaxConns + JobsMaxConns) must stay
 	// below Postgres max_connections (or PgBouncer's server pool).
-	JobsMaxConns int32 `env:"AEDST_DATABASE_JOBS_MAX_CONNS" envDefault:"10"`
+	JobsMaxConns int32 `env:"AEDST_DATABASE_JOBS_MAX_CONNS" envDefault:"30"`
 	// DirectDSN, when set, is used by the jobs pool instead of DSN. Point DSN
 	// at PgBouncer (transaction pooling) for request traffic and DirectDSN at
 	// Postgres itself: River uses LISTEN/NOTIFY and platform/lock uses
 	// session-level advisory locks, neither of which survives transaction
 	// pooling.
 	DirectDSN string `env:"AEDST_DATABASE_DIRECT_DSN" envDefault:""`
+	// ReadDSN, when set, opens a third pool (modulekit.Env.ReadPool) on a read
+	// replica (CloudNativePG "-ro" service, an RDS reader endpoint). Only
+	// modules whose queries tolerate replica lag use it (search today); every
+	// write and every read-your-writes path stays on AEDST_DATABASE_URL. Empty
+	// = ReadPool is the primary pool. It sits behind the same AEDST_DATABASE_POOLER
+	// mode as the primary. See docs/content/server/runbook-postgres-scaling.md.
+	ReadDSN string `env:"AEDST_DATABASE_READ_URL" envDefault:""`
+	// ReadMaxConns sizes the read pool (0 = same as AEDST_DATABASE_MAX_CONNS).
+	// Budget it like the others: replicas x ReadMaxConns counts against the
+	// replica's max_connections.
+	ReadMaxConns int32 `env:"AEDST_DATABASE_READ_MAX_CONNS" envDefault:"0"`
+	// AllowUnverifiedTLS is the explicit opt-out of the requirement that every
+	// DSN in staging and production uses sslmode=verify-full or verify-ca.
+	AllowUnverifiedTLS bool `env:"AEDST_DATABASE_ALLOW_UNVERIFIED_TLS" envDefault:"false"`
+	// Pooler declares the connection pooler in front of AEDST_DATABASE_URL:
+	// "none" (default; direct Postgres or a session-mode pooler) or
+	// "pgbouncer" (PgBouncer / CloudNativePG Pooler in transaction mode). With
+	// "pgbouncer" the API pool is forced onto pgx QueryExecModeCacheDescribe
+	// (no named prepared statements) regardless of the DSN, and Validate
+	// requires AEDST_DATABASE_DIRECT_DSN or AEDST_JOBS_POLL_ONLY=true, because
+	// River's LISTEN/NOTIFY does not work through transaction pooling.
+	Pooler string `env:"AEDST_DATABASE_POOLER" envDefault:"none"`
+	// Modules are the per-module overrides AEDST_DATABASE_URL_<MODULE>[_JOBS]
+	// (database-per-module). Filled by Load; see moduledb.go.
+	Modules map[string]ModuleDatabase `env:"-"`
 }
+
+// Supported AEDST_DATABASE_POOLER values.
+const (
+	PoolerNone      = "none"
+	PoolerPgBouncer = "pgbouncer"
+)
 
 // ValkeyConfig configures the Valkey (cache + rate limiting) connection. It
 // replaces the former AEDST_REDIS_* variables; the go-redis client speaks the
@@ -143,13 +186,34 @@ type ValkeyConfig struct {
 	Addr     string `env:"AEDST_VALKEY_ADDR" envDefault:"localhost:6379"`
 	Password string `env:"AEDST_VALKEY_PASSWORD" envDefault:""`
 	DB       int    `env:"AEDST_VALKEY_DB" envDefault:"0"`
+	// TLS connects to Valkey over TLS (TLS 1.2+). Required in staging and
+	// production unless AllowPlaintext is set: the password and every
+	// rate-limit key would otherwise cross the network in clear.
+	TLS bool `env:"AEDST_VALKEY_TLS" envDefault:"false"`
+	// TLSServerName is the name verified in the server certificate (default:
+	// the host of AEDST_VALKEY_ADDR).
+	TLSServerName string `env:"AEDST_VALKEY_TLS_SERVER_NAME" envDefault:""`
+	// TLSCAFile is a PEM bundle of the CA that signed the server certificate
+	// (default: the system roots).
+	TLSCAFile string `env:"AEDST_VALKEY_TLS_CA_FILE" envDefault:""`
+	// AllowPlaintext is the explicit opt-out of the TLS requirement, for a
+	// Valkey inside a trusted network segment.
+	AllowPlaintext bool `env:"AEDST_VALKEY_ALLOW_PLAINTEXT" envDefault:"false"`
 }
 
 // AuthConfig configures the built-in first-party identity provider (email +
-// password sessions). Disable it when an external OIDC provider (see
-// OIDCConfig) is the system of record for identities.
+// password sessions). It is a time-boxed migration path, off by default: an
+// external OIDC provider (ZITADEL by default, see OIDCConfig) is the system of
+// record for identities. While it is enabled outside development a removal
+// deadline (FirstPartySunset) is mandatory; see ADR-0017 and the "Sunset
+// runbook" in docs/content/server/runbook.md.
 type AuthConfig struct {
-	FirstPartyEnabled bool `env:"AEDST_AUTH_FIRST_PARTY_ENABLED" envDefault:"true"`
+	FirstPartyEnabled bool `env:"AEDST_AUTH_FIRST_PARTY_ENABLED" envDefault:"false"`
+	// FirstPartySunset is the RFC 3339 date/time after which first-party auth
+	// must be gone (e.g. 2027-03-31 or 2027-03-31T00:00:00Z). Required when
+	// FirstPartyEnabled outside development; once it has passed, staging and
+	// production refuse to start and development logs an error.
+	FirstPartySunset string `env:"AEDST_AUTH_FIRST_PARTY_SUNSET" envDefault:""`
 	// JWTSigningKey is the HS256 secret for first-party tokens (>= 32 bytes).
 	// Rotation: move the old key to JWTPreviousSigningKey (verify-only).
 	JWTSigningKey         string `env:"AEDST_JWT_SIGNING_KEY"`
@@ -167,9 +231,37 @@ type AuthConfig struct {
 	RolePolicy map[string]string `env:"AEDST_ROLE_POLICY" envSeparator:"," envKeyValSeparator:"=" envDefault:""`
 }
 
+// ParseSunset parses FirstPartySunset (RFC 3339 timestamp or a plain
+// YYYY-MM-DD date, taken as the end of that day in UTC). ok is false when it is
+// unset.
+func (a AuthConfig) ParseSunset() (t time.Time, ok bool, err error) {
+	raw := strings.TrimSpace(a.FirstPartySunset)
+	if raw == "" {
+		return time.Time{}, false, nil
+	}
+	if d, derr := time.Parse(time.DateOnly, raw); derr == nil {
+		return d.Add(24*time.Hour - time.Second), true, nil
+	}
+	t, err = time.Parse(time.RFC3339, raw)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("AEDST_AUTH_FIRST_PARTY_SUNSET %q must be an RFC 3339 date or timestamp (e.g. 2027-03-31)", raw)
+	}
+	return t, true, nil
+}
+
+// SunsetStatus reports how many whole days remain until the first-party sunset
+// (negative once passed). ok is false when no valid sunset is configured.
+func (a AuthConfig) SunsetStatus(now time.Time) (daysRemaining int, expired bool, ok bool) {
+	t, set, err := a.ParseSunset()
+	if err != nil || !set {
+		return 0, false, false
+	}
+	return int(t.Sub(now).Hours() / 24), !now.Before(t), true
+}
+
 // OIDCConfig makes the server an OIDC resource server: it accepts access
-// tokens issued by any standards-compliant provider (Zitadel, Keycloak,
-// Ory Hydra, Auth0, ...). Nothing here is provider-specific. Leave Issuer
+// tokens issued by any standards-compliant provider (ZITADEL by default,
+// Keycloak, Ory Hydra, Auth0, ...). Nothing here is provider-specific. Leave Issuer
 // empty to accept first-party tokens only.
 type OIDCConfig struct {
 	// Issuer is the provider's issuer URL; discovery is fetched from
@@ -183,10 +275,19 @@ type OIDCConfig struct {
 	// Algorithms is the allow-list of accepted JWS algorithms. Asymmetric
 	// only: HS* is refused for external issuers (algorithm-confusion guard).
 	Algorithms []string `env:"AEDST_OIDC_ALGORITHMS" envSeparator:"," envDefault:"RS256,ES256,EdDSA"`
+	// TokenTypes is the allow-list of the JOSE header typ of an access token:
+	// "at+jwt" (RFC 9068) and "JWT" (Keycloak and others). A token with another
+	// typ, or none, is rejected, which keeps ID and logout tokens out.
+	TokenTypes []string `env:"AEDST_OIDC_TOKEN_TYPES" envSeparator:"," envDefault:"at+jwt,JWT"`
 	// RolesClaim locates roles in the token: a top-level claim name or a
-	// dotted path (Keycloak: "realm_access.roles"). An array of strings or an
-	// object keyed by role name (Zitadel) are both understood.
-	RolesClaim       string `env:"AEDST_OIDC_ROLES_CLAIM" envDefault:"roles"`
+	// dotted path. ZITADEL: "urn:zitadel:iam:org:project:roles" (an object keyed
+	// by role name); Keycloak: "realm_access.roles". An array of strings or an
+	// object keyed by role name are both understood.
+	RolesClaim string `env:"AEDST_OIDC_ROLES_CLAIM" envDefault:"roles"`
+	// RolesOrg (optional) is an organisation id. For an object-shaped roles
+	// claim ({role: {orgId: domain}}, ZITADEL: roles are bound to an
+	// organisation) only roles granted in that organisation count. Empty = any.
+	RolesOrg         string `env:"AEDST_OIDC_ROLES_ORG" envDefault:""`
 	ClockSkewSeconds int    `env:"AEDST_OIDC_CLOCK_SKEW_SECONDS" envDefault:"30"`
 }
 
@@ -212,7 +313,14 @@ func Load() (Config, error) {
 	if err := env.Parse(&cfg); err != nil {
 		return Config{}, fmt.Errorf("config: %w", err)
 	}
-	cfg.Client.MinVersions = normalizeMinVersions(cfg.Client.MinVersions)
+	// env.Parse applies envDefault to a variable that is set but empty. For the
+	// queue list an explicit empty value is meaningful: insert-only (workers run
+	// elsewhere), so it must not fall back to the default queues.
+	if v, ok := os.LookupEnv("AEDST_JOBS_QUEUES"); ok && strings.TrimSpace(v) == "" {
+		cfg.Jobs.Queues = nil
+	}
+	cfg.DB.Modules = moduleDatabases(os.Environ())
+	cfg.Client = cfg.Client.normalized()
 	if err := cfg.Validate(); err != nil {
 		return Config{}, fmt.Errorf("config: %w", err)
 	}
@@ -234,38 +342,56 @@ func (c Config) Validate() error {
 	if c.DB.MinConns > c.DB.MaxConns {
 		bad("AEDST_DATABASE_MIN_CONNS (%d) must not exceed AEDST_DATABASE_MAX_CONNS (%d)", c.DB.MinConns, c.DB.MaxConns)
 	}
+	if c.DB.ReadMaxConns < 0 {
+		bad("AEDST_DATABASE_READ_MAX_CONNS (%d) must not be negative", c.DB.ReadMaxConns)
+	}
+	if c.DB.ReadDSN != "" && c.DB.ReadDSN == c.DB.DSN {
+		bad("AEDST_DATABASE_READ_URL equals AEDST_DATABASE_URL: leave it unset to read from the primary")
+	}
 	if c.DB.JobsMaxConns < 2 {
-		// One connection is held by a relay pass while its subscribers need
-		// another; a pool of one would deadlock event delivery.
+		// One connection is held by the River listener/fetch loop while a worker needs
+		// another; a pool of one would stall event delivery.
 		bad("AEDST_DATABASE_JOBS_MAX_CONNS (%d) must be at least 2", c.DB.JobsMaxConns)
 	}
-	if c.Outbox.RelayIntervalMs <= 0 || c.Outbox.BatchSize <= 0 || c.Outbox.Concurrency <= 0 || c.Outbox.RetentionHours <= 0 {
-		bad("AEDST_OUTBOX_RELAY_INTERVAL_MS, AEDST_OUTBOX_BATCH_SIZE, AEDST_OUTBOX_CONCURRENCY and AEDST_OUTBOX_RETENTION_HOURS must be positive")
+	switch c.DB.Pooler {
+	case "", PoolerNone:
+	case PoolerPgBouncer:
+		if c.DB.DirectDSN == "" && !c.Jobs.PollOnly {
+			bad("AEDST_DATABASE_POOLER=pgbouncer requires AEDST_DATABASE_DIRECT_DSN (River LISTEN/NOTIFY and session advisory locks need a direct connection) or AEDST_JOBS_POLL_ONLY=true (River polls instead of LISTEN/NOTIFY)")
+		}
+	default:
+		bad("AEDST_DATABASE_POOLER %q must be one of %s, %s", c.DB.Pooler, PoolerNone, PoolerPgBouncer)
 	}
-	if c.Retention.IntervalMinutes <= 0 || c.Retention.IdempotencyHours <= 0 || c.Retention.InboxHours <= 0 || c.Retention.SessionHours <= 0 {
+	if c.Jobs.CompletedRetentionHours <= 0 || c.Jobs.CancelledRetentionHours <= 0 || c.Jobs.DiscardedRetentionHours <= 0 {
+		bad("AEDST_JOBS_COMPLETED_RETENTION_HOURS, AEDST_JOBS_CANCELLED_RETENTION_HOURS and AEDST_JOBS_DISCARDED_RETENTION_HOURS must be positive")
+	}
+	if c.Retention.AuditDays < MinAuditRetentionDays {
+		bad("AEDST_RETENTION_AUDIT_DAYS (%d) must be at least %d: the database refuses to delete audit rows younger than that", c.Retention.AuditDays, MinAuditRetentionDays)
+	}
+	if c.Retention.IntervalMinutes <= 0 || c.Retention.IdempotencyHours <= 0 || c.Retention.TombstoneHours <= 0 || c.Retention.SessionHours <= 0 {
 		bad("AEDST_RETENTION_* values must be positive")
-	}
-	if c.Retention.InboxHours < c.Outbox.RetentionHours {
-		// A processed-event marker must outlive the outbox row it dedupes, or a
-		// late redelivery of a still-published event would be applied again.
-		bad("AEDST_RETENTION_INBOX_HOURS (%d) must be at least AEDST_OUTBOX_RETENTION_HOURS (%d)", c.Retention.InboxHours, c.Outbox.RetentionHours)
 	}
 	if c.HTTP.APIRateLimitPerMinute < 0 || c.HTTP.MaxInFlight < 0 {
 		bad("AEDST_API_RATE_LIMIT_PER_MINUTE and AEDST_MAX_IN_FLIGHT must not be negative")
 	}
-	for platform, version := range c.Client.MinVersions {
-		if !slices.Contains(ClientPlatforms, platform) {
-			bad("AEDST_MIN_CLIENT_VERSIONS: unknown platform %q (want one of %v)", platform, ClientPlatforms)
-		}
-		if !semver.IsValid("v" + version) {
-			bad("AEDST_MIN_CLIENT_VERSIONS: %q is not a semantic version for %s", version, platform)
-		}
-	}
+	c.validateClient(bad)
 	if c.HTTP.RequestTimeout <= 0 {
 		bad("AEDST_REQUEST_TIMEOUT_SECONDS must be positive")
 	}
 	if c.HTTP.MaxRequestBytes <= 0 {
 		bad("AEDST_MAX_REQUEST_BYTES must be positive")
+	}
+	if c.HTTP.PprofEnabled && c.HTTP.MetricsAddr == "" {
+		bad("AEDST_PPROF_ENABLED=true needs AEDST_METRICS_ADDR: profiles are served on the metrics listener, never the public port")
+	}
+	if c.Env.IsDeployed() && !c.Valkey.TLS && !c.Valkey.AllowPlaintext {
+		bad("AEDST_VALKEY_TLS=true is required in %s (or AEDST_VALKEY_ALLOW_PLAINTEXT=true to accept plaintext inside a trusted network)", c.Env)
+	}
+	if c.Env.IsDeployed() && !c.DB.AllowUnverifiedTLS {
+		if bad := c.databaseTLSProblems(); len(bad) > 0 {
+			slices.Sort(bad)
+			errs = append(errs, fmt.Errorf("%s must use sslmode=verify-full (or verify-ca) in %s (or AEDST_DATABASE_ALLOW_UNVERIFIED_TLS=true)", strings.Join(bad, ", "), c.Env))
+		}
 	}
 	if c.Env.IsDeployed() && slices.Contains(c.HTTP.AllowedOrigins, "*") {
 		bad("AEDST_CORS_ALLOWED_ORIGINS must not contain \"*\" in %s", c.Env)
@@ -283,6 +409,16 @@ func (c Config) Validate() error {
 		}
 		if c.Auth.AccessTokenTTLMinutes <= 0 || c.Auth.RefreshTokenTTLHours <= 0 {
 			bad("token TTLs must be positive")
+		}
+		_, _, perr := c.Auth.ParseSunset()
+		_, expired, hasSunset := c.Auth.SunsetStatus(time.Now())
+		switch {
+		case perr != nil:
+			bad("%v", perr)
+		case !hasSunset && c.Env != EnvDevelopment:
+			bad("AEDST_AUTH_FIRST_PARTY_SUNSET (RFC 3339 date) is required while AEDST_AUTH_FIRST_PARTY_ENABLED=true in %s: first-party auth is a time-boxed migration path (see docs/adr/0017-identity-provider.md)", c.Env)
+		case expired && c.Env.IsDeployed():
+			bad("AEDST_AUTH_FIRST_PARTY_SUNSET %s has passed: migrate users to the identity provider and set AEDST_AUTH_FIRST_PARTY_ENABLED=false (Sunset runbook, docs/content/server/runbook.md)", c.Auth.FirstPartySunset)
 		}
 	}
 
@@ -304,6 +440,7 @@ func (c Config) Validate() error {
 		}
 	}
 	c.validateFeatures(bad)
+	c.validateAppAttest(bad)
 
 	if !c.Auth.FirstPartyEnabled && c.OIDC.Issuer == "" {
 		bad("no authentication configured: enable AEDST_AUTH_FIRST_PARTY_ENABLED or set AEDST_OIDC_ISSUER")
@@ -312,47 +449,9 @@ func (c Config) Validate() error {
 	return errors.Join(errs...)
 }
 
-// OutboxConfig tunes the transactional-outbox relay (see platform/outbox).
-type OutboxConfig struct {
-	// RelayIntervalMs is how often an idle relay polls for new events; it is
-	// the latency floor of every integration event.
-	RelayIntervalMs int `env:"AEDST_OUTBOX_RELAY_INTERVAL_MS" envDefault:"500"`
-	// BatchSize is the most events one relay pass claims and delivers.
-	BatchSize int `env:"AEDST_OUTBOX_BATCH_SIZE" envDefault:"100"`
-	// Concurrency is how many events of a batch are published in parallel.
-	Concurrency int `env:"AEDST_OUTBOX_CONCURRENCY" envDefault:"4"`
-	// RetentionHours is how long delivered events are kept before purge.
-	RetentionHours int `env:"AEDST_OUTBOX_RETENTION_HOURS" envDefault:"168"`
-}
-
-// ClientConfig configures client-version enforcement (see
-// docs/content/decisions/0009-api-compatibility-and-client-versioning.md).
-type ClientConfig struct {
-	// MinVersions maps a client platform (web, android, apple, desktop) to
-	// the oldest release the server still supports, e.g.
-	// "android=1.2.0,apple=1.2.0". Requests from an older, self-identified
-	// client are rejected with CLIENT_UPGRADE_REQUIRED. Empty disables the
-	// gate; a request that does not identify itself is never rejected.
-	MinVersions map[string]string `env:"AEDST_MIN_CLIENT_VERSIONS" envSeparator:"," envKeyValSeparator:"=" envDefault:""`
-}
-
-// ClientPlatforms are the values a client may send as the platform half of
-// the X-Aedst-Client header.
-var ClientPlatforms = []string{"web", "android", "apple", "desktop"}
-
-// normalizeMinVersions trims whitespace and lower-cases platform names so
-// "web=1.0.0, Android=1.2.0" (a natural way to write the list) means what it
-// looks like instead of failing as an unknown platform " Android".
-func normalizeMinVersions(in map[string]string) map[string]string {
-	if len(in) == 0 {
-		return in
-	}
-	out := make(map[string]string, len(in))
-	for platform, version := range in {
-		out[strings.ToLower(strings.TrimSpace(platform))] = strings.TrimSpace(version)
-	}
-	return out
-}
+// MinAuditRetentionDays is the floor under which admin.audit_log rows cannot be deleted
+// (trigger in migrations/admin/00002), so retention may not be configured below it.
+const MinAuditRetentionDays = 30
 
 // RetentionConfig bounds the append-only tables (see internal/platform/retention).
 type RetentionConfig struct {
@@ -361,10 +460,11 @@ type RetentionConfig struct {
 	// IdempotencyHours is how long an idempotency key is remembered: it only has
 	// to outlive a client's retry window.
 	IdempotencyHours int `env:"AEDST_RETENTION_IDEMPOTENCY_HOURS" envDefault:"48"`
-	// InboxHours is how long processed-event markers are kept. It must not be
-	// shorter than AEDST_OUTBOX_RETENTION_HOURS, or an event redelivered late
-	// could be applied twice once its marker is gone.
-	InboxHours int `env:"AEDST_RETENTION_INBOX_HOURS" envDefault:"336"`
+	// TombstoneHours is how long the search projection keeps deletion
+	// tombstones. It must exceed the longest event redelivery window (River's
+	// retry backoff over 10 attempts, ~4.3 h), or a late old snapshot could
+	// resurrect a deleted document.
+	TombstoneHours int `env:"AEDST_RETENTION_TOMBSTONE_HOURS" envDefault:"336"`
 	// SessionHours is how long an expired or revoked session row is kept (for
 	// audit and support) before deletion.
 	SessionHours int `env:"AEDST_RETENTION_SESSION_HOURS" envDefault:"720"`

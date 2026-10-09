@@ -70,7 +70,7 @@ FocusScope {
 
     Rectangle {
         anchors.fill: parent
-        color: "black"
+        color: Theme.mediaBackground
         radius: Theme.radiusMd
     }
 
@@ -94,7 +94,7 @@ FocusScope {
         anchors.centerIn: video
         visible: root.hasError
         text: qsTr("This video cannot be played")
-        color: "white"
+        color: Theme.mediaForeground
         font: Theme.bodyFont
         wrapMode: Text.WordWrap
     }
@@ -123,7 +123,7 @@ FocusScope {
 
         Text {
             text: root.formatTime(player.position)
-            color: "white"
+            color: Theme.mediaForeground
             font: Theme.captionFont
         }
 
@@ -140,7 +140,7 @@ FocusScope {
 
         Text {
             text: root.formatTime(player.duration)
-            color: "white"
+            color: Theme.mediaForeground
             font: Theme.captionFont
         }
 

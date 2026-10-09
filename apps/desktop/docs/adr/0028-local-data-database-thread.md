@@ -3,6 +3,7 @@
 - Status: accepted (not compiled in the authoring environment)
 - Scope: `apps/desktop` (`Aedst::Persistence`, `Features/Auth` data layer, `App/`)
 - Supersedes in part: ADR-0005 (the "GUI-thread budget" decision; schema versioning and deletion rules stand)
+- Superseded in part by: ADR-0034 (the outbox and `kv` tables: the local database now also holds queued writes; see "Later changes")
 
 ## Context
 
@@ -19,8 +20,9 @@ previous schema version.
 | `QSettings` | device id, anonymous analytics id, OIDC configuration, window state | no (random ids, config) | none needed |
 | consent files, log file, Sentry database | consent decisions; redacted log; crash minidumps | minidumps may contain memory | documented in SECURITY.md |
 
-There is **no cached domain data** (tasks, media metadata, notifications) and no offline write queue. The one SQLite table
-holds an already-encrypted session, and in OIDC mode it is not used at all.
+There is **no cached domain data** (tasks, media metadata, notifications). Since ADR-0034 the database also holds the offline
+write queue (`outbox` table, migration 2; payloads are not encrypted, see that ADR). The `kv` session table holds an
+already-encrypted session, and in OIDC mode it is not used for tokens at all.
 
 ## Decisions
 
@@ -64,3 +66,22 @@ holds an already-encrypted session, and in OIDC mode it is not used at all.
 Nothing here has been compiled or run. The worker's shutdown ordering (queue drained, connection closed on its thread, completions dropped
 when the application object is already gone) and the lazily created keyring provider on a non-GUI thread (libsecret and DPAPI calls are
 thread-agnostic, but this has not been exercised under TSan) should be checked by the `tsan` preset on the first CI run.
+
+## Later changes
+
+- **Superseded in part by ADR-0034** (offline outbox): the inventory above said the database holds only the encrypted session.
+  Since migration 2 the `outbox` table holds queued write payloads (task titles and descriptions) in clear, and migration 3
+  adds the `kv` cache (last capability answer). The "no SQLCipher while only an already-encrypted session is stored" decision
+  no longer describes the schema; its stated trigger is the first feature that stores user content offline, which the outbox is.
+- **Sign-out clears the media caches**: the disk cache of `image://media` (thumbnails and previews of the user's files), its
+  decoded in-memory images and the video thumbnails are removed in `AppDependencies::onSignedOut()` (hook set in `app_run.cpp`;
+  `MediaImageFetcher::clear()`, `MediaImageProvider::clear()`, `VideoFrameGrabber::clearThumbnailCache()`), so a second user of
+  the machine does not find the first one's pictures.
+
+## Proposal awaiting the owner: SQLCipher (nothing implemented)
+
+**Recommendation: adopt SQLCipher before the outbox carries more than short task text** (attachments metadata, comments), not
+before: it adds a dependency (a vcpkg port or a patched SQLite), changes the file format (a reviewed one-way conversion plan for
+existing databases is needed) and the key must come from the same store as the AES master key (see the QtKeychain proposal in
+ADR-0003). Until then the outbox payload is plaintext at rest, which is stated here so nobody assumes otherwise. The owner
+decides when "short task text" stops being enough.

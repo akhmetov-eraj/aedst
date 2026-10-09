@@ -54,7 +54,7 @@ TEST(OidcDiscoveryTest, IssuerWithTrailingSlashStillMatches) {
 TEST(OidcDiscoveryTest, IssuerMismatchIsRejected) {
     const auto endpoints = parseDiscoveryDocument(document(QStringLiteral("https://evil.example.com")), config());
     ASSERT_FALSE(endpoints.has_value());
-    EXPECT_EQ(endpoints.error().code, core::ErrorCode::InvalidArgument);
+    EXPECT_EQ(endpoints.error().code, core::ErrorCode::InvalidInput);
 }
 
 TEST(OidcDiscoveryTest, MissingRequiredEndpointIsRejected) {
@@ -125,7 +125,7 @@ TEST(OidcDiscoveryTest, FetchReportsHttpFailureAsNetworkError) {
     fetchDiscovery(network, local, [&](core::Outcome<OidcEndpoints> r) { result = std::move(r); });
     ASSERT_TRUE(waitUntil([&] { return result.has_value(); }));
     ASSERT_FALSE(result->has_value());
-    EXPECT_EQ(result->error().code, core::ErrorCode::Network);
+    EXPECT_EQ(result->error().code, core::ErrorCode::Unavailable);
 }
 
 TEST(OidcDiscoveryTest, FetchRejectsAnInvalidConfigBeforeTouchingTheNetwork) {

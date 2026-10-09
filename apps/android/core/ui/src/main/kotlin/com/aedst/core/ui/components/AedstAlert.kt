@@ -2,10 +2,10 @@ package com.aedst.core.ui.components
 
 import android.content.res.Configuration
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,21 +26,12 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.aedst.core.ui.theme.AedstDarkPalette
+import com.aedst.core.ui.theme.AedstLightPalette
 import com.aedst.core.ui.theme.AedstShapesScale
 import com.aedst.core.ui.theme.AedstSpacing
 import com.aedst.core.ui.theme.AedstTheme
-
-/**
- * Success tint, sanctioned local exception to "no hardcoded colors": Material3's [MaterialTheme]
- * has no semantic "success" slot, so the two shades below are the only color literals in this
- * file, picked by [isSystemInDarkTheme] like every other theme-derived value here.
- */
-private val SuccessGreenLight = Color(0xFF16A34A)
-private val SuccessGreenDark = Color(0xFF4ADE80)
-
-/** Warning/amber tint, same sanctioned exception as [SuccessGreenLight] above. */
-private val WarningAmberLight = Color(0xFFD97706)
-private val WarningAmberDark = Color(0xFFFBBF24)
+import com.aedst.core.ui.theme.LocalAedstDarkTheme
 
 /** Visual treatment of [AedstAlert], mirroring web's `alert.tsx` `variant` prop. */
 enum class AedstAlertVariant {
@@ -61,7 +52,7 @@ private data class AedstAlertPalette(
 @Composable
 private fun rememberAlertPalette(variant: AedstAlertVariant): AedstAlertPalette {
     val colorScheme = MaterialTheme.colorScheme
-    val isDark = isSystemInDarkTheme()
+    val isDark = LocalAedstDarkTheme.current
     return when (variant) {
         AedstAlertVariant.INFO -> AedstAlertPalette(
             container = colorScheme.secondary.copy(alpha = 0.14f),
@@ -72,7 +63,7 @@ private fun rememberAlertPalette(variant: AedstAlertVariant): AedstAlertPalette 
         )
 
         AedstAlertVariant.SUCCESS -> {
-            val tint = if (isDark) SuccessGreenDark else SuccessGreenLight
+            val tint = if (isDark) AedstDarkPalette.success else AedstLightPalette.success
             AedstAlertPalette(
                 container = tint.copy(alpha = 0.14f),
                 border = tint.copy(alpha = 0.4f),
@@ -83,7 +74,7 @@ private fun rememberAlertPalette(variant: AedstAlertVariant): AedstAlertPalette 
         }
 
         AedstAlertVariant.WARNING -> {
-            val tint = if (isDark) WarningAmberDark else WarningAmberLight
+            val tint = if (isDark) AedstDarkPalette.warning else AedstLightPalette.warning
             AedstAlertPalette(
                 container = tint.copy(alpha = 0.14f),
                 border = tint.copy(alpha = 0.4f),
@@ -114,6 +105,7 @@ private fun defaultIconFor(variant: AedstAlertVariant): ImageVector = when (vari
 /**
  * Inline alert banner, mirroring web's `alert.tsx`. Announces itself as a polite live region so
  * screen readers pick up alerts that appear after the initial composition (e.g. form validation).
+ * [actions] adds a row of buttons under the text (retry, dismiss); use the `Aedst*` buttons there.
  */
 @Composable
 fun AedstAlert(
@@ -122,6 +114,7 @@ fun AedstAlert(
     description: String? = null,
     variant: AedstAlertVariant = AedstAlertVariant.INFO,
     icon: (@Composable () -> Unit)? = null,
+    actions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val palette = rememberAlertPalette(variant)
 
@@ -158,6 +151,13 @@ fun AedstAlert(
                         text = description,
                         color = palette.description,
                         style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                if (actions != null) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(AedstSpacing.sm),
+                        modifier = Modifier.padding(top = AedstSpacing.sm),
+                        content = actions,
                     )
                 }
             }

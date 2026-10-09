@@ -219,6 +219,20 @@
           "hex": "#451a03"
         }
       },
+      "info": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.3765, 0.6471, 0.9804],
+          "hex": "#60a5fa"
+        }
+      },
+      "infoForeground": {
+        "$value": {
+          "colorSpace": "srgb",
+          "components": [0.0902, 0.1451, 0.3294],
+          "hex": "#172554"
+        }
+      },
       "destructiveForeground": {
         "$value": {
           "colorSpace": "srgb",

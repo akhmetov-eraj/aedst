@@ -1,0 +1,23 @@
+#pragma once
+
+#include "Domain/{{name}}_entry.hpp"
+#include "aedst/core/outcome.hpp"
+
+#include <vector>
+
+namespace aedst::feature::{{name}} {
+
+/// Domain-owned port. Swap the in-memory implementation for a ConnectClient one once the module has an RPC.
+class {{Name}}Repository {
+public:
+    {{Name}}Repository() = default;
+    {{Name}}Repository(const {{Name}}Repository&) = delete;
+    {{Name}}Repository& operator=(const {{Name}}Repository&) = delete;
+    {{Name}}Repository({{Name}}Repository&&) = delete;
+    {{Name}}Repository& operator=({{Name}}Repository&&) = delete;
+    virtual ~{{Name}}Repository() = default;
+
+    virtual void list(core::Completion<std::vector<{{Name}}Entry>> done) = 0;
+};
+
+} // namespace aedst::feature::{{name}}

@@ -2,11 +2,13 @@
 
 #include "Presentation/admin_rows_model.hpp"
 #include "aedst/core/error.hpp"
+#include "aedst/qmlsupport/singleton_slot.hpp"
 
 #include <QObject>
 #include <QString>
 #include <QTimer>
 #include <QVariantMap>
+#include <QtQml/qqmlregistration.h>
 
 #include <memory>
 #include <string>
@@ -31,6 +33,8 @@ class AdminRepository;
 /// is the authority, the client check only hides UI.
 class AdminViewModel final : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
     Q_PROPERTY(QVariantMap overview READ overview NOTIFY overviewChanged)
     Q_PROPERTY(QAbstractItemModel* users READ users CONSTANT)
     Q_PROPERTY(QAbstractItemModel* auditLog READ auditLog CONSTANT)
@@ -41,6 +45,9 @@ class AdminViewModel final : public QObject {
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
 
 public:
+    static AdminViewModel* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<AdminViewModel>::create(engine, script);
+    }
     static constexpr int kQueryDebounceMs = 300;
 
     AdminViewModel(std::shared_ptr<AdminRepository> repository, std::shared_ptr<core::ErrorSink> errors,

@@ -60,3 +60,9 @@ val AedstDarkExtendedColors = AedstExtendedColors(
 )
 
 val LocalAedstExtendedColors = staticCompositionLocalOf { AedstLightExtendedColors }
+
+/**
+ * Whether the dark palette is active, as chosen by [AedstTheme] (which may be forced independently of the system
+ * setting). Components that pick palette tokens read this, never `isSystemInDarkTheme()`.
+ */
+val LocalAedstDarkTheme = staticCompositionLocalOf { false }

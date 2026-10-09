@@ -1,3 +1,4 @@
+#include "aedst/core/guarded.hpp"
 #include "aedst/oidc/refresh_token_store.hpp"
 
 // QtKeychain installs its header as <qt6keychain/keychain.h>; when it is built as a CMake
@@ -47,21 +48,21 @@ public:
         QObject::connect(job, &QKeychain::Job::finished, this, [done = std::move(done)](QKeychain::Job* finished) {
             auto* read = static_cast<QKeychain::ReadPasswordJob*>(finished);
             if (read->error() == QKeychain::EntryNotFound) {
-                done(std::optional<StoredIdentity>{});
+                core::invokeGuarded("OIDC completion", [&] { done(std::optional<StoredIdentity>{}); });
                 return;
             }
             if (read->error() != QKeychain::NoError) {
-                done(core::fail(storageError("read", *read)));
+                core::invokeGuarded("OIDC completion", [&] { done(core::fail(storageError("read", *read))); });
                 return;
             }
             std::string text = read->textData().toStdString();
             auto identity = parseIdentity(text);
             core::secureWipe(text);
             if (!identity) {
-                done(core::fail(identity.error()));
+                core::invokeGuarded("OIDC completion", [&] { done(core::fail(identity.error())); });
                 return;
             }
-            done(std::optional<StoredIdentity>(std::move(*identity)));
+            core::invokeGuarded("OIDC completion", [&] { done(std::optional<StoredIdentity>(std::move(*identity))); });
         });
         job->start();
     }
@@ -76,10 +77,10 @@ public:
         core::secureWipe(text);
         QObject::connect(job, &QKeychain::Job::finished, this, [done = std::move(done)](QKeychain::Job* finished) {
             if (finished->error() != QKeychain::NoError) {
-                done(core::fail(storageError("write", *finished)));
+                core::invokeGuarded("OIDC completion", [&] { done(core::fail(storageError("write", *finished))); });
                 return;
             }
-            done(core::ok());
+            core::invokeGuarded("OIDC completion", [&] { done(core::ok()); });
         });
         job->start();
     }
@@ -90,10 +91,10 @@ public:
         job->setAutoDelete(true);
         QObject::connect(job, &QKeychain::Job::finished, this, [done = std::move(done)](QKeychain::Job* finished) {
             if (finished->error() != QKeychain::NoError && finished->error() != QKeychain::EntryNotFound) {
-                done(core::fail(storageError("delete", *finished)));
+                core::invokeGuarded("OIDC completion", [&] { done(core::fail(storageError("delete", *finished))); });
                 return;
             }
-            done(core::ok());
+            core::invokeGuarded("OIDC completion", [&] { done(core::ok()); });
         });
         job->start();
     }

@@ -1,12 +1,11 @@
 import AedstCore
 import AedstDesignSystem
-import Perception
 import SwiftUI
 
 /// Delivery preferences. Each toggle saves immediately and rolls back if the
 /// server rejects it. Turning push on also asks for OS permission.
 @MainActor
-@Perceptible
+@Observable
 public final class NotificationPreferencesViewModel {
     public private(set) var preferences: NotificationPreferences?
     public private(set) var isSaving = false
@@ -63,25 +62,23 @@ public struct NotificationPreferencesView: View {
     }
 
     public var body: some View {
-        WithPerceptionTracking {
-            @Perception.Bindable var viewModel = viewModel
-            Form {
-                if let preferences = viewModel.preferences {
-                    toggle("notificationsPrefPush", preferences.pushEnabled, \.pushEnabled)
-                    Section(String(localized: "notificationsPrefKinds", bundle: .module)) {
-                        toggle("notificationsPrefTaskCompleted", preferences.taskCompleted, \.taskCompleted)
-                        toggle("notificationsPrefTaskDueSoon", preferences.taskDueSoon, \.taskDueSoon)
-                        toggle("notificationsPrefMediaReady", preferences.mediaReady, \.mediaReady)
-                    }
-                    .disabled(!preferences.pushEnabled)
-                } else {
-                    AedstProgressView(style: .circular).frame(maxWidth: .infinity)
+        @Bindable var viewModel = viewModel
+        Form {
+            if let preferences = viewModel.preferences {
+                toggle("notificationsPrefPush", preferences.pushEnabled, \.pushEnabled)
+                Section(String(localized: "notificationsPrefKinds", bundle: .module)) {
+                    toggle("notificationsPrefTaskCompleted", preferences.taskCompleted, \.taskCompleted)
+                    toggle("notificationsPrefTaskDueSoon", preferences.taskDueSoon, \.taskDueSoon)
+                    toggle("notificationsPrefMediaReady", preferences.mediaReady, \.mediaReady)
                 }
+                .disabled(!preferences.pushEnabled)
+            } else {
+                AedstProgressView(style: .circular).frame(maxWidth: .infinity)
             }
-            .navigationTitle(String(localized: "notificationsPreferences", bundle: .module))
-            .aedstErrorPresenter($viewModel.error)
-            .task { await viewModel.load() }
         }
+        .navigationTitle(String(localized: "notificationsPreferences", bundle: .module))
+        .aedstErrorPresenter($viewModel.error)
+        .task { await viewModel.load() }
     }
 
     private func toggle(

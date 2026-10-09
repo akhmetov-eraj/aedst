@@ -57,6 +57,13 @@ public:
 
     static constexpr int kTimeoutMs = 8000;
 
+    /// Where grabbed frames are written: `<cache root>/video-thumbnails`. The cache root defaults to the OS cache
+    /// location; main() points it at the isolated profile when AEDST_DATA_DIR is set.
+    static void setCacheRoot(const QString& root);
+    [[nodiscard]] static QString thumbnailDirectory();
+    /// Deletes every grabbed frame. Called on sign-out: thumbnails of a user's media must not outlive the session.
+    static void clearThumbnailCache();
+
 signals:
     void sourceChanged();
     void resultChanged();

@@ -11,6 +11,9 @@ T.ToolTip {
     timeout: 5000
     font: Theme.captionFont
 
+    Accessible.role: Accessible.ToolTip
+    Accessible.name: control.text
+
     contentItem: Text {
         text: control.text
         font: control.font

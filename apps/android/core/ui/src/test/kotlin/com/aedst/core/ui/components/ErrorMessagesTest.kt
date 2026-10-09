@@ -19,12 +19,16 @@ class ErrorMessagesTest {
     private val context: Context get() = ApplicationProvider.getApplicationContext()
 
     private val allErrors: List<AedstError> = listOf(
-        AedstError.Network("n"),
+        AedstError.Unavailable("n"),
         AedstError.Offline(),
-        AedstError.Unauthorized(),
+        AedstError.Unauthenticated(),
         AedstError.NotFound(),
-        AedstError.Validation("v"),
+        AedstError.InvalidInput("v"),
         AedstError.Unknown("u"),
+        AedstError.Forbidden(),
+        AedstError.Conflict(),
+        AedstError.RateLimited(),
+        AedstError.UpgradeRequired(),
     )
 
     @Test
@@ -36,7 +40,7 @@ class ErrorMessagesTest {
 
     @Test
     fun `the user message never contains the diagnostic message`() {
-        val error = AedstError.Validation("internal detail: column users.email_hash")
+        val error = AedstError.InvalidInput("internal detail: column users.email_hash")
 
         assertTrue(!context.getString(error.userMessageRes()).contains("internal detail"))
     }

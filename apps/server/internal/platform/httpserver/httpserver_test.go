@@ -25,7 +25,7 @@ func TestRouter_Readyz_ReportsFailedDependenciesAndDraining(t *testing.T) {
 			return nil
 		}
 		return errors.New("down")
-	}})
+	}}).WithCacheTTL(0)
 	router := httpserver.NewRouter(httpserver.Options{Logger: discardLogger(), Readiness: readiness})
 
 	get := func() (int, string) {
@@ -61,7 +61,7 @@ func TestRouter_Livez_IsIndependentOfDependencies(t *testing.T) {
 
 func TestRouter_RequestID_RejectsUnsafeClientValues(t *testing.T) {
 	router := httpserver.NewRouter(httpserver.Options{Logger: discardLogger()})
-	router.Get("/x", func(http.ResponseWriter, *http.Request) {})
+	router.HandleFunc("GET /x", func(http.ResponseWriter, *http.Request) {})
 
 	for _, bad := range []string{"has space", "new\nline", strings.Repeat("a", 65)} {
 		req := httptest.NewRequest(http.MethodGet, "/x", nil)
@@ -84,7 +84,7 @@ func TestRouter_RequestID_RejectsUnsafeClientValues(t *testing.T) {
 
 func TestRouter_RecoversFromPanics(t *testing.T) {
 	router := httpserver.NewRouter(httpserver.Options{Logger: discardLogger()})
-	router.Get("/boom", func(http.ResponseWriter, *http.Request) { panic("kaboom") })
+	router.HandleFunc("GET /boom", func(http.ResponseWriter, *http.Request) { panic("kaboom") })
 
 	rec := httptest.NewRecorder()
 	router.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/boom", nil))

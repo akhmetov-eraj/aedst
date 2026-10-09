@@ -9,14 +9,16 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { cn } from "cn";
 import { useTranslations } from "next-intl";
 import { useId, useRef, useState } from "react";
-import { useShallow } from "zustand/react/shallow";
 
 import {
   type UploadItem,
+  useTaskUploads,
   useUploadQueue,
-} from "@/modules/media/uploader/upload-queue-store";
+} from "@/modules/media/lib/upload-queue-store";
 import { useUploader } from "@/modules/media/uploader/use-uploader";
 import { Button } from "@/shared/ui/button";
+import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import { Progress } from "@/shared/ui/progress";
 
 const ACCEPT = "image/*,video/*,audio/*,application/pdf";
@@ -34,11 +36,7 @@ export function Uploader({ taskId }: { taskId?: string }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragging, setDragging] = useState(false);
   const { enqueue, cancel, retry } = useUploader();
-  // useShallow: a filtered array is a new reference every time, which a
-  // plain zustand selector would treat as a change on every render.
-  const items = useUploadQueue(
-    useShallow((state) => state.items.filter((item) => item.taskId === taskId)),
-  );
+  const items = useTaskUploads(taskId);
   const clearFinished = useUploadQueue((state) => state.clearFinished);
 
   function accept(files: FileList | null) {
@@ -49,7 +47,7 @@ export function Uploader({ taskId }: { taskId?: string }) {
 
   return (
     <div className="flex flex-col gap-3">
-      <label
+      <Label
         htmlFor={inputId}
         onDragEnter={(event) => {
           event.preventDefault();
@@ -66,14 +64,15 @@ export function Uploader({ taskId }: { taskId?: string }) {
           accept(event.dataTransfer.files);
         }}
         className={cn(
-          "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg border-2 border-dashed p-6 text-center text-sm transition-colors focus-within:ring-2 focus-within:ring-ring",
+          "flex cursor-pointer flex-col items-center justify-center gap-2 rounded-lg font-normal leading-normal border-2 border-dashed p-6 text-center text-sm transition-colors focus-within:ring-2 focus-within:ring-ring",
           dragging ? "border-primary bg-primary/5" : "hover:bg-muted",
         )}
       >
         <HugeiconsIcon icon={Upload04Icon} strokeWidth={2} className="size-6" />
         <span className="font-medium">{t("dropzone")}</span>
         <span className="text-muted-foreground text-xs">{t("hint")}</span>
-        <input
+        {/* sr-only: the visible drop zone is the label itself */}
+        <Input
           ref={inputRef}
           id={inputId}
           type="file"
@@ -85,7 +84,7 @@ export function Uploader({ taskId }: { taskId?: string }) {
             event.target.value = "";
           }}
         />
-      </label>
+      </Label>
 
       {items.length > 0 && (
         <ul className="flex flex-col gap-2" aria-label={t("queueLabel")}>

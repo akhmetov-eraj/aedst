@@ -33,9 +33,11 @@ The Windows uninstaller itself (`Uninstall.exe`) is not separately signed.
 ## Verification
 
 - `scripts/verify-install-windows.ps1`: silent install (`/S /D=`), `--version`, silent uninstall
-  (`_?=` so it is synchronous), asserts app files and Start Menu entries are gone and user data is kept.
-- `scripts/verify-install-linux.sh`: `apt-get install ./x.deb`, `--version`, `apt-get purge`, asserts every
-  file the package owned is gone.
+  (`_?=` so it is synchronous), asserts app files, Start Menu entries, the `aedst://` registration and the per-user
+  fallback shortcut are gone and user data is kept; also checks the PE hardening flags and the protocol registration.
+- `scripts/verify-install-linux.sh`: `apt-get install ./x.deb`, no Qt files outside `<libdir>/aedst-desktop`,
+  hardening (readelf: PIE, RELRO, BIND_NOW, non-exec stack, stack protector, RUNPATH), `--version`, `apt-get purge`,
+  asserts every file the package owned is gone.
 
 All of them require `aedst-desktop --version` to print `AEDST_VERSION` to stdout and exit 0
 without a display (App/src/main.cpp).
@@ -59,6 +61,39 @@ GCC/Clang `-g1` + `--build-id` -> `aedst-desktop.debug`. CI uploads them as
 
 ## Flatpak
 
-`finish-args` grant `org.freedesktop.secrets` (Secret Service), `org.freedesktop.Notifications` and
-`org.freedesktop.portal.Desktop` (autostart via the Background portal). UNVERIFIED: that the KDE runtime
-ships libsecret at the version `AedstPlatform` expects.
+The manifest is `linux/flatpak/com.aedst.Desktop.yml`; its `finish-args` are the whole permission set and are kept
+minimal on purpose:
+
+| Permission | Why |
+|---|---|
+| `--share=network` | API, OIDC (including the loopback redirect listener), update checks |
+| `--share=ipc` | X11 shared memory for Qt on X11 (harmless on Wayland) |
+| `--socket=wayland`, `--socket=fallback-x11` | display; X11 only when there is no Wayland |
+| `--device=dri` | GPU rendering for Qt Quick |
+| `--socket=pulseaudio` | audio of `Aedst.Media` (PipeWire serves the PulseAudio socket) |
+| `--talk-name=org.freedesktop.secrets` | the refresh token in the Secret Service (QtKeychain, libsecret) |
+| `--talk-name=org.kde.StatusNotifierWatcher` | the tray icon (without it the icon is silently missing) |
+
+Not requested, because every sandbox already reaches them: `org.freedesktop.Notifications` (native notifications) and
+the `org.freedesktop.portal.*` portals (OpenURI for the OIDC browser, Background for autostart, FileChooser). No
+`--filesystem=` access exists at all: files are picked through the portal. The Flatpak build uses
+`-DAEDST_DEPLOY_QT=OFF -DAEDST_SYSTEM_QTKEYCHAIN=ON` (Qt comes from `org.kde.Platform`; the sandbox has no network at build
+time). UNVERIFIED: that the KDE runtime ships libsecret at the version `AedstPersistence` (`libsecret_backend.cpp`) expects.
+
+## Linux package layout and URL scheme
+
+The DEB/RPM install under `/usr`. The bundled Qt is NOT in `/usr/lib`: it lives in the private directory
+`<libdir>/aedst-desktop/` (libraries, `plugins/`, `qml/`, `translations/`), the executable finds it through a relative
+RUNPATH and a `qt.conf` next to it (`cmake/AedstLinuxBundle.cmake`), and `scripts/verify-install-linux.sh` fails if any
+`libQt6*` / `plugins` / `qml` file lands outside it. For RPM, the private libraries are neither provided nor required
+(`CPACK_RPM_PACKAGE_AUTOPROV no`, `__requires_exclude`). Both `.desktop` files declare
+`MimeType=x-scheme-handler/aedst` and `Exec=aedst-desktop %u`, so `aedst://` links reach the running instance
+(`SingleInstanceGuard`); the Windows installers register `HKLMSoftwareClassesaedst` (removed on uninstall) and the MSIX
+manifest declares the protocol.
+
+## Windows Start Menu shortcut and the AppUserModelID
+
+Native toasts need a Start Menu shortcut that carries the AppUserModelID `com.aedst.Desktop`. The installer creates the
+shortcut and (when the NSIS `ApplicationID` plug-in is installed on the build machine) stamps the ID on it; the app only
+VERIFIES it at start. If no shortcut carries the ID, the app writes a per-user fallback `ProgramsAEDST.lnk`, which the
+uninstaller removes again. UNVERIFIED: none of this has run on Windows.

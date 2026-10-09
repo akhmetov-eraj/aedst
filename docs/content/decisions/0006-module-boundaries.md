@@ -1,3 +1,8 @@
+---
+title: "ADR-0006: Enforced module boundaries via architecture tests"
+description: "Accepted"
+---
+
 # ADR-0006: Enforced module boundaries via architecture tests
 
 ## Status
@@ -17,7 +22,7 @@ through, and once one exists, extraction stops being mechanical.
   `infrastructure`, `repository`, `transport`, or `events` package directly
   (only `api/` may be imported across module boundaries),
 - the resulting module dependency graph doesn't match the edges declared in
-  [modules.md](/modules) (no undeclared new dependencies, no cycles),
+  [modules.md](/server/modules) (no undeclared new dependencies, no cycles),
 - a module's `domain` package imports its own `infrastructure` (layering
   inversion).
 

@@ -1,6 +1,7 @@
 import { createSerwistRoute } from "@serwist/turbopack";
 
-import { locales } from "@/app/config/i18n/locales";
+import { serverEnv } from "@/shared/env/server";
+import { locales } from "@/shared/i18n/locales";
 
 /**
  * Serves the service worker (`/serwist/sw.js`, built from `src/app/sw.ts`
@@ -13,9 +14,7 @@ import { locales } from "@/app/config/i18n/locales";
 // One revision per build (the route is static, so this is evaluated at
 // build time): precached offline pages are refreshed on every deploy.
 const revision =
-  process.env.GITHUB_SHA ||
-  process.env.VERCEL_GIT_COMMIT_SHA ||
-  String(Date.now());
+  serverEnv.GITHUB_SHA || serverEnv.VERCEL_GIT_COMMIT_SHA || String(Date.now());
 
 export const { dynamic, dynamicParams, revalidate, generateStaticParams, GET } =
   createSerwistRoute({

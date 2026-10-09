@@ -1,23 +1,18 @@
 "use client";
 
-import { timestampFromDate } from "@bufbuild/protobuf/wkt";
-import { useMutation } from "@connectrpc/connect-query";
 import { useTranslations } from "next-intl";
-
-import { Link, useRouter } from "@/app/config/i18n/navigation";
+import { useCreateTask } from "@/modules/tasks/lib/use-task-writes";
 import { TaskForm, type TaskFormValues } from "@/modules/tasks/ui/TaskForm";
-import { TasksService } from "@/shared/api/connect/client";
 import { TaskPriority } from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
+import { Link, useRouter } from "@/shared/i18n/navigation";
 import { track } from "@/shared/lib/analytics/analytics";
+import { toAppError } from "@/shared/lib/errors/app-error";
 import { buttonVariants } from "@/shared/ui/button";
 
 export function CreateTaskPage() {
   const t = useTranslations("tasks");
   const router = useRouter();
-  const createTask = useMutation(TasksService.method.createTask, {
-    // The form renders its own inline error.
-    meta: { silent: true, feature: "tasks" },
-  });
+  const createTask = useCreateTask();
 
   function handleSubmit(values: TaskFormValues) {
     createTask.mutate(
@@ -25,19 +20,20 @@ export function CreateTaskPage() {
         title: values.title,
         description: values.description,
         priority: values.priority,
-        dueDate: values.dueDate
-          ? timestampFromDate(new Date(values.dueDate))
-          : undefined,
+        dueDate: values.dueDate || undefined,
       },
       {
-        onSuccess: (res) => {
+        onSuccess: (result) => {
           track("task_created", {
             priority: TaskPriority[values.priority] ?? "UNKNOWN",
             has_due_date: Boolean(values.dueDate),
           });
-          if (res.task) {
-            router.push(`/tasks/${res.task.id}`);
-          }
+          // A queued task has no server id yet: the list shows it as pending.
+          router.push(
+            result.status === "sent" && result.value.task
+              ? `/tasks/${result.value.task.id}`
+              : "/tasks",
+          );
         },
       },
     );
@@ -56,7 +52,9 @@ export function CreateTaskPage() {
         mode="create"
         onSubmit={handleSubmit}
         isSubmitting={createTask.isPending}
-        submitError={createTask.error?.message}
+        submitErrorKind={
+          createTask.error ? toAppError(createTask.error).kind : undefined
+        }
       />
     </div>
   );

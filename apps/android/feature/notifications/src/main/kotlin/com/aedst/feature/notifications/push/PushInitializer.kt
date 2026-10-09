@@ -13,7 +13,7 @@ import kotlinx.coroutines.launch
 import javax.inject.Inject
 
 /** Creates channels, then on every sign-in (and app start while signed in) registers push and loads the badge. */
-class PushInitializer @Inject constructor(
+internal class PushInitializer @Inject constructor(
     private val notifier: PushNotifier,
     private val registrar: PushRegistrar,
     private val repository: NotificationsRepository,

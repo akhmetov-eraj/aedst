@@ -20,7 +20,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.media3.common.MediaItem
 import androidx.media3.common.Player
@@ -28,6 +27,7 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.compose.ContentFrame
 import com.aedst.core.media.R
+import com.aedst.core.ui.theme.AedstSpacing
 
 /**
  * Plays a (presigned) video URL with **Media3 ExoPlayer** rendered by `media3-ui-compose`'s [ContentFrame]
@@ -63,7 +63,7 @@ fun VideoPlayer(url: String, modifier: Modifier = Modifier, autoPlay: Boolean = 
         ContentFrame(player = player)
         FilledTonalIconButton(
             onClick = { if (isPlaying) player.pause() else player.play() },
-            modifier = Modifier.align(Alignment.BottomStart).padding(12.dp),
+            modifier = Modifier.align(Alignment.BottomStart).padding(AedstSpacing.md),
         ) {
             Icon(
                 imageVector = if (isPlaying) Icons.Filled.Pause else Icons.Filled.PlayArrow,

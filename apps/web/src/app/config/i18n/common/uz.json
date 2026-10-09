@@ -7,7 +7,8 @@
     "save": "Saqlash",
     "back": "Orqaga",
     "goHome": "Bosh sahifaga",
-    "tryAgain": "Qaytadan urinib ko'ring"
+    "tryAgain": "Qaytadan urinib ko'ring",
+    "close": "Yopish"
   },
   "errors": {
     "generic": "Xatolik yuz berdi. Qaytadan urinib ko'ring.",
@@ -28,17 +29,29 @@
       "timeout": "So‘rov juda uzoq davom etdi. Qaytadan urinib ko‘ring.",
       "offline": "Internetga ulanmagansiz. Aloqani tekshiring.",
       "cancelled": "So‘rov bekor qilindi.",
+      "upgradeRequired": "Davom etish uchun ilovani yangilang.",
+      "storage": "Bu qurilmada ma’lumotni o‘qib yoki saqlab bo‘lmadi.",
       "unknown": "Xatolik yuz berdi. Qaytadan urinib ko‘ring."
     }
   },
   "a11y": {
-    "skipToContent": "Asosiy tarkibga o'tish"
+    "skipToContent": "Asosiy tarkibga o'tish",
+    "loading": "Yuklanmoqda",
+    "notifications": "Bildirishnomalar"
+  },
+  "locale": {
+    "label": "Til"
   },
   "consent": {
     "title": "Tahlil roziligi",
     "description": "Ilovani yaxshilashimiz uchun maxfiylikka mos tahlil va samaradorlikni o'lchashga ruxsat berasizmi?",
     "accept": "Ruxsat berish",
-    "decline": "Yo'q, rahmat"
+    "decline": "Yo'q, rahmat",
+    "manage": "Maxfiylik sozlamalari",
+    "withdraw": "Bekor qilish",
+    "privacyPolicy": "Maxfiylik siyosati",
+    "currentlyAllowed": "Hozir: ruxsat berilgan.",
+    "currentlyDeclined": "Hozir: rad etilgan."
   },
   "nav": {
     "label": "Asosiy navigatsiya",
@@ -51,7 +64,12 @@
     "banner": "Siz oflaynsiz. Ulanish tiklanguncha ba’zi imkoniyatlar mavjud emas.",
     "title": "Ulanish yo‘q",
     "description": "Bu sahifa oflayn rejimda mavjud emas. Ulanib, qaytadan urinib ko‘ring.",
-    "retry": "Qayta urinish"
+    "retry": "Qayta urinish",
+    "queued": "O‘zgarishlar qurilmada saqlanadi va internetga ulanganda yuboriladi."
+  },
+  "sync": {
+    "pending": "Sinxronlash kutilmoqda: {count}",
+    "failed": "Sinxronlanmadi: {count}"
   },
   "pwa": {
     "installTitle": "AEDST’ni o‘rnatish",

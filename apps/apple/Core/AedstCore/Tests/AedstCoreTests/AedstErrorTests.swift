@@ -4,38 +4,44 @@ import Testing
 
 @Suite("AedstError")
 struct AedstErrorTests {
-    @Test("network and rateLimited are retryable")
+    @Test("unavailable, offline, timeout and rateLimited are retryable")
     func retryableCases() {
-        #expect(AedstError.network(reason: "timeout").isRetryable)
+        #expect(AedstError.unavailable(reason: "timeout").isRetryable)
         #expect(AedstError.rateLimited(retryAfter: 1).isRetryable)
+        #expect(AedstError.offline.isRetryable)
+        #expect(AedstError.timeout.isRetryable)
     }
 
     @Test("client, storage and unknown errors are not retryable")
     func nonRetryableCases() {
-        #expect(!AedstError.unauthorized.isRetryable)
+        #expect(!AedstError.unauthenticated.isRetryable)
         #expect(!AedstError.notFound.isRetryable)
-        #expect(!AedstError.validation(fields: ["email"]).isRetryable)
+        #expect(!AedstError.invalidInput(fields: ["email"]).isRetryable)
         #expect(!AedstError.storage(reason: "x").isRetryable)
         #expect(!AedstError.unknown(reason: "x").isRetryable)
+        #expect(!AedstError.unsupported.isRetryable)
+        #expect(!AedstError.cancelled.isRetryable)
+        #expect(!AedstError.upgradeRequired.isRetryable)
     }
 
     @Test("Outcome exposes value and error")
     func outcomeAccessors() {
         let success: Outcome<Int> = .success(1)
-        let failure: Outcome<Int> = .failure(.unauthorized)
+        let failure: Outcome<Int> = .failure(.unauthenticated)
 
         #expect(success.value == 1)
         #expect(success.error == nil)
         #expect(failure.value == nil)
-        #expect(failure.error == .unauthorized)
+        #expect(failure.error == .unauthenticated)
     }
 
     @Test("user-facing text is localized and never leaks the technical reason")
     func errorDescriptionHidesTechnicalDetail() {
         let secret = "SELECT * FROM users; stacktrace 0xdeadbeef"
         let all: [AedstError] = [
-            .network(reason: secret), .unauthorized, .notFound, .validation(fields: [secret]),
+            .unavailable(reason: secret), .offline, .timeout, .unauthenticated, .forbidden, .conflict, .notFound, .invalidInput(fields: [secret]),
             .rateLimited(retryAfter: 3), .decoding(reason: secret), .storage(reason: secret), .unknown(reason: secret),
+            .unsupported, .cancelled, .upgradeRequired,
         ]
         for error in all {
             let text = error.errorDescription
@@ -48,12 +54,13 @@ struct AedstErrorTests {
 
     @Test("technicalDescription keeps the detail for logs")
     func technicalDescriptionKeepsDetail() {
-        #expect(AedstError.network(reason: "boom").technicalDescription.contains("boom"))
+        #expect(AedstError.unavailable(reason: "boom").technicalDescription.contains("boom"))
     }
 
     @Test("analytics categories are PII-free constants")
     func analyticsCategory() {
-        #expect(AedstError.network(reason: "user@example.com").analyticsCategory == "network")
+        #expect(AedstError.unavailable(reason: "user@example.com").analyticsCategory == "unavailable")
         #expect(AedstError.storage(reason: "x").analyticsCategory == "storage")
+        #expect(AedstError.upgradeRequired.analyticsCategory == "upgradeRequired")
     }
 }

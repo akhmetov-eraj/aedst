@@ -287,7 +287,7 @@ core::VoidOutcome CrashHandler::install(const std::filesystem::path& directory, 
 #if defined(_WIN32)
     const std::wstring wide = crashes.wstring();
     if (wide.size() + 1 > s.directory.size()) {
-        return core::fail(core::Error::invalidArgument("crash handler: directory path too long"));
+        return core::fail(core::Error::invalidInput("crash handler: directory path too long"));
     }
     std::wmemcpy(s.directory.data(), wide.c_str(), wide.size() + 1);
     static_cast<void>(appVersion);

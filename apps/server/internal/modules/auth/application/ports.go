@@ -1,7 +1,7 @@
 // Package application holds the auth module's use cases. It depends only on
 // domain and the interfaces declared here — infrastructure/postgres provides
 // the concrete implementations, keeping this package testable without a
-// database (see docs/modules.md).
+// database (see docs/content/server/modules.md).
 package application
 
 import (

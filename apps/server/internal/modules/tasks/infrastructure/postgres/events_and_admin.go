@@ -14,23 +14,23 @@ import (
 	"github.com/aedst/server/internal/modules/tasks/application"
 	"github.com/aedst/server/internal/modules/tasks/domain"
 	"github.com/aedst/server/internal/platform/database"
-	"github.com/aedst/server/internal/platform/outbox"
+	"github.com/aedst/server/internal/platform/idempotency"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
 	"github.com/aedst/server/internal/shared/pagination"
 )
 
-// writeEvent records an integration event inside tx (the transactional
-// outbox). A repository built without an outbox writer cannot mutate.
+// writeEvent records an integration event inside tx (transactional outbox via
+// River job per consumer, inserted with the caller's transaction). A repository
+// built without a publisher cannot mutate.
 func (r *Repository) writeEvent(ctx context.Context, tx pgx.Tx, eventType string, version uint32, key ids.ID, payload any) error {
-	if r.outbox == nil {
-		return sharederrors.Wrap("tasks.writeEvent", errors.New("repository has no outbox writer"))
+	if r.events == nil {
+		return sharederrors.Wrap("tasks.writeEvent", errors.New("repository has no event publisher"))
 	}
-	body, err := json.Marshal(payload)
-	if err != nil {
+	if _, err := r.events.Publish(ctx, tx, eventType, version, key, payload); err != nil {
 		return sharederrors.Wrap("tasks.writeEvent", err)
 	}
-	return r.outbox.Write(ctx, tx, outbox.NewRow(ctx, r.clock, eventType, version, key, body))
+	return nil
 }
 
 // Update applies the patch in one statement and, in the same transaction,
@@ -38,8 +38,26 @@ func (r *Repository) writeEvent(ctx context.Context, tx pgx.Tx, eventType string
 // reminder when the due date changed). When the UPDATE matches no row, one
 // follow-up read tells "not found" from "stale version"; nothing is published.
 func (r *Repository) Update(ctx context.Context, params application.UpdateParams) (domain.Task, error) {
+	// Hashed on the client-supplied fields only (never UpdatedAt, generated per
+	// call), and tagged with the operation so one key cannot be replayed across RPCs.
+	requestPayload, err := json.Marshal(struct {
+		Op              string       `json:"op"`
+		ID              ids.ID       `json:"id"`
+		Patch           domain.Patch `json:"patch"`
+		ExpectedVersion *int         `json:"expected_version"`
+	}{"update", params.ID, params.Patch, params.ExpectedVersion})
+	if err != nil {
+		return domain.Task{}, sharederrors.Wrap("tasks.Update", err)
+	}
+	scope := idempotencyScope(params.UserID)
+
 	var result domain.Task
-	err := database.WithTx(ctx, r.pool, func(ctx context.Context, tx pgx.Tx) error {
+	err = database.WithTx(ctx, r.pool, func(ctx context.Context, tx pgx.Tx) error {
+		if cached, replay, err := idempotency.Check(ctx, tx, r.idempotency, scope, params.IdempotencyKey, requestPayload); err != nil {
+			return err
+		} else if replay {
+			return json.Unmarshal(cached, &result)
+		}
 		q := tasksdb.New(tx)
 		row, err := q.UpdateTask(ctx, updateParams(params))
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -57,7 +75,14 @@ func (r *Repository) Update(ctx context.Context, params application.UpdateParams
 				return err
 			}
 		}
-		return r.writeEvent(ctx, tx, api.TaskUpdatedEventType, api.TaskUpdatedEventVersion, result.ID, api.SnapshotOf(result))
+		if err := r.writeEvent(ctx, tx, api.TaskUpdatedEventType, api.TaskUpdatedEventVersion, result.ID, api.SnapshotOf(result)); err != nil {
+			return err
+		}
+		resultPayload, err := json.Marshal(result)
+		if err != nil {
+			return sharederrors.Wrap("tasks.Update", err)
+		}
+		return idempotency.Save(ctx, tx, r.idempotency, scope, params.IdempotencyKey, requestPayload, resultPayload)
 	})
 	if err != nil {
 		return domain.Task{}, err
@@ -68,8 +93,16 @@ func (r *Repository) Update(ctx context.Context, params application.UpdateParams
 // Delete removes the caller's task and publishes TaskDeleted in the same
 // transaction. Nothing matched (someone else's or a nonexistent id) is
 // NotFound and publishes nothing.
-func (r *Repository) Delete(ctx context.Context, id, userID ids.ID) error {
+func (r *Repository) Delete(ctx context.Context, id, userID ids.ID, idempotencyKey string) error {
+	requestPayload := []byte(`{"op":"delete","id":"` + id.String() + `"}`)
+	scope := idempotencyScope(userID)
 	return database.WithTx(ctx, r.pool, func(ctx context.Context, tx pgx.Tx) error {
+		// A retry of a delete that already committed must succeed, not NotFound.
+		if _, replay, err := idempotency.Check(ctx, tx, r.idempotency, scope, idempotencyKey, requestPayload); err != nil {
+			return err
+		} else if replay {
+			return nil
+		}
 		version, err := tasksdb.New(tx).DeleteTask(ctx, tasksdb.DeleteTaskParams{ID: toPgUUID(id), UserID: toPgUUID(userID)})
 		if errors.Is(err, pgx.ErrNoRows) {
 			return sharederrors.NotFound("tasks.Delete", "task not found")
@@ -77,7 +110,10 @@ func (r *Repository) Delete(ctx context.Context, id, userID ids.ID) error {
 		if err != nil {
 			return sharederrors.Wrap("tasks.Delete", err)
 		}
-		return r.writeDeleted(ctx, tx, id, userID, int(version))
+		if err := r.writeDeleted(ctx, tx, id, userID, int(version)); err != nil {
+			return err
+		}
+		return idempotency.Save(ctx, tx, r.idempotency, scope, idempotencyKey, requestPayload, []byte(`{}`))
 	})
 }
 
@@ -172,7 +208,7 @@ func (r *Repository) AdminDeleteTx(ctx context.Context, tx pgx.Tx, id ids.ID) (i
 }
 
 func (r *Repository) AdminStats(ctx context.Context) (application.AdminStats, error) {
-	row, err := tasksdb.New(r.pool).AdminTaskStats(ctx)
+	row, err := tasksdb.New(r.pool).AdminTaskStats(ctx, adminStatsRowCap)
 	if err != nil {
 		return application.AdminStats{}, sharederrors.Wrap("tasks.AdminStats", err)
 	}
@@ -194,3 +230,7 @@ func (r *Repository) CountByOwners(ctx context.Context, owners []ids.ID) (map[id
 	}
 	return out, nil
 }
+
+// adminStatsRowCap bounds the platform-wide task counts of the operator
+// overview: beyond it the figures are lower bounds (see AdminTaskStats).
+const adminStatsRowCap = 1_000_000

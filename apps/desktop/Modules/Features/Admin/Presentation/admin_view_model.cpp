@@ -1,6 +1,6 @@
 #include "Presentation/admin_view_model.hpp"
 
-#include "Data/connect_admin_repository.hpp"
+#include "Domain/admin_repository.hpp"
 #include "aedst/analytics/analytics_tracker.hpp"
 #include "aedst/core/error_sink.hpp"
 
@@ -201,7 +201,7 @@ void AdminViewModel::end() {
 }
 
 bool AdminViewModel::handleError(const core::Error& error, std::string_view context) {
-    if (error.code == core::ErrorCode::PermissionDenied) {
+    if (error.code == core::ErrorCode::Forbidden) {
         if (!forbidden_) {
             forbidden_ = true;
             emit forbiddenChanged();

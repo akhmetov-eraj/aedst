@@ -52,6 +52,18 @@ TEST(IdTokenClaimsTest, AcceptsIssuerWithTrailingSlash) {
     EXPECT_TRUE(validateIdToken(makeJwt(claims), config(), now()).has_value());
 }
 
+TEST(IdTokenClaimsTest, ANonceMustBeEchoedWhenOneWasSent) {
+    QJsonObject claims = validIdTokenClaims(config());
+    claims.insert("nonce", "n-1");
+    const auto jwt = makeJwt(claims);
+
+    EXPECT_TRUE(validateIdToken(jwt, config(), now(), std::chrono::seconds{60}, "n-1").has_value());
+    EXPECT_FALSE(validateIdToken(jwt, config(), now(), std::chrono::seconds{60}, "n-2").has_value());
+    EXPECT_FALSE(validateIdToken(makeJwt(validIdTokenClaims(config())), config(), now(), std::chrono::seconds{60}, "n-1")
+                     .has_value());
+    EXPECT_TRUE(validateIdToken(jwt, config(), now()).has_value()) << "no nonce expected (refresh): not checked";
+}
+
 TEST(IdTokenClaimsTest, RejectsWrongAudience) {
     QJsonObject claims = validIdTokenClaims(config());
     claims.insert("aud", "someone-else");

@@ -2,6 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { useEffect } from "react";
+import { PageMain } from "@/app/shell/PageMain";
 
 import { reportError } from "@/shared/lib/errors/report-error";
 import { Button } from "@/shared/ui/button";
@@ -22,7 +23,7 @@ export default function LocaleError({ error, reset }: LocaleErrorProps) {
   }, [error]);
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-24 text-center">
+    <PageMain className="items-center justify-center gap-4 px-4 py-24 text-center">
       <h1 className="text-2xl font-semibold text-foreground">
         {t("errors.title")}
       </h1>
@@ -30,6 +31,6 @@ export default function LocaleError({ error, reset }: LocaleErrorProps) {
         {t("errors.generic")}
       </p>
       <Button onClick={reset}>{t("actions.tryAgain")}</Button>
-    </div>
+    </PageMain>
   );
 }

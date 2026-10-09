@@ -79,8 +79,8 @@ func (n *notifier) CountActiveDevices(context.Context) (int64, error) { return 5
 
 type platform struct{}
 
-func (platform) OutboxLag(context.Context) (time.Duration, error) { return 2 * time.Second, nil }
-func (platform) PendingJobs(context.Context) (int64, error)       { return 7, nil }
+func (platform) JobLag(context.Context) (time.Duration, error) { return 2 * time.Second, nil }
+func (platform) PendingJobs(context.Context) (int64, error)    { return 7, nil }
 
 func setup() (*application.Service, *audit, *tx, *tasks, *notifier) {
 	a := &audit{}
@@ -134,7 +134,7 @@ func TestBroadcast_GoesThroughNotificationsAndIsAudited(t *testing.T) {
 func TestOverviewAndDirectoryAbsence(t *testing.T) {
 	svc, _, _, _, _ := setup()
 	o, err := svc.GetOverview(context.Background())
-	if err != nil || o.TasksTotal != 10 || o.PushDevices != 5 || o.OutboxLagSeconds != 2 || o.JobsPending != 7 || o.UsersTotal != 0 {
+	if err != nil || o.TasksTotal != 10 || o.PushDevices != 5 || o.JobLagSeconds != 2 || o.JobsPending != 7 || o.UsersTotal != 0 {
 		t.Fatalf("overview = %+v, %v", o, err)
 	}
 	_, _, err = svc.ListUsers(context.Background(), "", 10, "")

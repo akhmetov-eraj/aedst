@@ -1,7 +1,7 @@
 // Package application holds the tasks module's use cases. It depends only
 // on domain and the interfaces declared here — infrastructure/postgres
 // provides the concrete implementation, keeping this package testable
-// without a database or a job queue (see docs/modules.md).
+// without a database or a job queue (see docs/content/server/modules.md).
 package application
 
 import (
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/aedst/server/internal/modules/tasks/domain"
+	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
 	"github.com/aedst/server/internal/shared/pagination"
 )
@@ -29,13 +30,15 @@ type Repository interface {
 	// not the caller's.
 	Update(ctx context.Context, params UpdateParams) (domain.Task, error)
 	// Complete moves id to done and, in the same transaction, writes a
-	// TaskCompleted outbox row (see internal/platform/outbox). Completing an
+	// TaskCompleted event (see internal/platform/events). Completing an
 	// already-done task returns it as-is and writes nothing: the transition,
 	// and the event, happen at most once.
 	Complete(ctx context.Context, id, userID ids.ID, now time.Time) (domain.Task, error)
 	// Reopen moves id back to todo; a no-op when it already is.
 	Reopen(ctx context.Context, id, userID ids.ID, now time.Time) (domain.Task, error)
-	Delete(ctx context.Context, id, userID ids.ID) error
+	// Delete and Update take an optional idempotency key: a retry with the same
+	// key replays the first result instead of NotFound/Conflict or a second write.
+	Delete(ctx context.Context, id, userID ids.ID, idempotencyKey string) error
 	List(ctx context.Context, params ListParams) (ListResult, error)
 	Stats(ctx context.Context, userID ids.ID) (Stats, error)
 }
@@ -49,6 +52,8 @@ type UpdateParams struct {
 	// still being at that version (optimistic concurrency).
 	ExpectedVersion *int
 	UpdatedAt       time.Time
+	// IdempotencyKey, when non-empty, makes a retry replay the first result.
+	IdempotencyKey string
 }
 
 // ListParams selects one keyset page of a user's tasks (see
@@ -69,10 +74,12 @@ type ListParams struct {
 // token cannot be replayed against a different ordering.
 func (p ListParams) SortToken() string { return p.SortBy + ":" + p.SortDirection }
 
-// Normalize applies the defaults and bounds for unset or out-of-range fields.
-// Call it before SortToken so the token is stable whether or not the client
-// spelled out the default ordering.
-func (p *ListParams) Normalize() {
+// Normalize applies the defaults for unset fields and rejects values the
+// repository cannot honour (an unknown sort field or direction, an undefined
+// status or priority) with a Validation error instead of passing them on to
+// SQL. The page size is clamped, not rejected. Call it before SortToken so the
+// token is stable whether or not the client spelled out the default ordering.
+func (p *ListParams) Normalize() error {
 	if p.Limit <= 0 {
 		p.Limit = defaultPageSize
 	}
@@ -85,6 +92,27 @@ func (p *ListParams) Normalize() {
 	if p.SortDirection == "" {
 		p.SortDirection = "desc"
 	}
+	switch p.SortBy {
+	case "created_at", "due_date":
+	default:
+		return sharederrors.Validation("tasks.ListTasks", "unsupported sort field")
+	}
+	switch p.SortDirection {
+	case "asc", "desc":
+	default:
+		return sharederrors.Validation("tasks.ListTasks", "unsupported sort direction")
+	}
+	for _, s := range p.Statuses {
+		if !s.Valid() {
+			return sharederrors.Validation("tasks.ListTasks", "unsupported status filter")
+		}
+	}
+	for _, pr := range p.Priorities {
+		if !pr.Valid() {
+			return sharederrors.Validation("tasks.ListTasks", "unsupported priority filter")
+		}
+	}
+	return nil
 }
 
 // ListResult is one page. Total is the count of tasks matching the filter and
@@ -104,3 +132,8 @@ type Stats struct {
 	Done       int
 	Overdue    int
 }
+
+// MaxCountedTasks caps the total_count of a first ListTasks page: a user (or
+// filter) matching more tasks than this reports exactly this number, meaning "at
+// least". Counting is O(matching rows) and is paid once per list.
+const MaxCountedTasks = 10_000

@@ -1,0 +1,7 @@
+import QtQuick
+import QtQuick.Controls.Basic as T
+
+// Fixture for scripts/check-qml-accessibility.sh: a raw button with a role but no accessible name. MUST fail.
+T.Button {
+    Accessible.role: Accessible.Button
+}

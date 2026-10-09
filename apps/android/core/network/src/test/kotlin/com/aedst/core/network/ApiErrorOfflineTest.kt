@@ -3,8 +3,8 @@ package com.aedst.core.network
 import com.aedst.core.common.AedstError
 import com.connectrpc.Code
 import com.connectrpc.ConnectException
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
@@ -16,8 +16,8 @@ class ApiErrorOfflineTest {
     }
 
     @Test
-    fun `socket timeout maps to Network, not Offline`() {
-        assertTrue(SocketTimeoutException("timeout").toAedstError() is AedstError.Network)
+    fun `socket timeout maps to Timeout, not Offline`() {
+        assertTrue(SocketTimeoutException("timeout").toAedstError() is AedstError.Timeout)
     }
 
     @Test

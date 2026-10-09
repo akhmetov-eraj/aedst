@@ -8,8 +8,9 @@
 # qmllint resolves imports through qmltypes/qmldir files: after a build the
 # generated ones live in build/<preset>/ (pass BUILD_DIR=build/gcc-debug so the
 # design-system and app modules are found). Without them qmllint reports
-# "module not found" for first-party imports; those are downgraded through
-# .qmllint.ini ([Warnings] Import=info), the rest stay errors.
+# "module not found" for first-party imports; in that no-build run only the import category is downgraded
+# (--import info, below), everything else stays an error. With BUILD_DIR set the generated modules resolve, so an
+# unresolved import is an ERROR there (--import error): that is the run that proves the QML module graph.
 #
 # Needs qmllint (and qmlformat for --format) from the Qt install: $QT_ROOT_DIR/bin
 # or on PATH (also qmllint-qt6 on some distros).
@@ -38,6 +39,7 @@ fi
 
 args=()
 if [ -n "${BUILD_DIR:-}" ]; then
+  args+=(--import error)
   # Generated qmldir/.qmltypes live under each module's binary dir, in <URI path>/ below it:
   # the import root is the directory that CONTAINS that <URI path> directory.
   args+=(-I "$BUILD_DIR" -I "$BUILD_DIR/qml")
@@ -48,6 +50,8 @@ fi
 if [ -n "${QT_ROOT_DIR:-}" ] && [ -d "$QT_ROOT_DIR/qml" ]; then
   args+=(-I "$QT_ROOT_DIR/qml")
 fi
+# No build tree: first-party modules cannot resolve, so only the "import" category is informational.
+[ -z "${BUILD_DIR:-}" ] && args+=(--import info)
 IFS=':' read -r -a extra <<< "${QML_IMPORT_PATH:-}"
 for p in "${extra[@]:-}"; do [ -n "$p" ] && args+=(-I "$p"); done
 

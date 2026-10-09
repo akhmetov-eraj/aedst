@@ -7,15 +7,15 @@ import { useCallback } from "react";
 
 import { compressImage } from "@/modules/media/compression/compress-image";
 import {
+  type UploadItem,
+  uploadControllers,
+  useUploadQueue,
+} from "@/modules/media/lib/upload-queue-store";
+import {
   putToStorage,
   sha256Hex,
   UploadError,
 } from "@/modules/media/uploader/upload-file";
-import {
-  type UploadItem,
-  uploadControllers,
-  useUploadQueue,
-} from "@/modules/media/uploader/upload-queue-store";
 import { MediaService } from "@/shared/api/connect/client";
 import { MediaKind } from "@/shared/api/connect/generated/aedst/media/v1/media_pb";
 import { track } from "@/shared/lib/analytics/analytics";

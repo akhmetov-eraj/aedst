@@ -1,24 +1,12 @@
 import { render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { CurrentUser } from "@/modules/auth/ui/CurrentUser";
-import { AuthService } from "@/shared/api/connect/generated/aedst/auth/v1/auth_pb";
-import { fakeJwt } from "@/test/jwt";
-import {
-  rpcErrorHandler,
-  rpcHandler,
-  TEST_API_ORIGIN,
-} from "@/test/mocks/connect";
-import { server } from "@/test/mocks/server";
+import { getSessionIdentity } from "@/shared/lib/auth/session";
 import { messages } from "@/test/render";
 
-const jar = new Map<string, string>();
-
-vi.mock("next/headers", () => ({
-  cookies: async () => ({
-    get: (name: string) =>
-      jar.has(name) ? { name, value: jar.get(name) } : undefined,
-  }),
+vi.mock("@/shared/lib/auth/session", () => ({
+  getSessionIdentity: vi.fn(),
 }));
 
 vi.mock("next-intl/server", () => ({
@@ -28,57 +16,32 @@ vi.mock("next-intl/server", () => ({
       : key,
 }));
 
-beforeEach(() => {
-  jar.clear();
-  jar.set("aedst_session", fakeJwt({ expiresInSeconds: 600 }));
-});
-
 describe("CurrentUser (Server Component)", () => {
-  it("renders the signed-in email from a server-side GetCurrentUser call", async () => {
-    let seenAuth: string | null = null;
-    server.use(
-      rpcHandler(
-        AuthService.method.getCurrentUser,
-        (_input, request) => {
-          seenAuth = request.headers.get("authorization");
-          return { user: { id: "u1", email: "ada@example.com" } };
-        },
-        TEST_API_ORIGIN,
-      ),
-    );
+  it("renders the signed-in email from the ID token", async () => {
+    vi.mocked(getSessionIdentity).mockResolvedValue({
+      email: "ada@example.com",
+    });
 
     render(await CurrentUser());
 
     expect(screen.getByText("Signed in as ada@example.com")).toBeVisible();
-    expect(seenAuth).toMatch(/^Bearer /);
   });
 
-  it("renders nothing rather than breaking the page when the call fails", async () => {
-    server.use(
-      rpcErrorHandler(
-        AuthService.method.getCurrentUser,
-        "unauthenticated",
-        "expired",
-        TEST_API_ORIGIN,
-      ),
-    );
+  it("falls back to the username when the ID token carries no email", async () => {
+    vi.mocked(getSessionIdentity).mockResolvedValue({ username: "ada" });
 
-    const { container } = render(await CurrentUser());
+    render(await CurrentUser());
 
-    expect(container).toBeEmptyDOMElement();
+    expect(screen.getByText("Signed in as ada")).toBeVisible();
   });
 
-  it("renders nothing when the response has no user", async () => {
-    server.use(
-      rpcHandler(
-        AuthService.method.getCurrentUser,
-        () => ({}),
-        TEST_API_ORIGIN,
-      ),
-    );
+  it("renders nothing when there is no identity to show", async () => {
+    vi.mocked(getSessionIdentity).mockResolvedValue({});
+    const first = render(await CurrentUser());
+    expect(first.container).toBeEmptyDOMElement();
 
-    const { container } = render(await CurrentUser());
-
-    expect(container).toBeEmptyDOMElement();
+    vi.mocked(getSessionIdentity).mockResolvedValue(null);
+    const second = render(await CurrentUser());
+    expect(second.container).toBeEmptyDOMElement();
   });
 });

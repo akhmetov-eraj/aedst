@@ -39,7 +39,7 @@ TEST_F(LoginUseCaseTest, RejectsMalformedEmailWithoutCallingRepository) {
 
     ASSERT_TRUE(received_.has_value());
     ASSERT_FALSE(received_->has_value());
-    EXPECT_EQ(received_->error().code, core::ErrorCode::InvalidArgument);
+    EXPECT_EQ(received_->error().code, core::ErrorCode::InvalidInput);
 }
 
 TEST_F(LoginUseCaseTest, RejectsEmptyPasswordWithoutCallingRepository) {

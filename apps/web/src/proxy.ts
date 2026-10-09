@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import createMiddleware from "next-intl/middleware";
-
-import { routing } from "@/app/config/i18n/routing";
+import { disabledRoutePrefixes } from "@/app/config/modules/registry";
 import {
+  buildApiContentSecurityPolicy,
   buildContentSecurityPolicy,
+  buildReportingEndpoints,
+  buildServiceWorkerContentSecurityPolicy,
   buildTrustedTypesReportOnlyPolicy,
   generateNonce,
   parseOrigins,
@@ -14,7 +16,10 @@ import {
   decideRoute,
   type SessionState,
 } from "@/app/config/security/route-guard";
-import { clientEnv } from "@/shared/env/client";
+import { withoutTrailingSlash } from "@/app/config/trailing-slash";
+import { clientEnv, isProduction } from "@/shared/env/client";
+import { edgeEnv } from "@/shared/env/edge";
+import { routing } from "@/shared/i18n/routing";
 import { refreshSession } from "@/shared/lib/auth/refresh-session";
 import { decodeSessionRoles } from "@/shared/lib/auth/session-claims";
 import {
@@ -25,11 +30,18 @@ import {
   type SessionTokens,
   writeSessionCookies,
 } from "@/shared/lib/auth/session-cookies";
+import { getServerCapabilities } from "@/shared/lib/capabilities/server";
 
 const handleI18nRouting = createMiddleware(routing);
 
-const mediaOrigins = parseOrigins(process.env.MEDIA_ORIGINS);
+const mediaOrigins = parseOrigins(edgeEnv.MEDIA_ORIGINS);
 const cspReportUri = sentryCspReportUri(clientEnv.NEXT_PUBLIC_SENTRY_DSN);
+
+function withContentSecurityPolicy(policy: string): NextResponse {
+  const response = NextResponse.next();
+  response.headers.set("content-security-policy", policy);
+  return response;
+}
 
 /**
  * Per-request pipeline for page routes:
@@ -40,12 +52,31 @@ const cspReportUri = sentryCspReportUri(clientEnv.NEXT_PUBLIC_SENTRY_DSN);
  * 4. delegate locale negotiation to next-intl.
  */
 export default async function proxy(request: NextRequest) {
+  // Non-document routes: no session, no locale, no nonce - only the (static)
+  // CSP, so this file stays the one place a CSP header is emitted.
+  const { pathname } = request.nextUrl;
+  if (pathname.startsWith("/api/")) {
+    return withContentSecurityPolicy(buildApiContentSecurityPolicy());
+  }
+  if (pathname.startsWith("/serwist/")) {
+    return withContentSecurityPolicy(buildServiceWorkerContentSecurityPolicy());
+  }
+
+  // One URL per page: `/en/` -> `/en` (308), so canonical links never point
+  // at a redirecting form. `skipTrailingSlashRedirect` turned Next's own off.
+  const canonicalPath = withoutTrailingSlash(pathname);
+  if (canonicalPath) {
+    return NextResponse.redirect(
+      new URL(`${canonicalPath}${request.nextUrl.search}`, request.url),
+      308,
+    );
+  }
+
   const nonce = generateNonce();
   const csp = buildContentSecurityPolicy({
     nonce,
-    isDev: process.env.NODE_ENV !== "production",
-    upgradeInsecureRequests:
-      process.env.NODE_ENV === "production" && isSecureSite,
+    isDev: !isProduction,
+    upgradeInsecureRequests: isProduction && isSecureSite,
     mediaOrigins,
     reportUri: cspReportUri,
   });
@@ -69,17 +100,24 @@ export default async function proxy(request: NextRequest) {
     } else if (result.status === "rejected") {
       ended = true;
       session = "anonymous";
+    } else if (result.status === "stale") {
+      // Probably lost a rotation race to another replica whose cookies are on
+      // their way: signed out for this request, cookies left untouched.
+      session = "anonymous";
     }
     // "unavailable": apps/server is down — do not sign the user out for it.
   }
 
   const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
+  // Cached per process (TTL), so this is not a network call per request.
+  const disabledPrefixes = disabledRoutePrefixes(await getServerCapabilities());
   const decision = decideRoute({
+    disabledPrefixes,
     pathname: request.nextUrl.pathname,
     search: request.nextUrl.search,
     session,
     roles:
-      session === "active" && accessToken
+      session !== "anonymous" && accessToken
         ? decodeSessionRoles(accessToken)
         : [],
   });
@@ -99,6 +137,10 @@ export default async function proxy(request: NextRequest) {
   response.headers.set("content-security-policy", csp);
   if (cspReportUri) {
     response.headers.set(
+      "reporting-endpoints",
+      buildReportingEndpoints(cspReportUri),
+    );
+    response.headers.set(
       "content-security-policy-report-only",
       buildTrustedTypesReportOnlyPolicy(cspReportUri),
     );
@@ -112,12 +154,15 @@ export default async function proxy(request: NextRequest) {
 }
 
 export const config = {
-  // `api` covers the RPC proxy route; `monitoring` is Sentry's `tunnelRoute`
-  // and `ingest` the PostHog reverse proxy (next-intl would 30x-redirect
-  // them to add a locale prefix and break them, see next.config.ts);
-  // `serwist` serves the service worker; prefetches are skipped so `<Link>`
-  // hover does not mint nonces or rotate tokens.
+  // `api` and `serwist` take the CSP-only branch at the top of `proxy`;
+  // `monitoring` is Sentry's `tunnelRoute` and `ingest` the PostHog reverse
+  // proxy (next-intl would 30x-redirect them to add a locale prefix and break
+  // them, see next.config.ts); prefetches are skipped so `<Link>` hover does
+  // not mint nonces or rotate tokens.
   matcher: [
+    // CSP-only branches at the top of `proxy` (no session, no locale).
+    "/api/:path*",
+    "/serwist/:path*",
     {
       source:
         "/((?!api|trpc|_next|_vercel|monitoring|ingest|serwist|offline|.*\\..*).*)",

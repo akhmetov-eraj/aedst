@@ -1,24 +1,37 @@
-import { buildSrcSet, imageVariants } from "@/modules/media/thumbnail/variants";
+"use client";
+
+import { useTranslations } from "next-intl";
+import { useState } from "react";
+
+import { pickImageUrl } from "@/modules/media/thumbnail/variants";
 import type { Media } from "@/shared/api/connect/generated/aedst/media/v1/media_pb";
 
 /**
- * Full-size image view: the browser picks the rendition for the viewport
- * from the same variant srcset (falling back to the original), so a phone
- * never downloads the 4K original just to show it at 400 px.
+ * Full-size image view. imgproxy presets are fixed boxes (most crop), so the
+ * uncropped detail view uses the sanitized original (`Media.url`); only when
+ * that is empty does it fall back to the `card_400` rendition (or the nearest
+ * preset the server returned). The delivery URLs expire, so a failed load
+ * shows a message instead of a broken-image icon.
  */
 export function ImageViewer({ media, alt }: { media: Media; alt: string }) {
-  const variants = imageVariants(media);
-  const largest = variants[variants.length - 1]?.url;
+  const t = useTranslations("media.player");
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return (
+      <p className="text-muted-foreground text-sm" role="status">
+        {t("imageError")}
+      </p>
+    );
+  }
   return (
-    // biome-ignore lint/performance/noImgElement: presigned, pre-resized variants with srcset; next/image would cache expiring URLs
+    // biome-ignore lint/performance/noImgElement: presigned/signed delivery URLs expire; next/image would cache dead links
     <img
-      src={largest || media.url}
-      srcSet={variants.length > 0 ? buildSrcSet(variants) : undefined}
-      sizes="(min-width: 1024px) 960px, 100vw"
+      src={media.url || pickImageUrl(media, "card_400")}
       alt={alt}
       width={media.width || undefined}
       height={media.height || undefined}
       decoding="async"
+      onError={() => setFailed(true)}
       className="max-h-[75vh] w-full rounded-md object-contain"
     />
   );

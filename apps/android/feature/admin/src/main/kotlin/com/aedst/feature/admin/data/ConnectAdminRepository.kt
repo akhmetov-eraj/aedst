@@ -26,7 +26,8 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Inject
 import javax.inject.Singleton
 
-class ConnectAdminRepository @Inject constructor(private val client: AdminServiceClientInterface) : AdminRepository {
+internal class ConnectAdminRepository @Inject constructor(private val client: AdminServiceClientInterface) :
+    AdminRepository {
 
     override suspend fun overview(): Outcome<AdminOverview> = runCatchingOutcome {
         val response = rpc { client.getOverview(getOverviewRequest { }) }
@@ -121,7 +122,7 @@ class ConnectAdminRepository @Inject constructor(private val client: AdminServic
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class AdminModule {
+internal abstract class AdminModule {
     @Binds
     abstract fun bindAdminRepository(impl: ConnectAdminRepository): AdminRepository
 

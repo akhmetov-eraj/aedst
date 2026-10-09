@@ -11,6 +11,13 @@
 namespace aedst::platform {
 namespace {
 
+/// The link prefixes the active routes would declare in the app (here: tasks only).
+const std::vector<std::string> kRouteHosts{"tasks"};
+
+core::Outcome<DeepLink> parse(std::string_view url) {
+    return parseDeepLink(url, kRouteHosts);
+}
+
 struct AcceptCase {
     std::string_view url;
     std::string_view route;
@@ -33,7 +40,7 @@ TEST(DeepLinkTest, AcceptsAllowListedLinks) {
         {"aedst://tasks?", "tasks", {}},
     };
     for (const AcceptCase& c : cases) {
-        const auto parsed = parseDeepLink(c.url);
+        const auto parsed = parse(c.url);
         ASSERT_TRUE(parsed.has_value()) << c.url;
         EXPECT_EQ(parsed->route, c.route) << c.url;
         EXPECT_EQ(parsed->params, c.params) << c.url;
@@ -87,21 +94,33 @@ TEST(DeepLinkTest, RejectsHostileOrMalformedLinks) {
         "aedst://tasks?a=b=c",
     };
     for (const std::string& url : cases) {
-        EXPECT_FALSE(parseDeepLink(url).has_value()) << url;
+        EXPECT_FALSE(parse(url).has_value()) << url;
     }
+}
+
+TEST(DeepLinkTest, RouteHostsComeFromTheActiveRoutes) {
+    EXPECT_FALSE(parse("aedst://media/abc").has_value()) << "no active route claims media";
+    const std::vector<std::string> withMedia{"tasks", "media"};
+    const auto parsed = parseDeepLink("aedst://media/abc", withMedia);
+    ASSERT_TRUE(parsed.has_value());
+    EXPECT_EQ(parsed->route, "media/abc");
+    const std::vector<std::string> none;
+    EXPECT_FALSE(parseDeepLink("aedst://tasks", none).has_value()) << "no active routes: only the fixed hosts remain";
+    EXPECT_TRUE(parseDeepLink("aedst://settings", none).has_value());
+    EXPECT_TRUE(parseDeepLink("aedst://auth/callback?code=a", none).has_value());
 }
 
 TEST(DeepLinkTest, EnforcesLengthLimits) {
     const std::string longSegment(kMaxDeepLinkSegmentLength + 1, 'a');
-    EXPECT_FALSE(parseDeepLink("aedst://tasks/" + longSegment).has_value());
-    EXPECT_TRUE(parseDeepLink("aedst://tasks/" + std::string(kMaxDeepLinkSegmentLength, 'a')).has_value());
+    EXPECT_FALSE(parse("aedst://tasks/" + longSegment).has_value());
+    EXPECT_TRUE(parse("aedst://tasks/" + std::string(kMaxDeepLinkSegmentLength, 'a')).has_value());
 
-    EXPECT_FALSE(parseDeepLink("aedst://tasks?a=" + std::string(kMaxDeepLinkValueLength + 1, 'x')).has_value());
-    EXPECT_TRUE(parseDeepLink("aedst://tasks?a=" + std::string(kMaxDeepLinkValueLength, 'x')).has_value());
+    EXPECT_FALSE(parse("aedst://tasks?a=" + std::string(kMaxDeepLinkValueLength + 1, 'x')).has_value());
+    EXPECT_TRUE(parse("aedst://tasks?a=" + std::string(kMaxDeepLinkValueLength, 'x')).has_value());
 
-    EXPECT_FALSE(parseDeepLink("aedst://tasks?" + std::string(kMaxDeepLinkKeyLength + 1, 'k') + "=1").has_value());
+    EXPECT_FALSE(parse("aedst://tasks?" + std::string(kMaxDeepLinkKeyLength + 1, 'k') + "=1").has_value());
 
-    EXPECT_FALSE(parseDeepLink("aedst://tasks?a=" + std::string(kMaxDeepLinkLength, 'x')).has_value());
+    EXPECT_FALSE(parse("aedst://tasks?a=" + std::string(kMaxDeepLinkLength, 'x')).has_value());
 }
 
 TEST(DeepLinkTest, EnforcesParameterCountLimit) {
@@ -109,8 +128,8 @@ TEST(DeepLinkTest, EnforcesParameterCountLimit) {
     for (std::size_t i = 0; i < kMaxDeepLinkParams; ++i) {
         atLimit += (i == 0 ? "p" : "&p") + std::to_string(i) + "=v";
     }
-    EXPECT_TRUE(parseDeepLink(atLimit).has_value());
-    EXPECT_FALSE(parseDeepLink(atLimit + "&extra=v").has_value());
+    EXPECT_TRUE(parse(atLimit).has_value());
+    EXPECT_FALSE(parse(atLimit + "&extra=v").has_value());
 }
 
 TEST(DeepLinkTest, LooksLikeDeepLinkOnlyChecksShape) {

@@ -3,6 +3,7 @@
 // `Aedst.Connectivity`'s Connectivity) are replaced by the fakes below, which expose
 // the same property/slot names as the production classes.
 #include "aedst/designsystem/theme_controller.hpp"
+#include "aedst/qmlsupport/singleton_slot.hpp"
 
 #include <QObject>
 #include <QQmlEngine>
@@ -202,7 +203,8 @@ class Setup final : public QObject {
 
 public slots:
     void qmlEngineAvailable(QQmlEngine* /*engine*/) {
-        qmlRegisterSingletonInstance("Aedst.Theme", 1, 0, "ThemeController", &theme_);
+        // ThemeController is a declarative QML_SINGLETON of the AedstDesignSystem module (real class, no fake).
+        aedst::qmlsupport::SingletonSlot<aedst::designsystem::ThemeController>::provide(&theme_);
         qmlRegisterSingletonInstance("Aedst.Feature.Auth", 1, 0, "LoginViewModel", &viewModel_);
         qmlRegisterSingletonInstance("Aedst.Connectivity", 1, 0, "Connectivity", &connectivity_);
     }

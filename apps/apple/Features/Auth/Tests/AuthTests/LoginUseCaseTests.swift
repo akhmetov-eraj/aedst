@@ -13,7 +13,7 @@ struct LoginUseCaseTests {
         let repository = SpyAuthRepository(loginResult: .success(.stub))
         let result = await LoginUseCase(repository: repository)(input("not-an-email", "hunter2"))
 
-        #expect(result.error == .validation(fields: ["email"]))
+        #expect(result.error == .invalidInput(fields: ["email"]))
         #expect(await repository.loginCallCount == 0)
     }
 
@@ -22,7 +22,7 @@ struct LoginUseCaseTests {
         let repository = SpyAuthRepository(loginResult: .success(.stub))
         let result = await LoginUseCase(repository: repository)(input("a@b.com", ""))
 
-        #expect(result.error == .validation(fields: ["password"]))
+        #expect(result.error == .invalidInput(fields: ["password"]))
         #expect(await repository.loginCallCount == 0)
     }
 
@@ -47,10 +47,10 @@ struct LoginUseCaseTests {
 
     @Test("surfaces a repository failure unchanged")
     func surfacesRepositoryFailure() async {
-        let repository = SpyAuthRepository(loginResult: .failure(.unauthorized))
+        let repository = SpyAuthRepository(loginResult: .failure(.unauthenticated))
         let result = await LoginUseCase(repository: repository)(input("a@b.com", "hunter2"))
 
-        #expect(result.error == .unauthorized)
+        #expect(result.error == .unauthenticated)
     }
 }
 
@@ -58,8 +58,8 @@ struct LoginUseCaseTests {
 struct RestoreSessionUseCaseTests {
     @Test("returns the persisted session, or nil when signed out")
     func restores() async {
-        let signedIn = SpyAuthRepository(loginResult: .failure(.unauthorized), storedSession: .stub)
-        let signedOut = SpyAuthRepository(loginResult: .failure(.unauthorized))
+        let signedIn = SpyAuthRepository(loginResult: .failure(.unauthenticated), storedSession: .stub)
+        let signedOut = SpyAuthRepository(loginResult: .failure(.unauthenticated))
 
         guard case .success(let restored) = await RestoreSessionUseCase(repository: signedIn)(NoInput()),
               case .success(let none) = await RestoreSessionUseCase(repository: signedOut)(NoInput()) else {

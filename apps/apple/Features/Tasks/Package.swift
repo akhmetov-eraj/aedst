@@ -4,10 +4,10 @@ import PackageDescription
 let package = Package(
     name: "Tasks",
     defaultLocalization: "en",
-    // iOS/macOS only, like Features/Auth (Perception's `@Perception.Bindable`).
+    // Kept iOS/macOS-only: those are the only app targets; widen deliberately.
     platforms: [
-        .iOS(.v15),
-        .macOS(.v12),
+        .iOS(.v18),
+        .macOS(.v15),
     ],
     products: [
         .library(name: "Tasks", targets: ["Tasks"]),
@@ -19,8 +19,6 @@ let package = Package(
         .package(path: "../../Core/AedstNavigation"),
         .package(path: "../../Core/AedstAnalytics"),
         .package(path: "../../Core/AedstTesting"),
-        // Observation backport — see Core/AedstNavigation/Package.swift for the version-range rationale.
-        .package(url: "https://github.com/pointfreeco/swift-perception", "2.0.11"..<"2.0.12"),
     ],
     targets: [
         .target(
@@ -31,14 +29,13 @@ let package = Package(
                 "AedstDesignSystem",
                 "AedstNavigation",
                 "AedstAnalytics",
-                .product(name: "Perception", package: "swift-perception"),
             ],
             resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
             name: "TasksTests",
-            dependencies: ["Tasks", "AedstCore", "AedstTesting"],
+            dependencies: ["Tasks", "AedstCore", "AedstNavigation", "AedstAnalytics", "AedstTesting"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]

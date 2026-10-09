@@ -1,8 +1,7 @@
 // Package errors defines the small set of domain error kinds every module
 // maps its own domain errors onto, so transport layers (ConnectRPC, HTTP) have
 // one consistent place to translate errors into status codes without leaking
-// internal details (see docs/architecture.md and the "Error Architecture"
-// section of the project brief).
+// internal details (see "Error architecture" in docs/content/server/architecture.md).
 package errors
 
 import (
@@ -25,6 +24,12 @@ const (
 	// KindFailedPrecondition: the system is not in a state that allows the
 	// operation (a feature not configured, an upload not finished yet).
 	KindFailedPrecondition
+	// KindUnavailable: a dependency (database, object store, IdP) could not be
+	// reached. The client may retry; ConnectRPC code UNAVAILABLE with Retry-After.
+	KindUnavailable
+	// KindTimeout: a dependency or the request ran out of time. ConnectRPC code
+	// DEADLINE_EXCEEDED.
+	KindTimeout
 )
 
 // Error is a domain error carrying a Kind so transport layers can map it to
@@ -60,10 +65,15 @@ func FailedPrecondition(op, message string) *Error {
 	return newErr(KindFailedPrecondition, op, message, nil)
 }
 
-// Wrap classifies an infrastructure error (e.g. a pgx error) as Unknown while
-// preserving it as the cause, so it's still visible in logs but never exposed
-// as a message string to clients.
+// Wrap classifies an infrastructure error as Timeout, Unavailable or Unknown
+// (see classify) while preserving it as the cause, so it's still visible in
+// logs but never exposed as a message string to clients.
 func Wrap(op string, err error) *Error {
+	if kind := classify(err); kind == KindTimeout {
+		return newErr(KindTimeout, op, "the operation timed out", err)
+	} else if kind == KindUnavailable {
+		return newErr(KindUnavailable, op, "service temporarily unavailable", err)
+	}
 	return newErr(KindUnknown, op, "internal error", err)
 }
 

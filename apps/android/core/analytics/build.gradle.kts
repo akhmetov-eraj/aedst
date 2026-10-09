@@ -43,17 +43,13 @@ dependencies {
     implementation(project(":core:network"))
     implementation(project(":core:datastore"))
 
-    // Crash/error reporting + OkHttp tracing + navigation breadcrumbs (one aligned io.sentry version).
+    // Crash/error reporting + OkHttp tracing (one aligned io.sentry version; screen breadcrumbs are added by hand).
     implementation(platform(libs.sentry.bom))
     implementation(libs.sentry.android)
     implementation(libs.sentry.okhttp)
-    implementation(libs.sentry.android.navigation)
     // Product analytics + feature flags, consent-gated.
     implementation(libs.posthog.android)
 
     implementation(libs.okhttp.core)
-    implementation(libs.navigation.compose)
     implementation(libs.kotlinx.coroutines.android)
-
-    testImplementation(libs.junit4)
 }

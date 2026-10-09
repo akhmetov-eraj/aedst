@@ -7,11 +7,11 @@ let package = Package(
     // only App_iOS and App_macOS exist in Project.swift today, so these three
     // platforms build the package but have no real UI/entry point yet.
     platforms: [
-        .iOS(.v15),
-        .macOS(.v12),
-        .watchOS(.v8),
-        .tvOS(.v15),
-        .visionOS(.v1),
+        .iOS(.v18),
+        .macOS(.v15),
+        .watchOS(.v11),
+        .tvOS(.v18),
+        .visionOS(.v2),
     ],
     products: [
         .library(name: "AedstPersistence", targets: ["AedstPersistence"]),
@@ -19,8 +19,8 @@ let package = Package(
     dependencies: [
         .package(path: "../AedstCore"),
         .package(path: "../AedstTesting"),
-        // Local SQLite persistence (replaces SwiftData, which needs iOS 17 / macOS 14).
-        // GRDB 7.x runs on iOS 13 / macOS 10.15. Floor = latest stable (v7.11.1, verified
+        // Local SQLite persistence (replaces SwiftData). GRDB is kept for explicit
+        // versioned migrations and control over SQL/WAL, not for OS reach. Floor = latest stable (v7.11.1, verified
         // 2026-10-07 via the GitHub releases API); it needs swift-tools 6.1 (Xcode 16.3+; CI uses 26.x).
         .package(url: "https://github.com/groue/GRDB.swift", from: "7.11.1"),
     ],

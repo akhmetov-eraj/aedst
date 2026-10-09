@@ -1,22 +1,38 @@
 package com.aedst.feature.auth.data.di
 
-import com.aedst.auth.v1.AuthServiceClient
-import com.aedst.auth.v1.AuthServiceClientInterface
+import android.content.Context
 import com.aedst.core.common.ApplicationScope
 import com.aedst.core.common.SessionState
 import com.aedst.core.common.SessionUser
 import com.aedst.core.network.AuthTokenProvider
 import com.aedst.core.network.TokenRefresher
+import com.aedst.feature.auth.BuildConfig
+import com.aedst.feature.auth.data.attestation.ApplicationId
+import com.aedst.feature.auth.data.attestation.PlayIntegrityDeviceAttestor
 import com.aedst.feature.auth.data.local.AccessTokenClaims
 import com.aedst.feature.auth.data.local.AuthTokenStore
+import com.aedst.feature.auth.data.oidc.AppAuthOidcAuthorizer
+import com.aedst.feature.auth.data.oidc.DeviceEndpointSource
+import com.aedst.feature.auth.data.oidc.OidcConfig
+import com.aedst.feature.auth.data.oidc.OidcDiscovery
+import com.aedst.feature.auth.data.oidc.OkHttpDeviceAuthorizer
+import com.aedst.feature.auth.data.oidc.OkHttpTokenRevoker
+import com.aedst.feature.auth.data.oidc.RevocationEndpointSource
 import com.aedst.feature.auth.data.remote.AuthTokenRefresher
-import com.aedst.feature.auth.data.repository.AuthRepositoryImpl
+import com.aedst.feature.auth.data.repository.OidcAuthRepository
 import com.aedst.feature.auth.domain.repository.AuthRepository
+import com.aedst.feature.auth.domain.repository.DeviceAttestor
+import com.aedst.feature.auth.domain.repository.DeviceAuthorizer
+import com.aedst.feature.auth.domain.repository.OidcAuthorizer
+import com.aedst.feature.auth.domain.repository.TokenRevoker
+import com.aedst.integrity.v1.IntegrityServiceClient
+import com.aedst.integrity.v1.IntegrityServiceClientInterface
 import com.connectrpc.ProtocolClientInterface
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
+import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
@@ -38,10 +54,10 @@ import javax.inject.Singleton
  */
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class AuthModule {
+internal abstract class AuthModule {
 
     @Binds
-    abstract fun bindAuthRepository(impl: AuthRepositoryImpl): AuthRepository
+    abstract fun bindAuthRepository(impl: OidcAuthRepository): AuthRepository
 
     @Binds
     abstract fun bindAuthTokenProvider(impl: AuthTokenProviderImpl): AuthTokenProvider
@@ -52,11 +68,48 @@ abstract class AuthModule {
     @Binds
     abstract fun bindSessionState(impl: AuthSessionState): SessionState
 
+    @Binds
+    abstract fun bindOidcAuthorizer(impl: AppAuthOidcAuthorizer): OidcAuthorizer
+
+    @Binds
+    abstract fun bindTokenRevoker(impl: OkHttpTokenRevoker): TokenRevoker
+
+    @Binds
+    abstract fun bindRevocationEndpointSource(impl: OidcDiscovery): RevocationEndpointSource
+
+    @Binds
+    abstract fun bindDeviceAuthorizer(impl: OkHttpDeviceAuthorizer): DeviceAuthorizer
+
+    @Binds
+    abstract fun bindDeviceEndpointSource(impl: OidcDiscovery): DeviceEndpointSource
+
+    @Binds
+    abstract fun bindDeviceAttestor(impl: PlayIntegrityDeviceAttestor): DeviceAttestor
+
     companion object {
         @Provides
         @Singleton
-        fun provideAuthServiceClient(client: ProtocolClientInterface): AuthServiceClientInterface =
-            AuthServiceClient(client)
+        fun provideIntegrityServiceClient(client: ProtocolClientInterface): IntegrityServiceClientInterface =
+            IntegrityServiceClient(client)
+
+        @Provides
+        fun provideApplicationId(@ApplicationContext context: Context): ApplicationId =
+            ApplicationId(context.packageName)
+
+        /**
+         * This build's IdP settings. The redirect scheme is the application id (a reverse-DNS private-use scheme,
+         * RFC 8252 section 7.1) and must match the `appAuthRedirectScheme` manifest placeholder of the app module.
+         * A plain-http issuer is honoured in debug builds only.
+         */
+        @Provides
+        @Singleton
+        fun provideOidcConfig(@ApplicationContext context: Context): OidcConfig = OidcConfig(
+            issuer = BuildConfig.OIDC_ISSUER,
+            clientId = BuildConfig.OIDC_CLIENT_ID,
+            projectId = BuildConfig.OIDC_PROJECT_ID,
+            redirectScheme = context.packageName,
+            allowCleartextIssuer = BuildConfig.DEBUG && BuildConfig.OIDC_ISSUER.startsWith("http://"),
+        )
     }
 }
 

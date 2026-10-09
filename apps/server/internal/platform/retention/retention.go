@@ -24,7 +24,7 @@ import (
 
 // Policy describes how one table is kept bounded.
 type Policy struct {
-	// Name identifies the policy in logs and metrics, e.g. "platform.inbox".
+	// Name identifies the policy in logs and metrics, e.g. "platform.idempotency_keys".
 	Name string
 	// Retention is how long rows are kept.
 	Retention time.Duration

@@ -1,70 +1,81 @@
-# Спека: media/uploads-and-processing
+# Spec: media/uploads-and-processing
 
-Тип: Command + Query
-Модуль: media
-Статус: Реализовано
+Type: Command + Query
+Module: media
+Status: Implemented
 
-## Контекст
+## Context
 
-Загрузка файлов без прохождения байтов через API: presigned PUT в объектное
-хранилище (`internal/platform/storage`: одна S3-совместимая реализация на
-aws-sdk-go-v2 с пресетами s3 | minio | r2 + in-memory fake), затем
-`CompleteUpload` и обработка River-job на отдельной очереди `media`
-(можно вынести в отдельный worker-деплой: `AEDST_JOBS_QUEUES=media=4`).
+File upload without bytes passing through the API: a presigned PUT to object
+storage (`internal/platform/storage`: one S3-compatible implementation on
+aws-sdk-go-v2 with presets s3 | minio | r2 + an in-memory fake), then
+`CompleteUpload` and processing by a River job on the separate `media` queue
+(can be moved to a dedicated worker deployment: `AEDST_JOBS_QUEUES=media=4`).
 
-## Сценарии
+## Scenarios
 
 **Happy path**
 
-- `CreateUpload{filename, content_type, size_bytes, sha256?, task_id?}` → проверка allow-list
-  типов и лимита размера по виду, владение задачей через `tasks/api`, строка `PENDING_UPLOAD`,
-  presigned PUT, подпись которого покрывает Content-Type, Content-Length и (если задан)
+- `CreateUpload{filename, content_type, size_bytes, sha256?, task_id?}` → check of the type
+  allow-list and the size limit per kind, task ownership via `tasks/api`, a `PENDING_UPLOAD` row,
+  a presigned PUT whose signature covers Content-Type, Content-Length and (if set)
   `x-amz-checksum-sha256`.
-- Клиент делает PUT напрямую в хранилище с заголовками из ответа.
-- `CompleteUpload{id}` → `Head` (размер = заявленному), sniff первых 512 байт
-  (`http.DetectContentType`) согласован с заявленным типом → guarded
-  `pending_upload → processing` + `media.process` job в одной транзакции.
-- Job: изображения — thumbnail 256 / preview 1280 / optimized 2560 (x/image/draw CatmullRom,
-  перекодирование JPEG q75–85, PNG при прозрачности); видео — ffprobe + poster-кадр + thumbnail
-  (если заданы `AEDST_MEDIA_FFMPEG_PATH`/`FFPROBE_PATH`, с таймаутом); аудио — длительность.
-  Затем guarded `processing → ready` + `media.v1.MediaReady` в outbox.
+- The client does a PUT directly to the storage with the headers from the response.
+- `CompleteUpload{id}` → `Head` (size = declared), a sniff of the first 512 bytes
+  (`http.DetectContentType`) agrees with the declared type → guarded
+  `pending_upload → processing` + a `media.process` job in one transaction.
+- Job: for images, sanitization of the **original** via govips/libvips (`processing.ImageProcessor`,
+  build tag `vips`): the header is read before decoding and rejected if > `AEDST_MEDIA_MAX_IMAGE_PIXELS`,
+  the content format must match the declared type, auto-orient, removal of all metadata
+  (EXIF/GPS/XMP/IPTC), canonical re-encoding to the same type (JPEG q90, PNG with alpha, WebP q90) over the
+  uploaded object under the same key; animated GIF/WebP are validated and stored unchanged.
+  Thumbnail/preview/optimized are **not generated**: sizes and WebP/AVIF on demand are served by imgproxy
+  (ADR-0015). Video: ffprobe + one poster frame (if `AEDST_MEDIA_FFMPEG_PATH`/`FFPROBE_PATH` are set,
+  with a timeout); audio: duration. Then guarded `processing → ready` + publication of `media.v1.MediaReady` (River jobs in the same transaction).
+- Delivery (`Links`): with `AEDST_IMGPROXY_ENABLED=true`, for images (and video posters) `Media.variants`
+  gets signed imgproxy URLs for the presets `THUMB_64`, `AVATAR_256`, `CARD_400`, `FEED_800X600`,
+  `STORY_1080X1350` (HMAC key/salt, `exp` rounded to the TTL window for the CDN cache; the format is negotiated via `Accept`).
+  Without imgproxy, clients use the original `Media.url`.
+- A binary built without `-tags vips` answers an image with the error `ErrImagingUnavailable` (the job is retried, the file
+  is not marked `FAILED`). **The vips path was not compiled where it was written** (no cgo/libvips): acceptance is the
+  CI job `unit-vips`.
 
-**Граничные случаи**
+**Edge cases**
 
-- `CompleteUpload` до загрузки → `FAILED_PRECONDITION`; повторный → текущее состояние без второй обработки.
-- Размер/тип не совпали → `FAILED` + удаление объекта.
-- Битый файл / decompression bomb (> `AEDST_MEDIA_MAX_IMAGE_PIXELS`) → `FAILED`, job отменён.
-- Хранилище не настроено (`AEDST_STORAGE_BUCKET` пуст) → все RPC `FAILED_PRECONDITION`.
-- Брошенные `PENDING_UPLOAD` старше `AEDST_MEDIA_PENDING_UPLOAD_TTL_HOURS` удаляет retention
-  (строки + job удаления объектов).
-- `DeleteMedia` → строка и варианты удаляются, `media.v1.MediaDeleted` в outbox,
-  объекты удаляет job `media.delete_objects`.
+- `CompleteUpload` before the upload → `FAILED_PRECONDITION`; a repeated call → the current state without a second processing.
+- Size/type mismatch → `FAILED` + object deletion.
+- A corrupt file / decompression bomb (> `AEDST_MEDIA_MAX_IMAGE_PIXELS`) → `FAILED`, the job is cancelled.
+- Storage not configured (`AEDST_STORAGE_BUCKET` empty) → all RPCs `FAILED_PRECONDITION`.
+- Abandoned `PENDING_UPLOAD` rows older than `AEDST_MEDIA_PENDING_UPLOAD_TTL_HOURS` are deleted by retention
+  (rows + an object-deletion job).
+- `DeleteMedia` → the row and variants are deleted, `media.v1.MediaDeleted` is published in the same transaction,
+  and the objects are deleted by the job `media.delete_objects`.
 
-## Ошибки
+## Errors
 
-| Условие | `sharederrors.Kind` | `connect.Code` |
-| ------- | ------------------- | -------------- |
-| Тип не в allow-list, превышен размер, плохое имя/sha256 | Validation | INVALID_ARGUMENT |
-| Чужая/несуществующая задача или медиа | NotFound | NOT_FOUND |
-| Файл ещё не загружен; хранилище не настроено | FailedPrecondition | FAILED_PRECONDITION |
+| Condition | `sharederrors.Kind` | `connect.Code` |
+| --------- | ------------------- | -------------- |
+| Type not in the allow-list, size exceeded, bad name/sha256 | Validation | INVALID_ARGUMENT |
+| Someone else's / nonexistent task or media | NotFound | NOT_FOUND |
+| File not uploaded yet; storage not configured | FailedPrecondition | FAILED_PRECONDITION |
 
 ## API
 
 `aedst.media.v1.MediaService`.
 
-## События
+## Events
 
-| Тип события | Версия | partition_key | Payload | Потребители |
-| ----------- | ------ | -------------- | ------- | ----------- |
+| Event type | Version | partition_key | Payload | Consumers |
+| ---------- | ------- | ------------- | ------- | --------- |
 | media.v1.MediaReady | 1 | media_id | media/api/events.go | notifications, search |
 | media.v1.MediaDeleted | 1 | media_id | media/api/events.go | search |
 
-## Кросс-модульные зависимости
+## Cross-module dependencies
 
-`tasks/api.Service.GetTask` — синхронная проверка владения задачей при прикреплении
-(нужен ответ до выдачи URL, событие не подходит).
+`tasks/api.Service.GetTask`: a synchronous check of task ownership on attach
+(the answer is needed before a URL is issued, so an event does not fit).
 
 ## NFR
 
-- Безопасность: SVG/HTML не разрешены; ключи объектов генерирует сервер; имя файла санитизируется.
-- Presigned URL TTL: upload 900 с, download 3600 с.
+- Security: SVG/HTML are not allowed; object keys are generated by the server; the file name is sanitized.
+- Presigned URL TTL: upload 900 s, download 3600 s.

@@ -51,8 +51,8 @@ type Service interface {
 	ListTasks(ctx context.Context, params ListParams) (ListResult, error)
 	// UpdateTask applies patch atomically. A non-nil expectedVersion makes it
 	// conditional on the task still being at that version (Conflict otherwise).
-	UpdateTask(ctx context.Context, userID, id ids.ID, patch Patch, expectedVersion *int) (Task, error)
-	DeleteTask(ctx context.Context, userID, id ids.ID) error
+	UpdateTask(ctx context.Context, userID, id ids.ID, patch Patch, expectedVersion *int, idempotencyKey string) (Task, error)
+	DeleteTask(ctx context.Context, userID, id ids.ID, idempotencyKey string) error
 	// CompleteTask and ReopenTask are idempotent.
 	CompleteTask(ctx context.Context, userID, id ids.ID) (Task, error)
 	ReopenTask(ctx context.Context, userID, id ids.ID) (Task, error)

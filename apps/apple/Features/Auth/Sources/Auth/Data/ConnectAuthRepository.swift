@@ -13,18 +13,26 @@ public struct ConnectAuthRepository: AuthRepository {
     private let signposter = AedstSignposter(category: "auth")
     private let logger = AedstLogger(category: "auth")
 
-    /// `loginRetryPolicy` retries only transient network failures (never bad
-    /// credentials); two attempts keep the worst-case spinner short.
+    /// `loginRetryPolicy` defaults to `.none`: a login mints a new server-side session on every call and carries no
+    /// `Idempotency-Key`, so retrying after a lost response would leave an orphan refresh token. The user retries
+    /// with the button instead. A caller may opt in to retries by passing a policy (tests do).
     public init(
         remote: any AuthRemoteDataSource,
         sessionStore: any SessionStore,
         clock: any AedstClock = SystemClock(),
-        loginRetryPolicy: RetryPolicy = RetryPolicy(maxAttempts: 2, baseDelay: 0.5, maxDelay: 2)
+        loginRetryPolicy: RetryPolicy = .none
     ) {
         self.remote = remote
         self.sessionStore = sessionStore
         self.clock = clock
         self.loginRetryPolicy = loginRetryPolicy
+    }
+
+    public var signInMode: SignInMode { .password }
+
+    /// Browser sign-in belongs to `OIDCAuthRepository`; this repository only does passwords.
+    public func signIn(deviceID: String) async -> Outcome<Session> {
+        .failure(.unsupported)
     }
 
     public func login(with credentials: Credentials, deviceID: String) async -> Outcome<Session> {

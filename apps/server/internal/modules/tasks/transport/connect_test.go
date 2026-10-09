@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/aedst/server/internal/platform/idempotency"
+
 	"connectrpc.com/connect"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
@@ -26,6 +28,8 @@ type fakeService struct {
 	patch           api.Patch
 	expectedVersion *int
 	createKey       string
+	updateKey       string
+	deleteKey       string
 	err             error
 	task            api.Task
 }
@@ -35,8 +39,8 @@ func (f *fakeService) CreateTask(_ context.Context, userID ids.ID, title, _ stri
 	return api.Task{ID: ids.New(), UserID: userID, Title: title, Version: 1}, f.err
 }
 
-func (f *fakeService) UpdateTask(_ context.Context, userID, _ ids.ID, patch api.Patch, expected *int) (api.Task, error) {
-	f.user, f.patch, f.expectedVersion = userID, patch, expected
+func (f *fakeService) UpdateTask(_ context.Context, userID, _ ids.ID, patch api.Patch, expected *int, key string) (api.Task, error) {
+	f.user, f.patch, f.expectedVersion, f.updateKey = userID, patch, expected, key
 	return f.task, f.err
 }
 
@@ -177,7 +181,7 @@ func (s *statefulService) GetTask(context.Context, ids.ID, ids.ID) (api.Task, er
 	return api.Task{ID: ids.New(), Title: "got", Status: api.StatusInProgress, Priority: api.PriorityUrgent}, s.err
 }
 
-func (s *statefulService) DeleteTask(context.Context, ids.ID, ids.ID) error { return s.err }
+func (s *statefulService) DeleteTask(context.Context, ids.ID, ids.ID, string) error { return s.err }
 
 func (s *statefulService) ReopenTask(context.Context, ids.ID, ids.ID) (api.Task, error) {
 	return api.Task{ID: ids.New(), Status: api.StatusTodo}, s.err
@@ -276,5 +280,29 @@ func TestReadAndStateRPCs(t *testing.T) {
 		if connect.CodeOf(call()) != connect.CodeInvalidArgument {
 			t.Errorf("%s accepted a malformed id", name)
 		}
+	}
+}
+
+func (f *fakeService) DeleteTask(_ context.Context, userID, _ ids.ID, key string) error {
+	f.user, f.deleteKey = userID, key
+	return f.err
+}
+
+// The Idempotency-Key header (put in the context by idempotency.HeaderInterceptor)
+// reaches every write a client may queue offline and replay.
+func TestWrites_PassTheIdempotencyKeyDown(t *testing.T) {
+	user, taskID := ids.New(), ids.New()
+	svc := &fakeService{task: api.Task{ID: taskID}}
+	ctx := idempotency.WithKey(authed(user), "outbox-item-7")
+	handler := transport.NewHandler(svc)
+
+	if _, err := handler.UpdateTask(ctx, connect.NewRequest(&tasksv1.UpdateTaskRequest{Id: taskID.String(), Title: "x"})); err != nil || svc.updateKey != "outbox-item-7" {
+		t.Errorf("UpdateTask key = %q (%v), want outbox-item-7", svc.updateKey, err)
+	}
+	if _, err := handler.DeleteTask(ctx, connect.NewRequest(&tasksv1.DeleteTaskRequest{Id: taskID.String()})); err != nil || svc.deleteKey != "outbox-item-7" {
+		t.Errorf("DeleteTask key = %q (%v), want outbox-item-7", svc.deleteKey, err)
+	}
+	if _, err := handler.UpdateTask(authed(user), connect.NewRequest(&tasksv1.UpdateTaskRequest{Id: taskID.String(), Title: "x"})); err != nil || svc.updateKey != "" {
+		t.Errorf("UpdateTask without a header passed key %q", svc.updateKey)
 	}
 }

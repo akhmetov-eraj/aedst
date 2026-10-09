@@ -1,3 +1,4 @@
+#include "aedst/core/guarded.hpp"
 #include "aedst/oidc/refresh_token_store.hpp"
 
 #include <QByteArray>
@@ -61,7 +62,9 @@ namespace {
 /// accidentally depend on synchronous behaviour.
 template <typename T, typename Result>
 void deliverLater(core::Completion<T> done, Result result) {
-    QTimer::singleShot(0, [done = std::move(done), result = std::move(result)]() mutable { done(std::move(result)); });
+    QTimer::singleShot(0, [done = std::move(done), result = std::move(result)]() mutable {
+        core::invokeGuarded("OIDC completion", [&] { done(std::move(result)); });
+    });
 }
 
 core::Error unavailableError() {

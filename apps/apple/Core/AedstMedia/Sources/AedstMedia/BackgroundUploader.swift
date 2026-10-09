@@ -88,8 +88,8 @@ public final class BackgroundUploader: NSObject, @unchecked Sendable {
         }
         guard (200..<300).contains(status) else {
             throw status == 403
-                ? AedstError.unauthorized // expired/invalid presigned URL
-                : AedstError.network(reason: "Upload failed with HTTP \(status)")
+                ? AedstError.unauthenticated // expired/invalid presigned URL
+                : AedstError.unavailable(reason: "Upload failed with HTTP \(status)")
         }
         return status
     }
@@ -132,7 +132,7 @@ extension BackgroundUploader: URLSessionTaskDelegate {
             return
         }
         if let error {
-            waiter.continuation.resume(throwing: AedstError.network(reason: error.localizedDescription))
+            waiter.continuation.resume(throwing: AedstError.unavailable(reason: error.localizedDescription))
         } else {
             waiter.progress(1)
             waiter.continuation.resume(returning: status ?? 0)

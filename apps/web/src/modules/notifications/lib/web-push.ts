@@ -1,10 +1,11 @@
 /**
- * Web Push on the web, with the platform's standard Push API only:
- * `PushManager.subscribe` with the server's VAPID key, then
- * `RegisterPushDevice(WEB_PUSH)`. This one path covers Chromium, Firefox,
- * desktop Safari and iOS/iPadOS 16.4+ home-screen apps (Apple delivers
- * standard Web Push through APNs itself) — so no Firebase SDK: FCM and
- * APNs device tokens are the *native* apps' channels.
+ * Web Push on the web, with the platform's standard Push API only (no Firebase
+ * SDK): subscribe with the server's VAPID key, then RegisterPushDevice(WEB_PUSH).
+ *
+ * The subscription JSON shape, the `RegisterPushDevice` mapping, the
+ * `applicationServerKey` source (`GetWebPushConfig`) and the VAPID key rotation
+ * procedure are defined once, in docs/content/server/push.md. Do not restate
+ * them here; change that document first.
  */
 
 /** Where this browser's registered push device id is remembered (not secret). */
@@ -22,9 +23,9 @@ export function getPushSupport(): PushSupport {
     return "unsupported";
   }
   const hasApis =
-    "serviceWorker" in navigator &&
-    "PushManager" in window &&
-    "Notification" in window;
+    navigator.serviceWorker !== undefined &&
+    typeof PushManager !== "undefined" &&
+    typeof Notification !== "undefined";
   if (hasApis) {
     return "supported";
   }
@@ -66,9 +67,27 @@ export async function getActiveSubscription(): Promise<PushSubscription | null> 
   return (await registration?.pushManager.getSubscription()) ?? null;
 }
 
+/** Does this subscription's `applicationServerKey` equal the server's current VAPID key? */
+export function subscriptionUsesKey(
+  subscription: PushSubscription,
+  vapidPublicKey: string,
+): boolean {
+  const current = subscription.options.applicationServerKey;
+  if (!current) {
+    return false;
+  }
+  const expected = base64UrlToBytes(vapidPublicKey);
+  const actual = new Uint8Array(current);
+  return (
+    actual.length === expected.length &&
+    actual.every((byte, index) => byte === expected[index])
+  );
+}
+
 /**
- * Asks for permission (must run inside a user gesture) and subscribes.
- * Re-uses an existing subscription for the same key.
+ * Asks for permission (must run inside a user gesture) and subscribes. An
+ * existing subscription is reused only if it was made with the current VAPID
+ * key; one made with a rotated-out key is unsubscribed and replaced.
  */
 export async function subscribeToPush(
   vapidPublicKey: string,
@@ -80,12 +99,52 @@ export async function subscribeToPush(
   const registration = await navigator.serviceWorker.ready;
   const existing = await registration.pushManager.getSubscription();
   if (existing) {
-    return existing;
+    if (subscriptionUsesKey(existing, vapidPublicKey)) {
+      return existing;
+    }
+    await existing.unsubscribe();
   }
   return await registration.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: base64UrlToBytes(vapidPublicKey),
   });
+}
+
+let rotation: Promise<PushSubscription | null> | undefined;
+
+/**
+ * VAPID key rotation (docs/content/server/push.md): if this browser has a
+ * subscription bound to a different key than `vapidPublicKey`, unsubscribe and
+ * subscribe again with the new key, without a permission prompt (only runs
+ * when permission is already granted). Returns the NEW subscription, which the
+ * caller must register with the server (`RegisterPushDevice`); returns null
+ * when nothing changed. Concurrent calls share one run.
+ */
+export function resubscribeOnKeyRotation(
+  vapidPublicKey: string,
+): Promise<PushSubscription | null> {
+  rotation ??= (async () => {
+    if (
+      !vapidPublicKey ||
+      getPushSupport() !== "supported" ||
+      Notification.permission !== "granted"
+    ) {
+      return null;
+    }
+    const existing = await getActiveSubscription();
+    if (!existing || subscriptionUsesKey(existing, vapidPublicKey)) {
+      return null;
+    }
+    await existing.unsubscribe();
+    const registration = await navigator.serviceWorker.ready;
+    return await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: base64UrlToBytes(vapidPublicKey),
+    });
+  })().finally(() => {
+    rotation = undefined;
+  });
+  return rotation;
 }
 
 export class PushPermissionError extends Error {

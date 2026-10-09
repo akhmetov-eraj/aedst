@@ -25,8 +25,37 @@ CREATE TABLE IF NOT EXISTS auth_session (
 );
 )sql";
 
-constexpr std::array<Migration, 1> kAppMigrations{{
+// Offline write queue (Core/Outbox, ADR-0013's desktop counterpart). `seq` is the delivery order, `id` the
+// Idempotency-Key (UNIQUE, so a duplicate enqueue is ignored), `status` 0 = pending / 1 = failed (parked).
+// `last_error` holds an error KIND, never a message. The payload is NOT encrypted: no secrets, no tokens.
+constexpr std::string_view kCreateOutbox = R"sql(
+CREATE TABLE IF NOT EXISTS outbox (
+    seq        INTEGER PRIMARY KEY AUTOINCREMENT,
+    id         TEXT    NOT NULL UNIQUE,
+    type       TEXT    NOT NULL,
+    payload    TEXT    NOT NULL,
+    created_at INTEGER NOT NULL,
+    attempts   INTEGER NOT NULL DEFAULT 0,
+    status     INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT
+);
+CREATE INDEX IF NOT EXISTS outbox_status_seq ON outbox (status, seq);
+)sql";
+
+// Small key/value cache for non-secret, server-published data that must survive a restart (the last-known server
+// capabilities, ADR-0035). `value` is an opaque blob owned by the writer; secrets never go here (see SecureStorage).
+constexpr std::string_view kCreateKv = R"sql(
+CREATE TABLE IF NOT EXISTS kv (
+    key        TEXT    PRIMARY KEY,
+    value      BLOB    NOT NULL,
+    updated_at INTEGER NOT NULL
+);
+)sql";
+
+constexpr std::array<Migration, 3> kAppMigrations{{
     {.version = 1, .name = "create_auth_session", .sql = kCreateAuthSession},
+    {.version = 2, .name = "create_outbox", .sql = kCreateOutbox},
+    {.version = 3, .name = "create_kv", .sql = kCreateKv},
 }};
 
 core::Outcome<std::int64_t> readUserVersion(SqliteConnection& connection) {
@@ -57,7 +86,7 @@ int Migrator::latestVersion() const noexcept {
 core::Outcome<int> Migrator::migrate(SqliteConnection& connection) const {
     for (std::size_t i = 0; i < migrations_.size(); ++i) {
         if (migrations_[i].version != static_cast<int>(i) + 1) {
-            return core::fail(core::Error::invalidArgument("migrations must be numbered 1..N without gaps"));
+            return core::fail(core::Error::invalidInput("migrations must be numbered 1..N without gaps"));
         }
     }
     const int latest = latestVersion();

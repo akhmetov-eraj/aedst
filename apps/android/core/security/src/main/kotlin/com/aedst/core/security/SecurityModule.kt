@@ -1,8 +1,8 @@
 package com.aedst.core.security
 
 import android.content.Context
-import com.google.android.play.core.integrity.IntegrityManager
 import com.google.android.play.core.integrity.IntegrityManagerFactory
+import com.google.android.play.core.integrity.StandardIntegrityManager
 import dagger.Binds
 import dagger.Module
 import dagger.Provides
@@ -24,7 +24,11 @@ abstract class SecurityModule {
     companion object {
         @Provides
         @Singleton
-        fun provideIntegrityManager(@ApplicationContext context: Context): IntegrityManager =
-            IntegrityManagerFactory.create(context)
+        fun provideIntegrityManager(@ApplicationContext context: Context): StandardIntegrityManager =
+            IntegrityManagerFactory.createStandard(context)
+
+        @Provides
+        fun providePlayIntegrityCloudProject(): PlayIntegrityCloudProject =
+            PlayIntegrityCloudProject(BuildConfig.PLAY_INTEGRITY_CLOUD_PROJECT)
     }
 }

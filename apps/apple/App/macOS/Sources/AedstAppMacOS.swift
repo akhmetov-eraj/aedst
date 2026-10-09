@@ -8,26 +8,21 @@ struct AedstAppMacOS: App {
     @NSApplicationDelegateAdaptor(AedstAppDelegate.self) private var appDelegate
 
     var body: some Scene {
-        WindowGroup {
+        // A single window, not a `WindowGroup`: session-expiry, forced-upgrade and notification-link events are
+        // single-consumer streams on the shared `AppDependencies`, so a second window would silently stop
+        // receiving them. The app quits with its window (`AedstAppDelegate`) for the same reason: a reopened
+        // window would find the streams already ended. See decisions/apple.md, "Single window".
+        Window("AEDST", id: "main") {
             RootView(dependencies: appDelegate.dependencies)
                 .frame(minWidth: 720, minHeight: 480)
         }
         .commands {
+            // The main window has a real sidebar (split layout), so the toggle-sidebar command applies.
             SidebarCommands()
         }
 
         Settings {
-            SettingsView()
+            PreferencesView(dependencies: appDelegate.dependencies)
         }
-    }
-}
-
-/// macOS-only: iOS has no equivalent scene, hence `#if os(macOS)` guarding
-/// nothing here — this whole file only builds into `App_macOS` per
-/// `Project.swift`, unlike `AedstAppShared` which builds into both targets.
-private struct SettingsView: View {
-    var body: some View {
-        Text("AEDST Preferences")
-            .padding(40)
     }
 }

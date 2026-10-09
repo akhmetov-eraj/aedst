@@ -1,17 +1,15 @@
 import type { Breadcrumb, ErrorEvent } from "@sentry/nextjs";
 
 import { clientEnv } from "@/shared/env/client";
+import { redactSensitiveParams } from "@/shared/lib/utils/sensitive-params";
 
 /**
- * Query parameters that can carry a credential or a one-time secret. Their
- * values are replaced before a URL leaves the process in a breadcrumb or
- * event (password-reset links, OAuth callbacks, presigned media URLs).
+ * Values of credential-carrying query parameters (the shared list in
+ * shared/lib/utils/sensitive-params) are replaced before a URL leaves the
+ * process in a breadcrumb or event.
  */
-const SECRET_PARAMS =
-  /([?&](?:token|access_token|refresh_token|id_token|code|state|password|secret|key|signature|x-amz-signature|x-amz-credential|x-amz-security-token|sig)=)[^&#]*/gi;
-
 export function scrubUrl(url: string): string {
-  return url.replace(SECRET_PARAMS, "$1[Filtered]");
+  return redactSensitiveParams(url);
 }
 
 /**

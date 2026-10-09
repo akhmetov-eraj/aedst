@@ -19,19 +19,26 @@ QString ErrorCenter::kindFor(ErrorCode code) {
 }
 
 bool ErrorCenter::isRetryable(ErrorCode code) noexcept {
-    return code == ErrorCode::Network || code == ErrorCode::Unknown || code == ErrorCode::Storage;
+    return core::isRetryable(code);
 }
 
 void ErrorCenter::report(const core::Error& error, std::string_view context, core::ErrorVisibility visibility) {
     if (error.code == ErrorCode::Cancelled) {
         return;
     }
+    if (error.code == ErrorCode::UpgradeRequired) {
+        // The blocking upgrade screen (App/, driven by ConnectClient::clientUpgradeRequired) already says it all;
+        // a toast on top of it would only repeat the server's untranslated sentence.
+        AedstLogger::info("{}: client upgrade required", context);
+        return;
+    }
     const std::string kind(core::toString(error.code));
     const std::string message = core::redactSecrets(error.message);
     AedstLogger::warn("{}: {} ({})", context, message, kind);
+    const bool reportable = core::isReportable(error.code);
     SentryReporter::addBreadcrumb(context, kind + ": " + message,
-                                  error.code == ErrorCode::Unknown ? BreadcrumbLevel::Error : BreadcrumbLevel::Warning);
-    if (error.code == ErrorCode::Unknown) {
+                                  reportable ? BreadcrumbLevel::Error : BreadcrumbLevel::Warning);
+    if (reportable) {
         SentryReporter::captureError(context, message);
     }
 

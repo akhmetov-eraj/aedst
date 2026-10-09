@@ -94,7 +94,7 @@ func (id *ID) Scan(src any) error {
 
 // FromExternal maps an identity provider's (issuer, subject) pair to a stable
 // ID. A subject that is already a UUID is used as-is (Keycloak, Cognito, ...);
-// any other subject (Zitadel's numeric ids, Auth0's "auth0|abc") is hashed
+// any other subject (ZITADEL numeric ids (the template default), Auth0's "auth0|abc") is hashed
 // with its issuer into a deterministic UUID, so the same external principal
 // always maps to the same owner id without a users table. The hashed form
 // sets the RFC 9562 version-8 (custom) and variant bits, so it can never

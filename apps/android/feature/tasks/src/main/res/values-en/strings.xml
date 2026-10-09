@@ -2,6 +2,7 @@
 <resources>
     <string name="tasks_title">Tasks</string>
     <string name="tasks_empty">No tasks yet. Create your first one.</string>
+    <string name="tasks_select_prompt">Select a task</string>
     <string name="tasks_create">New task</string>
     <string name="tasks_back">Back</string>
     <string name="tasks_delete">Delete task</string>
@@ -19,8 +20,12 @@
     <string name="tasks_status_todo">To do</string>
     <string name="tasks_status_in_progress">In progress</string>
     <string name="tasks_status_done">Done</string>
+    <string name="tasks_status_unknown">Unknown</string>
     <string name="tasks_priority_low">Low</string>
     <string name="tasks_priority_medium">Medium</string>
     <string name="tasks_priority_high">High</string>
     <string name="tasks_priority_urgent">Urgent</string>
+    <string name="tasks_priority_unknown">Unknown</string>
+    <string name="tasks_pending_sync_title">Saved on this device</string>
+    <string name="tasks_pending_sync">It will be sent when you are back online.</string>
 </resources>

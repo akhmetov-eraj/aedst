@@ -1,0 +1,2 @@
+// Fixture: Data must not include Presentation/.
+#include "Presentation/bad_vm.hpp"

@@ -1,5 +1,6 @@
 package com.aedst.feature.search.presentation
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.aedst.core.common.AedstError
@@ -9,7 +10,6 @@ import com.aedst.feature.search.domain.SearchRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
@@ -31,15 +31,26 @@ sealed interface SearchResultState {
 
 data class SearchState(val query: String = "", val result: SearchResultState = SearchResultState.Idle)
 
+sealed interface SearchIntent {
+    data class QueryChanged(val text: String) : SearchIntent
+}
+
 /**
  * Debounced search-as-you-type: the query is debounced ([DEBOUNCE_MS]) and de-duplicated, and `flatMapLatest`
  * cancels the in-flight RPC when the user keeps typing, so only the latest query's results are ever shown.
+ *
+ * The query text lives in [SavedStateHandle], so it survives the process being killed while the user is in another
+ * app; the restored text is searched again as soon as the screen is shown. A failure is part of the result state
+ * (shown in place of the list), not a transient error, so there is no `ErrorShown` intent here.
  */
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
 @HiltViewModel
-class SearchViewModel @Inject constructor(private val repository: SearchRepository) : ViewModel() {
+internal class SearchViewModel @Inject constructor(
+    private val repository: SearchRepository,
+    private val savedState: SavedStateHandle,
+) : ViewModel() {
 
-    private val query = MutableStateFlow("")
+    private val query = savedState.getStateFlow(KEY_QUERY, "")
 
     private val result = query
         .map(String::trim)
@@ -47,9 +58,9 @@ class SearchViewModel @Inject constructor(private val repository: SearchReposito
         .distinctUntilChanged()
         .flatMapLatest { text ->
             if (text.length < MIN_QUERY_LENGTH) {
-                flowOf(SearchResultState.Idle)
+                flowOf<SearchResultState>(SearchResultState.Idle)
             } else {
-                flow {
+                flow<SearchResultState> {
                     emit(SearchResultState.Loading)
                     emit(
                         when (val outcome = repository.search(text)) {
@@ -65,15 +76,18 @@ class SearchViewModel @Inject constructor(private val repository: SearchReposito
         }
 
     val state: StateFlow<SearchState> = combine(query, result) { text, current -> SearchState(text, current) }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), SearchState())
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), SearchState(query.value))
 
-    fun onQueryChange(text: String) {
-        query.value = text
+    fun onIntent(intent: SearchIntent) {
+        when (intent) {
+            is SearchIntent.QueryChanged -> savedState[KEY_QUERY] = intent.text
+        }
     }
 
     companion object {
         const val DEBOUNCE_MS = 300L
         const val MIN_QUERY_LENGTH = 2
         private const val STOP_TIMEOUT_MS = 5_000L
+        private const val KEY_QUERY = "query"
     }
 }

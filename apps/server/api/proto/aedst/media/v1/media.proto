@@ -12,8 +12,9 @@ option go_package = "github.com/aedst/server/gen/go/aedst/media/v1;mediav1";
 // Cloudflare R2 behind the ObjectStorage interface), PUTs the file directly
 // to object storage, then calls CompleteUpload. Completion enqueues a River
 // job that verifies the object (size, sniffed content type), extracts
-// metadata, and produces variants (thumbnails, compressed renditions,
-// video poster frames). When processing finishes the module publishes
+// metadata, sanitizes images (EXIF/GPS stripped, auto-oriented; delivery sizes
+// are rendered on demand by imgproxy) and extracts
+// video poster frames. When processing finishes the module publishes
 // media.v1.MediaReady through the outbox.
 //
 // Tasks is the reference consumer: a file uploaded with task_id set becomes
@@ -46,11 +47,22 @@ enum MediaStatus {
 
 enum VariantKind {
   VARIANT_KIND_UNSPECIFIED = 0;
-  VARIANT_KIND_THUMBNAIL = 1;
-  VARIANT_KIND_PREVIEW = 2;
-  // Re-encoded/compressed rendition for playback or display.
-  VARIANT_KIND_OPTIMIZED = 3;
+  // 1-3 were the pre-generated thumbnail/preview/optimized renditions,
+  // removed with the govips + imgproxy pipeline (ADR-0015).
+  reserved 1, 2, 3;
+  reserved "VARIANT_KIND_THUMBNAIL", "VARIANT_KIND_PREVIEW", "VARIANT_KIND_OPTIMIZED";
+  // Video poster frame extracted by ffmpeg (stored, presigned URL).
   VARIANT_KIND_POSTER = 4;
+  // On-demand imgproxy renditions of an image (or a video poster); the url
+  // is a signed imgproxy URL, the format (WebP/AVIF/JPEG) is negotiated from
+  // the request Accept header and content_type/size_bytes are empty/0.
+  // width/height are the preset target box (card_400: width only, height
+  // proportional). Present only when the server has imgproxy enabled.
+  VARIANT_KIND_THUMB_64 = 5;
+  VARIANT_KIND_AVATAR_256 = 6;
+  VARIANT_KIND_CARD_400 = 7;
+  VARIANT_KIND_FEED_800X600 = 8;
+  VARIANT_KIND_STORY_1080X1350 = 9;
 }
 
 message Variant {
@@ -139,7 +151,10 @@ message ListMediaRequest {
     (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
     (buf.validate.field).string.uuid = true
   ];
-  repeated MediaKind kinds = 2 [(buf.validate.field).repeated.items.enum.defined_only = true];
+  repeated MediaKind kinds = 2 [(buf.validate.field).repeated.items.enum = {
+    defined_only: true
+    not_in: [0]
+  }];
   int32 page_size = 3 [(buf.validate.field).int32 = {
     gte: 0
     lte: 100

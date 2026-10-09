@@ -16,7 +16,7 @@ import (
 
 func TestLocker_SessionLockIsExclusiveAndReleasable(t *testing.T) {
 	pool := postgrestest.NewPool(t)
-	locker := lock.NewLocker(pool)
+	locker := lock.NewLocker(&database.DirectPool{Pool: pool}) // postgrestest connects to Postgres directly
 	ctx := context.Background()
 
 	release, ok, err := locker.TryLock(ctx, "test:exclusive")
@@ -43,7 +43,7 @@ func TestLocker_SessionLockIsExclusiveAndReleasable(t *testing.T) {
 
 func TestLocker_WithTryLockReportsContention(t *testing.T) {
 	pool := postgrestest.NewPool(t)
-	locker := lock.NewLocker(pool)
+	locker := lock.NewLocker(&database.DirectPool{Pool: pool}) // postgrestest connects to Postgres directly
 	ctx := context.Background()
 
 	err := locker.WithTryLock(ctx, "test:with", func(ctx context.Context) error {

@@ -1,0 +1,8 @@
+import QtQuick
+import QtQuick.Controls.Basic as T
+
+// Positive control for scripts/check-qml-accessibility.sh: role and name are both declared.
+T.Button {
+    Accessible.role: Accessible.Button
+    Accessible.name: text
+}

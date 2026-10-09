@@ -8,6 +8,7 @@ Unicode true
 !define APP_NAME "@AEDST_DISPLAY_NAME@"
 !define APP_VERSION "@PROJECT_VERSION@"
 !define APP_EXE "aedst-desktop.exe"
+!define APP_USER_MODEL_ID "com.aedst.Desktop"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP_NAME}"
 
 Name "${APP_NAME} ${APP_VERSION}"
@@ -40,6 +41,20 @@ Section "Install"
     CreateDirectory "$SMPROGRAMS\${APP_NAME}"
     CreateShortcut "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "$INSTDIR\bin\${APP_EXE}"
     CreateShortcut "$SMPROGRAMS\${APP_NAME}\Uninstall ${APP_NAME}.lnk" "$INSTDIR\Uninstall.exe"
+    ; Native toasts need the shortcut to carry the AppUserModelID (System.AppUserModel.ID). NSIS cannot set a shell
+    ; property by itself; the "ApplicationID" plug-in can. Present at build time -> used; absent -> the app writes a
+    ; per-user fallback shortcut at first start (windows_toast_notification_service.cpp) and the uninstaller removes it.
+    !if /FileExists "${NSISDIR}\Plugins\x86-unicode\ApplicationID.dll"
+      ApplicationID::Set "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk" "${APP_USER_MODEL_ID}"
+      Pop $0
+    !endif
+
+    ; aedst:// deep links (the same allow-listed routes as in-app links) open this application. Per machine; the
+    ; uninstaller removes the keys again.
+    WriteRegStr HKLM "Software\Classes\aedst" "" "URL:AEDST Protocol"
+    WriteRegStr HKLM "Software\Classes\aedst" "URL Protocol" ""
+    WriteRegStr HKLM "Software\Classes\aedst\DefaultIcon" "" "$INSTDIR\bin\${APP_EXE},0"
+    WriteRegStr HKLM "Software\Classes\aedst\shell\open\command" "" "$\"$INSTDIR\bin\${APP_EXE}$\" $\"%1$\""
 
     ; Add/Remove Programs entry
     WriteRegStr HKLM "${UNINSTALL_KEY}" "DisplayName" "${APP_NAME}"
@@ -56,6 +71,13 @@ Section "Uninstall"
     Delete "$SMPROGRAMS\${APP_NAME}\${APP_NAME}.lnk"
     Delete "$SMPROGRAMS\${APP_NAME}\Uninstall ${APP_NAME}.lnk"
     RMDir "$SMPROGRAMS\${APP_NAME}"
+
+    ; The fallback shortcut the app itself may have written for the current user (see the install section).
+    SetShellVarContext current
+    Delete "$SMPROGRAMS\${APP_NAME}.lnk"
+    SetShellVarContext all
+
+    DeleteRegKey HKLM "Software\Classes\aedst"
 
     RMDir /r "$INSTDIR"
 

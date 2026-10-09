@@ -1,3 +1,8 @@
+---
+title: "ADR-0007: Merge the users module into auth; profile removed"
+description: "Accepted"
+---
+
 # ADR-0007: Merge the users module into auth; profile removed
 
 ## Status
@@ -16,7 +21,7 @@ bounded contexts around "a person." In practice:
   consuming `users`' `UserRegistered` event to create a default row —
   removing `users` removes that event's only consumer.
 
-`tasks` (see `docs/modules.md`) replaced them as the reference module —
+`tasks` (see `docs/content/server/modules.md`) replaced them as the reference module —
 the example a new module is expected to copy needed to demonstrate a real
 owned resource with CRUD, pagination, filtering, and an authorization rule,
 which a thin identity/profile pair did not.
@@ -40,7 +45,7 @@ which a thin identity/profile pair did not.
   way, keeping only `feature/auth`/`Features/Auth`/`Modules/Features/Auth`
   on each platform. None of them gained a `tasks` feature in this change —
   `tasks` is a reference module for server + web only (see
-  `docs/architecture.md`); a mobile/desktop `tasks` feature, if ever built,
+  `docs/content/server/architecture.md`); a mobile/desktop `tasks` feature, if ever built,
   follows the same four-layer shape `feature/auth` already demonstrates on
   each platform.
 

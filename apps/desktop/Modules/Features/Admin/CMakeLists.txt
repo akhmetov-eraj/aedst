@@ -21,6 +21,7 @@ qt_add_qml_module(AedstFeatureAdminViews
 )
 
 add_library(AedstFeatureAdmin STATIC
+    Domain/admin_repository.hpp
     Data/connect_admin_repository.hpp
     Data/connect_admin_repository.cpp
     Presentation/admin_rows_model.hpp
@@ -32,6 +33,11 @@ add_library(AedstFeatureAdmin STATIC
 )
 add_library(Aedst::Feature::Admin ALIAS AedstFeatureAdmin)
 
+# Declarative QML singletons (QML_ELEMENT + QML_SINGLETON, Aedst::QmlSupport); the module URI is the import name QML uses.
+# Only App links AedstFeatureAdminplugin, so QML test executables keep registering their fakes under this URI.
+target_link_libraries(AedstFeatureAdmin PUBLIC Aedst::QmlSupport)
+qt_add_qml_module(AedstFeatureAdmin URI Aedst.Feature.Admin VERSION 1.0 RESOURCE_PREFIX /qt/qml)
+
 target_include_directories(AedstFeatureAdmin PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(AedstFeatureAdmin
@@ -40,6 +46,7 @@ target_link_libraries(AedstFeatureAdmin
         Aedst::Network
         Aedst::Contract
         Aedst::Navigation
+        Aedst::Plugin
         Qt6::Core
     PRIVATE
         Aedst::Analytics
@@ -60,3 +67,7 @@ qt_add_translations(AedstFeatureAdmin
 )
 
 aedst_set_warnings(AedstFeatureAdmin)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

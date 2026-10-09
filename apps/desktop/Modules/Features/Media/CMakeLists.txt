@@ -34,6 +34,11 @@ add_library(AedstFeatureMedia STATIC
 )
 add_library(Aedst::Feature::Media ALIAS AedstFeatureMedia)
 
+# Declarative QML singletons (QML_ELEMENT + QML_SINGLETON, Aedst::QmlSupport); the module URI is the import name QML uses.
+# Only App links AedstFeatureMediaplugin, so QML test executables keep registering their fakes under this URI.
+target_link_libraries(AedstFeatureMedia PUBLIC Aedst::QmlSupport)
+qt_add_qml_module(AedstFeatureMedia URI Aedst.Feature.Media VERSION 1.0 RESOURCE_PREFIX /qt/qml)
+
 target_include_directories(AedstFeatureMedia PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(AedstFeatureMedia
@@ -42,6 +47,7 @@ target_link_libraries(AedstFeatureMedia
         Aedst::Network
         Aedst::Contract
         Aedst::Navigation
+        Aedst::Plugin
         Aedst::Media
         Qt6::Core
     PRIVATE
@@ -63,3 +69,7 @@ qt_add_translations(AedstFeatureMedia
 )
 
 aedst_set_warnings(AedstFeatureMedia)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

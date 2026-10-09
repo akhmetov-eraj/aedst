@@ -1,11 +1,27 @@
 package com.aedst.feature.tasks.domain
 
-import com.aedst.core.common.Outcome
 import java.time.Instant
 
-enum class TaskStatus { TODO, IN_PROGRESS, DONE }
+/**
+ * [UNKNOWN] is a status this client does not know (an enum value added to the API after this build, or an unset field).
+ * It is never defaulted to a real state: the UI shows a neutral "unknown" badge instead of pretending the task is open.
+ */
+enum class TaskStatus { TODO, IN_PROGRESS, DONE, UNKNOWN }
 
-enum class TaskPriority { LOW, MEDIUM, HIGH, URGENT }
+/** [UNKNOWN] mirrors [TaskStatus.UNKNOWN] and is never offered when creating a task ([selectable]). */
+enum class TaskPriority {
+    LOW,
+    MEDIUM,
+    HIGH,
+    URGENT,
+    UNKNOWN,
+    ;
+
+    companion object {
+        /** The priorities a user may pick; [UNKNOWN] is read-only. */
+        val selectable: List<TaskPriority> = entries - UNKNOWN
+    }
+}
 
 /** Domain entity — no generated proto types leak above `data/`, mirrors `modules/tasks/domain` on the server. */
 data class Task(
@@ -25,18 +41,3 @@ data class Task(
 data class TaskPage(val tasks: List<Task>, val nextPageToken: String?, val totalCount: Int)
 
 data class NewTask(val title: String, val description: String, val priority: TaskPriority, val dueDate: Instant?)
-
-/** The caller's own tasks (TasksService). `user_id` is never sent: the server derives it from the token. */
-interface TaskRepository {
-    suspend fun list(pageToken: String? = null): Outcome<TaskPage>
-
-    suspend fun get(id: String): Outcome<Task>
-
-    suspend fun create(task: NewTask): Outcome<Task>
-
-    suspend fun complete(id: String): Outcome<Task>
-
-    suspend fun reopen(id: String): Outcome<Task>
-
-    suspend fun delete(id: String): Outcome<Unit>
-}

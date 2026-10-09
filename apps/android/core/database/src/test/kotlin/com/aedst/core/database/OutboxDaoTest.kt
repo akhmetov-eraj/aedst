@@ -117,4 +117,53 @@ class OutboxDaoTest {
         assertNull(dao.failed(10).firstOrNull { it.id == "old-failed" })
         assertEquals(listOf("new-failed"), dao.failed(10).map { it.id })
     }
+
+    @Test
+    fun `deleteAll empties the table whatever the state of the rows`() = runBlocking {
+        dao.insert(item("pending", at = 1))
+        dao.insert(item("parked", at = 2))
+        dao.markFailed("parked", "InvalidInput")
+
+        dao.deleteAll()
+
+        assertEquals(emptyList<OutboxEntity>(), dao.pending(10) + dao.failed(10))
+    }
+
+    @Test
+    fun `failed count follows parked rows only`() = runBlocking {
+        dao.insert(item("pending", at = 1))
+        dao.insert(item("parked", at = 2))
+        assertEquals(0, dao.observeFailedCount().first())
+
+        dao.markFailed("parked", "InvalidInput")
+
+        assertEquals(1, dao.observeFailedCount().first())
+        assertEquals(1, dao.observePendingCount().first())
+    }
+
+    @Test
+    fun `requeueFailed makes parked rows pending again with a fresh attempt budget`() = runBlocking {
+        dao.insert(item("parked", at = 1).copy(attempts = 7))
+        dao.markFailed("parked", "Unavailable")
+
+        val requeued = dao.requeueFailed()
+
+        assertEquals(1, requeued)
+        val row = dao.pending(10).single()
+        assertEquals(0, row.attempts)
+        assertNull(row.lastError)
+        assertEquals(OutboxState.PENDING, row.state)
+    }
+
+    @Test
+    fun `deleteFailed drops parked rows and keeps pending ones`() = runBlocking {
+        dao.insert(item("pending", at = 1))
+        dao.insert(item("parked", at = 2))
+        dao.markFailed("parked", "InvalidInput")
+
+        assertEquals(1, dao.deleteFailed())
+
+        assertEquals(listOf("pending"), dao.pending(10).map { it.id })
+        assertEquals(0, dao.observeFailedCount().first())
+    }
 }

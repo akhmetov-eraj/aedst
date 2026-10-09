@@ -1,0 +1,5 @@
+#pragma once
+// Fixture: Domain must not include Qt, Data/ or Presentation/.
+#include <QString>
+#include "Data/bad_data.hpp"
+#include "Presentation/bad_vm.hpp"

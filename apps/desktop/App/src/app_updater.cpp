@@ -99,6 +99,7 @@ void AppUpdater::start() {
     }
     // The guard counted this start as unhealthy; it becomes healthy once the app has stayed up and usable.
     healthyTimer_.setSingleShot(true);
+    healthyTimer_.setTimerType(Qt::VeryCoarseTimer);
     QObject::connect(&healthyTimer_, &QTimer::timeout, [this]() { markHealthy(); });
     healthyTimer_.start(kHealthyAfter);
 }

@@ -1,7 +1,12 @@
+---
+title: "ADR-0011: Batched outbox relay and an in-process bus"
+description: "Superseded by ADR-0014 (River InsertTx is the outbox; the relay, bus and inbox described here were removed). Kept for history. It had superseded ADR-0004..."
+---
+
 # ADR-0011: Batched outbox relay and an in-process bus
 
 ## Status
-Accepted. Supersedes [ADR-0004](/decisions/0004-nats-jetstream) (NATS JetStream
+Superseded by [ADR-0014](/decisions/0014-river-insert-tx-as-outbox) (River `InsertTx` is the outbox; the relay, bus and inbox described here were removed). Kept for history. It had superseded [ADR-0004](/decisions/0004-nats-jetstream) (NATS JetStream
 for events) and refines [ADR-0005](/decisions/0005-river-for-jobs).
 
 ## Context
@@ -50,7 +55,7 @@ enqueued one River job per event, which has two scaling problems:
   the relay; producers, the outbox schema and consumers' inboxes do not change.
   Do not add one before that — see the threshold in
   [ADR-0001](/decisions/0001-modular-monolith).
-- There is no cross-relay ordering guarantee (see [events.md](/events)).
+- There is no cross-relay ordering guarantee (see [events.md](/server/events)).
   Consumers that need order carry a version or timestamp in the payload.
 - The poll loop costs an index probe per module per interval when idle. That
   is cheap, but it is the reason the interval is configurable and the

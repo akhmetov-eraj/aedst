@@ -19,8 +19,8 @@ Rectangle {
     signal dismissed()
 
     readonly property color accentColor: {
-        if (variant === AedstToast.Variant.Success) return "#16A34A"
-        if (variant === AedstToast.Variant.Warning) return "#D97706"
+        if (variant === AedstToast.Variant.Success) return Theme.success
+        if (variant === AedstToast.Variant.Warning) return Theme.warning
         if (variant === AedstToast.Variant.Destructive) return Theme.destructive
         return Theme.primary
     }
@@ -39,7 +39,21 @@ Rectangle {
     layer.enabled: true
 
     opacity: 0
-    Component.onCompleted: showAnimation.start()
+    Component.onCompleted: {
+        showAnimation.start()
+        // A toast is a transient status message: announced politely (errors interrupt), without moving focus.
+        Accessible.announce(description.length > 0 ? title + ". " + description : title,
+            variant === AedstToast.Variant.Destructive ? Accessible.Assertive : Accessible.Polite)
+    }
+
+    Keys.onEscapePressed: (event) => {
+        if (root.dismissible) {
+            root.close()
+            event.accepted = true
+        } else {
+            event.accepted = false
+        }
+    }
 
     NumberAnimation { id: showAnimation; target: root; property: "opacity"; to: 1; duration: Theme.durationNormal }
 

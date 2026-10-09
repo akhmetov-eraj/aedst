@@ -12,9 +12,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DoneAll
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
@@ -26,21 +24,27 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.LifecycleStartEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aedst.core.ui.adaptive.AedstAdaptiveContent
+import com.aedst.core.ui.adaptive.AedstContentWidth
+import com.aedst.core.ui.adaptive.AedstWindowSizePreviews
 import com.aedst.core.ui.components.AedstButton
 import com.aedst.core.ui.components.AedstButtonVariant
+import com.aedst.core.ui.components.AedstDivider
 import com.aedst.core.ui.components.AedstErrorSnackbarEffect
+import com.aedst.core.ui.components.AedstIconButton
 import com.aedst.core.ui.components.AedstSnackbarHost
 import com.aedst.core.ui.components.AedstTopAppBar
 import com.aedst.core.ui.components.FullScreenLoading
+import com.aedst.core.ui.theme.AedstSpacing
+import com.aedst.core.ui.theme.AedstTheme
 import com.aedst.feature.notifications.R
 import com.aedst.feature.notifications.domain.InboxNotification
 
 @Composable
-fun InboxRoute(
+internal fun InboxRoute(
     onOpenLink: (String) -> Unit,
     onOpenPreferences: () -> Unit,
     viewModel: InboxViewModel = hiltViewModel(),
@@ -69,7 +73,12 @@ internal fun InboxScreen(
     onOpenPreferences: () -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
-    AedstErrorSnackbarEffect(state.error, snackbarHostState, onShown = { onIntent(InboxIntent.ErrorShown) })
+    AedstErrorSnackbarEffect(
+        state.error,
+        snackbarHostState,
+        onShown = { onIntent(InboxIntent.ErrorShown) },
+        onRetry = { onIntent(InboxIntent.Refresh) },
+    )
 
     Scaffold(
         topBar = {
@@ -77,45 +86,52 @@ internal fun InboxScreen(
                 title = stringResource(R.string.notifications_title),
                 actions = {
                     if (state.hasUnread) {
-                        IconButton(onClick = { onIntent(InboxIntent.MarkAllRead) }) {
-                            Icon(
-                                Icons.Filled.DoneAll,
-                                contentDescription = stringResource(R.string.notifications_mark_all_read),
-                            )
+                        AedstIconButton(
+                            onClick = { onIntent(InboxIntent.MarkAllRead) },
+                            contentDescription = stringResource(R.string.notifications_mark_all_read),
+                        ) {
+                            Icon(Icons.Filled.DoneAll, contentDescription = null)
                         }
                     }
-                    IconButton(onClick = onOpenPreferences) {
-                        Icon(
-                            Icons.Filled.Settings,
-                            contentDescription = stringResource(R.string.notifications_preferences),
-                        )
+                    AedstIconButton(
+                        onClick = onOpenPreferences,
+                        contentDescription = stringResource(R.string.notifications_preferences),
+                    ) {
+                        Icon(Icons.Filled.Settings, contentDescription = null)
                     }
                 },
             )
         },
         snackbarHost = { AedstSnackbarHost(snackbarHostState) },
     ) { padding ->
-        when {
-            state.isLoading && state.notifications.isEmpty() -> FullScreenLoading(Modifier.padding(padding))
-            state.notifications.isEmpty() ->
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    Text(stringResource(R.string.notifications_empty), style = MaterialTheme.typography.bodyLarge)
-                }
-            else -> LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-                items(state.notifications, key = InboxNotification::id) { notification ->
-                    NotificationRow(notification, onClick = { onOpen(notification) })
-                    HorizontalDivider()
-                }
-                if (state.nextPageToken != null) {
-                    item {
-                        AedstButton(
-                            text = stringResource(R.string.notifications_load_more),
-                            onClick = { onIntent(InboxIntent.LoadMore) },
-                            variant = AedstButtonVariant.GHOST,
-                            loading = state.isLoading,
-                            modifier = Modifier.fillMaxWidth().padding(16.dp),
-                        )
-                    }
+        AedstAdaptiveContent(modifier = Modifier.padding(padding), maxWidth = AedstContentWidth.list) {
+            InboxContent(state, onIntent, onOpen)
+        }
+    }
+}
+
+@Composable
+private fun InboxContent(state: InboxState, onIntent: (InboxIntent) -> Unit, onOpen: (InboxNotification) -> Unit) {
+    when {
+        state.isLoading && state.notifications.isEmpty() -> FullScreenLoading()
+        state.notifications.isEmpty() ->
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(stringResource(R.string.notifications_empty), style = MaterialTheme.typography.bodyLarge)
+            }
+        else -> LazyColumn(modifier = Modifier.fillMaxSize()) {
+            items(state.notifications, key = InboxNotification::id) { notification ->
+                NotificationRow(notification, onClick = { onOpen(notification) })
+                AedstDivider()
+            }
+            if (state.nextPageToken != null) {
+                item {
+                    AedstButton(
+                        text = stringResource(R.string.notifications_load_more),
+                        onClick = { onIntent(InboxIntent.LoadMore) },
+                        variant = AedstButtonVariant.GHOST,
+                        loading = state.isLoading,
+                        modifier = Modifier.fillMaxWidth().padding(AedstSpacing.lg),
+                    )
                 }
             }
         }
@@ -129,12 +145,20 @@ private fun NotificationRow(notification: InboxNotification, onClick: () -> Unit
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+            .padding(horizontal = AedstSpacing.lg, vertical = AedstSpacing.md),
+        verticalArrangement = Arrangement.spacedBy(AedstSpacing.xs),
     ) {
         Text(notification.title, style = MaterialTheme.typography.titleMedium, fontWeight = weight)
         if (notification.body.isNotBlank()) {
             Text(notification.body, style = MaterialTheme.typography.bodyMedium)
         }
+    }
+}
+
+@AedstWindowSizePreviews
+@Composable
+private fun InboxScreenPreview() {
+    AedstTheme {
+        InboxScreen(state = InboxState(isLoading = false), onIntent = {}, onOpen = {}, onOpenPreferences = {})
     }
 }

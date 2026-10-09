@@ -3,10 +3,12 @@ import { HydrationBoundary } from "@tanstack/react-query";
 import { buildListTasksInput } from "@/modules/tasks/lib/list-tasks-input";
 import type { TaskSearchParams } from "@/modules/tasks/lib/task-search-params";
 import { DashboardStats } from "@/modules/tasks/ui/DashboardStats";
+import { PendingTasks } from "@/modules/tasks/ui/PendingTasks";
 import { TaskDetails } from "@/modules/tasks/ui/TaskDetails";
 import { TaskList } from "@/modules/tasks/ui/TaskList";
 import { TasksService } from "@/shared/api/connect/client";
 import { createRpcPrefetcher } from "@/shared/api/connect/prefetch";
+import { LoadingSkeleton } from "@/shared/ui/loading-skeleton";
 import { Skeleton } from "@/shared/ui/skeleton";
 
 /*
@@ -39,9 +41,12 @@ export async function TaskListSection({
   );
 
   return (
-    <HydrationBoundary state={prefetcher.dehydrate()}>
-      <TaskList />
-    </HydrationBoundary>
+    <>
+      <PendingTasks />
+      <HydrationBoundary state={prefetcher.dehydrate()}>
+        <TaskList />
+      </HydrationBoundary>
+    </>
   );
 }
 
@@ -58,31 +63,25 @@ export async function TaskDetailsSection({ taskId }: { taskId: string }) {
 
 export function DashboardStatsFallback() {
   return (
-    <div
-      className="grid grid-cols-2 gap-3 sm:grid-cols-5"
-      aria-busy="true"
-      role="status"
-    >
+    <LoadingSkeleton className="grid grid-cols-2 gap-3 sm:grid-cols-5">
       {[0, 1, 2, 3, 4].map((i) => (
         <Skeleton key={i} className="h-24 w-full" />
       ))}
-    </div>
+    </LoadingSkeleton>
   );
 }
 
 export function TaskListFallback() {
   return (
-    <div className="flex flex-col gap-2" aria-busy="true" role="status">
+    <LoadingSkeleton className="flex flex-col gap-2">
       <Skeleton className="h-9 w-full max-w-xs" />
       {[0, 1, 2].map((i) => (
         <Skeleton key={i} className="h-16 w-full" />
       ))}
-    </div>
+    </LoadingSkeleton>
   );
 }
 
 export function TaskDetailsFallback() {
-  return (
-    <Skeleton className="h-64 w-full max-w-lg" aria-busy="true" role="status" />
-  );
+  return <LoadingSkeleton className="h-64 w-full max-w-lg" />;
 }

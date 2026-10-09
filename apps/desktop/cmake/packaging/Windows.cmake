@@ -21,8 +21,24 @@ set(CPACK_NSIS_DELETE_ICONS_EXTRA
 # User data locations (QStandardPaths AppDataLocation/CacheLocation for org+app "AEDST"):
 # %APPDATA%\AEDST and %LOCALAPPDATA%\AEDST. Keep in sync with QCoreApplication
 # organization/application names set in App/src/main.cpp.
+# aedst:// deep links (per machine) and the AppUserModelID of the Start Menu shortcut. The same lines exist in
+# packaging/windows/installer.nsi.in; DECISION PENDING (docs/content/decisions/desktop.md, "One Windows installer"):
+# keep exactly one of the two NSIS paths and delete the other.
+set(CPACK_NSIS_EXTRA_INSTALL_COMMANDS
+"  WriteRegStr HKLM 'Software\\\\Classes\\\\aedst' '' 'URL:AEDST Protocol'
+  WriteRegStr HKLM 'Software\\\\Classes\\\\aedst' 'URL Protocol' ''
+  WriteRegStr HKLM 'Software\\\\Classes\\\\aedst\\\\DefaultIcon' '' '$INSTDIR\\\\bin\\\\aedst-desktop.exe,0'
+  WriteRegStr HKLM 'Software\\\\Classes\\\\aedst\\\\shell\\\\open\\\\command' '' `\"$INSTDIR\\\\bin\\\\aedst-desktop.exe\" \"%1\"`
+  !if /FileExists '\${NSISDIR}\\\\Plugins\\\\x86-unicode\\\\ApplicationID.dll'
+    ApplicationID::Set '$SMPROGRAMS\\\\$STARTMENU_FOLDER\\\\${AEDST_DISPLAY_NAME}.lnk' 'com.aedst.Desktop'
+    Pop $0
+  !endif")
 set(CPACK_NSIS_EXTRA_UNINSTALL_COMMANDS
-"  MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 'Also delete your AEDST user data (settings, local database, cache)?' /SD IDNO IDNO aedst_keep_user_data
+"  DeleteRegKey HKLM 'Software\\\\Classes\\\\aedst'
+  SetShellVarContext current
+  Delete '$SMPROGRAMS\\\\${AEDST_DISPLAY_NAME}.lnk'
+  SetShellVarContext all
+  MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 'Also delete your AEDST user data (settings, local database, cache)?' /SD IDNO IDNO aedst_keep_user_data
   SetShellVarContext current
   RMDir /r '$APPDATA\\\\AEDST'
   RMDir /r '$LOCALAPPDATA\\\\AEDST'

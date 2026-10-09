@@ -5,15 +5,14 @@ import AedstDesignSystem
 import Aedst.Connectivity
 import Aedst.Navigation
 import Aedst.Feature.Auth
-import Aedst.Feature.Notifications
 import Aedst.Platform
-import Aedst.Session
 import Aedst.Telemetry
 
 // App shell: one StackView mirrored from the Core Router's back stack — the
 // desktop counterpart of apple's RootView.swift and android's AppNavHost.kt.
 // Screens come from each feature's registered destinations; this file only
-// knows route names, plus the app-level chrome (toolbar, sign out, offline banner).
+// knows route names (the `Routes` singleton, never string literals), plus the
+// app-level chrome (AppToolbar, sign out, offline banner, update banner, privacy prompt).
 //
 // Keyboard shortcuts (shown in the toolbar tooltips):
 //   Back      Alt+Left, Esc   (when there is a screen to go back to)
@@ -22,8 +21,8 @@ import Aedst.Telemetry
 //   Quit      StandardKey.Quit (Ctrl+Q)
 //   Retry     StandardKey.Refresh (F5 / Cmd+R): re-checks the connection while offline;
 //             LoginView owns the same key on the login screen (retries the sign-in).
-// Esc also closes popups first in most controls; if a screen adds a Popup that must
-// keep Esc, disable `backEscShortcut` while it is open.
+// Esc first closes the blocking error banner when one is showing, then goes back; a popup that
+// must keep Esc disables `backEscShortcut` while it is open.
 ApplicationWindow {
     id: window
 
@@ -34,9 +33,12 @@ ApplicationWindow {
         && (updater.state === 4 || updater.state === 5 || (updater.mandatory && updater.state === 3))
     property string dismissedVersion
 
-    readonly property bool onLoginRoute: AppRouter.currentRoute === "auth/login"
+    readonly property bool onLoginRoute: AppRouter.currentRoute === Routes.login
     readonly property bool canGoBack: AppRouter.depth > 1
-    readonly property bool chromeVisible: AppRouter.depth > 0 && !onLoginRoute
+    // The router is locked on the upgrade screen when the server refuses this version (AppDependencies::onUpgradeRequired):
+    // no toolbar, no sections, no way out.
+    readonly property bool onUpgradeRoute: AppRouter.currentRoute === Routes.upgradeRequired
+    readonly property bool chromeVisible: AppRouter.depth > 0 && !onLoginRoute && !onUpgradeRoute
 
     width: 1024
     height: 720
@@ -65,9 +67,18 @@ ApplicationWindow {
 
     Shortcut {
         id: backEscShortcut
+        objectName: "backEscShortcut"
         sequence: "Esc"
-        enabled: window.canGoBack
+        enabled: window.canGoBack && !errorBanner.visible
         onActivated: AppRouter.goBack()
+    }
+
+    // The blocking error banner is dismissible from the keyboard without taking focus away from what the user is doing.
+    Shortcut {
+        objectName: "closeBannerShortcut"
+        sequence: "Esc"
+        enabled: errorBanner.visible
+        onActivated: errorBanner.close()
     }
 
     Shortcut {
@@ -91,12 +102,19 @@ ApplicationWindow {
     // Top-level sections. Notifications shows the unread badge (polled by
     // NotificationsViewModel); Admin only exists for tokens with the admin role.
     readonly property var sections: [
-        { route: "tasks/list", text: qsTr("Tasks"), shortcut: "Ctrl+1" },
-        { route: "search/home", text: qsTr("Search"), shortcut: "Ctrl+2" },
-        { route: "media/library", text: qsTr("Files"), shortcut: "Ctrl+3" },
-        { route: "notifications/inbox", text: qsTr("Notifications"), shortcut: "Ctrl+4" },
-        { route: "admin/home", text: qsTr("Admin"), shortcut: "Ctrl+5", adminOnly: true }
+        { route: Routes.tasks, feature: "tasks", text: qsTr("Tasks"), shortcut: "Ctrl+1" },
+        { route: Routes.search, feature: "search", text: qsTr("Search"), shortcut: "Ctrl+2" },
+        { route: Routes.media, feature: "media", text: qsTr("Files"), shortcut: "Ctrl+3" },
+        { route: Routes.notifications, feature: "notifications", text: qsTr("Notifications"), shortcut: "Ctrl+4" },
+        { route: Routes.admin, feature: "admin", text: qsTr("Admin"), shortcut: "Ctrl+5", adminOnly: true }
     ]
+
+    // A section is shown iff the server enabled its feature (capability negotiation; the defaults apply until it has
+    // answered) and, for Admin, the token carries the admin role. Reads both properties, so bindings re-evaluate.
+    function sectionShown(section) {
+        return Session.visibleFeatures.indexOf(section.feature) >= 0 && (!section.adminOnly || Session.isAdmin)
+    }
+    readonly property var shownSections: sections.filter(section => sectionShown(section))
 
     function openSection(route) {
         if (AppRouter.currentRoute !== route) {
@@ -110,7 +128,7 @@ ApplicationWindow {
             required property var modelData
             Shortcut {
                 sequence: modelData.shortcut
-                enabled: window.chromeVisible && (!modelData.adminOnly || Session.isAdmin)
+                enabled: window.chromeVisible && window.sectionShown(modelData)
                 onActivated: window.openSection(modelData.route)
             }
         }
@@ -118,83 +136,20 @@ ApplicationWindow {
 
     Shortcut {
         sequences: [StandardKey.Find]
-        enabled: window.chromeVisible && AppRouter.currentRoute !== "search/home"
-        onActivated: window.openSection("search/home")
+        enabled: window.chromeVisible && AppRouter.currentRoute !== Routes.search
+        onActivated: window.openSection(Routes.search)
     }
 
-    header: ToolBar {
+    header: AppToolbar {
         visible: window.chromeVisible
-        LayoutMirroring.enabled: window.rtl
-        LayoutMirroring.childrenInherit: true
-
-        Accessible.role: Accessible.ToolBar
-        Accessible.name: qsTr("Main toolbar")
-
-        background: Rectangle { color: Theme.surface }
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: Theme.spacing
-            anchors.rightMargin: Theme.spacing
-            spacing: Theme.spacingXs
-
-            AedstButton {
-                id: backButton
-                objectName: "backButton"
-                visible: window.canGoBack
-                variant: AedstButton.Variant.Ghost
-                size: AedstButton.Size.Sm
-                text: qsTr("Back")
-                ToolTip.visible: hovered || visualFocus
-                ToolTip.delay: 500
-                ToolTip.text: qsTr("Back (%1)").arg(backAltShortcut.nativeText)
-                onClicked: AppRouter.goBack()
-            }
-
-            Repeater {
-                model: window.sections
-                delegate: AedstButton {
-                    required property var modelData
-                    visible: !modelData.adminOnly || Session.isAdmin
-                    variant: AppRouter.currentRoute === modelData.route ? AedstButton.Variant.Secondary
-                                                                       : AedstButton.Variant.Ghost
-                    size: AedstButton.Size.Sm
-                    text: modelData.route === "notifications/inbox" && NotificationsViewModel.unreadCount > 0
-                        ? modelData.text + " (" + Math.min(NotificationsViewModel.unreadCount, 99) + ")"
-                        : modelData.text
-                    Accessible.name: modelData.route === "notifications/inbox"
-                        ? qsTr("Notifications, %n unread", "", NotificationsViewModel.unreadCount)
-                        : modelData.text
-                    ToolTip.visible: hovered || visualFocus
-                    ToolTip.delay: 500
-                    ToolTip.text: modelData.text + " (" + modelData.shortcut + ")"
-                    onClicked: window.openSection(modelData.route)
-                }
-            }
-
-            Item { Layout.fillWidth: true }
-
-            AedstButton {
-                variant: AedstButton.Variant.Ghost
-                size: AedstButton.Size.Sm
-                text: qsTr("Privacy")
-                visible: Telemetry.crashReportsAvailable || Telemetry.analyticsAvailable
-                onClicked: privacyDialog.open()
-            }
-
-            AedstButton {
-                id: signOutButton
-                objectName: "signOutButton"
-                variant: AedstButton.Variant.Ghost
-                size: AedstButton.Size.Sm
-                text: qsTr("Sign out")
-                enabled: !LoginViewModel.isLoading
-                ToolTip.visible: hovered || visualFocus
-                ToolTip.delay: 500
-                ToolTip.text: qsTr("Sign out (%1)").arg(signOutShortcut.nativeText)
-                onClicked: LoginViewModel.logout()
-            }
-        }
+        sections: window.shownSections
+        canGoBack: window.canGoBack
+        rtl: window.rtl
+        availableWidth: window.width
+        backShortcutText: backAltShortcut.nativeText
+        signOutShortcutText: signOutShortcut.nativeText
+        onSectionRequested: (route) => window.openSection(route)
+        onPrivacyRequested: privacyDialog.open()
     }
 
     // Typed-error feedback: ErrorCenter (Aedst.Telemetry `Errors`) emits one signal per
@@ -202,11 +157,13 @@ ApplicationWindow {
     // persistent banner. Titles are localized here from the stable error kind.
     function errorTitle(kind) {
         switch (kind) {
-        case "network": return qsTr("Connection problem")
+        case "unavailable":
+        case "offline":
+        case "timeout": return qsTr("Connection problem")
         case "unauthenticated": return qsTr("Session expired")
-        case "permission_denied": return qsTr("Not allowed")
-        case "not_found": return qsTr("Not found")
-        case "invalid_argument": return qsTr("Check your input")
+        case "forbidden": return qsTr("Not allowed")
+        case "notFound": return qsTr("Not found")
+        case "invalidInput": return qsTr("Check your input")
         case "storage": return qsTr("Storage error")
         default: return qsTr("Something went wrong")
         }
@@ -243,50 +200,28 @@ ApplicationWindow {
 
     AedstAlert {
         id: errorBanner
+        objectName: "errorBanner"
         z: 10
         visible: false
+        closable: true
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: Theme.spacingMd
         variant: AedstAlert.Variant.Destructive
-        MouseArea { anchors.fill: parent; onClicked: errorBanner.visible = false }
     }
 
-    AedstAlert {
+    UpdateBanner {
         id: updateBanner
         objectName: "updateBanner"
         z: 9
         visible: window.updateBannerVisible
+        updater: window.updater
         anchors.top: parent.top
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.margins: Theme.spacingMd
-        variant: window.updater && window.updater.mandatory ? AedstAlert.Variant.Warning : AedstAlert.Variant.Info
-        title: !window.updater ? "" : window.updater.isRollback
-            ? qsTr("Returning to version %1").arg(window.updater.availableVersion)
-            : qsTr("Version %1 is available").arg(window.updater.availableVersion)
-        description: !window.updater ? "" : window.updater.state === 4
-            ? qsTr("Restart AEDST to finish updating.")
-            : qsTr("Update AEDST with your package manager.")
-        RowLayout {
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            anchors.rightMargin: Theme.spacingMd
-            AedstButton {
-                visible: window.updater && window.updater.state === 4
-                size: AedstButton.Size.Sm
-                text: qsTr("Restart to update")
-                onClicked: window.updater.installAndRestart()
-            }
-            AedstButton {
-                visible: window.updater && !window.updater.mandatory
-                variant: AedstButton.Variant.Ghost
-                size: AedstButton.Size.Sm
-                text: qsTr("Later")
-                onClicked: { window.dismissedVersion = window.updater.availableVersion; window.updater.dismiss() }
-            }
-        }
+        onLaterRequested: (version) => window.dismissedVersion = version
     }
 
     Column {
@@ -311,56 +246,7 @@ ApplicationWindow {
         }
     }
 
-    // One-time privacy prompt (both integrations are opt-in and only offered when
-    // configured), reopened from the toolbar's Privacy button.
-    AedstDialog {
-        id: privacyDialog
-        title: qsTr("Privacy")
-
-        ColumnLayout {
-            width: 440
-            spacing: Theme.spacingMd
-
-            Text {
-                Layout.fillWidth: true
-                wrapMode: Text.Wrap
-                font: Theme.smallFont
-                color: Theme.mutedForeground
-                text: qsTr("Help improve AEDST. Crash reports include technical details and your account id only. Usage statistics are anonymous until you sign in and never include what you type.")
-            }
-            AedstSwitch {
-                visible: Telemetry.crashReportsAvailable
-                text: qsTr("Send crash reports")
-                checked: Telemetry.crashReportsEnabled
-                onToggled: Telemetry.crashReportsEnabled = checked
-            }
-            AedstSwitch {
-                visible: Telemetry.analyticsAvailable
-                text: qsTr("Share usage statistics")
-                checked: Telemetry.analyticsEnabled
-                onToggled: Telemetry.analyticsEnabled = checked
-            }
-            RowLayout {
-                Layout.alignment: Qt.AlignRight
-                visible: Telemetry.needsDecision
-                AedstButton {
-                    text: qsTr("No thanks")
-                    variant: AedstButton.Variant.Ghost
-                    onClicked: { Telemetry.decideAll(false); privacyDialog.close() }
-                }
-                AedstButton {
-                    text: qsTr("Allow")
-                    onClicked: { Telemetry.decideAll(true); privacyDialog.close() }
-                }
-            }
-            AedstButton {
-                Layout.alignment: Qt.AlignRight
-                visible: !Telemetry.needsDecision
-                text: qsTr("Done")
-                onClicked: privacyDialog.close()
-            }
-        }
-    }
+    PrivacyDialog { id: privacyDialog }
 
     onChromeVisibleChanged: if (chromeVisible && Telemetry.needsDecision) Qt.callLater(() => privacyDialog.open())
 

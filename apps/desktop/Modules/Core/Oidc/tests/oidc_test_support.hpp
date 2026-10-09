@@ -78,6 +78,8 @@ public:
     QString idTokenIssuer;         // overrides the iss claim of issued ID tokens
     QString expectedRefreshToken{"refresh-1"};
     bool advertisePkce{true};
+    bool echoNonce{true};          // false: issued ID tokens carry no nonce claim
+    QString nonceOverride;         // when set, issued ID tokens carry this nonce instead of the request's
 
     // --- Observations ----------------------------------------------------------------------
     int authorizeRequests{0};
@@ -86,6 +88,7 @@ public:
     std::vector<QByteArray> revocationBodies;
     QString lastScope;
     QString lastChallengeMethod;
+    QString lastNonce;             // the nonce of the last authorization request
     bool pkceVerified{false};
 
 private:
@@ -127,6 +130,7 @@ private:
         const QUrlQuery query(target);
         lastScope = query.queryItemValue("scope", QUrl::FullyDecoded);
         lastChallengeMethod = query.queryItemValue("code_challenge_method");
+        lastNonce = query.queryItemValue("nonce", QUrl::FullyDecoded);
         challenge_ = query.queryItemValue("code_challenge").toUtf8();
         redirectUri_ = query.queryItemValue("redirect_uri", QUrl::FullyDecoded);
         QUrl back(redirectUri_);
@@ -174,6 +178,9 @@ private:
         QJsonObject claims = validIdTokenClaims(cfg);
         if (!idTokenIssuer.isEmpty()) {
             claims.insert("iss", idTokenIssuer);
+        }
+        if (echoNonce && !lastNonce.isEmpty()) {
+            claims.insert("nonce", nonceOverride.isEmpty() ? lastNonce : nonceOverride);
         }
         QJsonObject response;
         response.insert("access_token", QStringLiteral("access-%1").arg(issued_));

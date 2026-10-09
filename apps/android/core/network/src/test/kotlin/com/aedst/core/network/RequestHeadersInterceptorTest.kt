@@ -4,12 +4,12 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
-import org.junit.After
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotEquals
-import org.junit.Assert.assertTrue
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNotEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 import java.util.Optional
 
 class RequestHeadersInterceptorTest {
@@ -17,12 +17,12 @@ class RequestHeadersInterceptorTest {
     private lateinit var server: MockWebServer
     private val client = OkHttpClient.Builder().addInterceptor(RequestHeadersInterceptor(Optional.empty())).build()
 
-    @Before
+    @BeforeEach
     fun setUp() {
         server = MockWebServer().apply { start() }
     }
 
-    @After
+    @AfterEach
     fun tearDown() {
         server.shutdown()
     }
@@ -50,8 +50,8 @@ class RequestHeadersInterceptorTest {
         val second = server.takeRequest().getHeader(RequestHeadersInterceptor.TRACEPARENT_HEADER)!!
 
         val format = Regex("00-[0-9a-f]{32}-[0-9a-f]{16}-01")
-        assertTrue(first, format.matches(first))
-        assertTrue(second, format.matches(second))
+        assertTrue(format.matches(first), first)
+        assertTrue(format.matches(second), second)
         assertNotEquals(first, second)
     }
 }

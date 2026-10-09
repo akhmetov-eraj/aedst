@@ -2,7 +2,11 @@
 
 #include "aedst/logging/log_categories.hpp"
 
+#include <algorithm>
+#include <span>
+#include <string>
 #include <utility>
+#include <vector>
 
 namespace aedst::navigation {
 
@@ -36,31 +40,45 @@ namespace {
 
 } // namespace
 
-std::optional<Route> routeForLink(std::string_view link) {
+std::optional<Route> routeForLink(std::string_view link, std::span<const std::string> linkPrefixes) {
     if (link.size() < 2 || link.front() != '/' || link[1] == '/') {
         return std::nullopt; // absolute, scheme-relative or empty
     }
-    if (link == "/tasks" || link == "/tasks/") {
-        return Route{.name = std::string(routes::kTasks), .params = {}};
+    // First path segment ("/tasks/<id>" -> "tasks"): it must be claimed by an active route.
+    const std::string_view rest = link.substr(1);
+    const std::string_view prefix = rest.substr(0, rest.find('/'));
+    if (std::ranges::find(linkPrefixes, prefix) == linkPrefixes.end()) {
+        return std::nullopt;
     }
-    if (const auto id = idAfter(link, "/tasks/"); !id.empty()) {
-        return Route{.name = std::string(routes::kTaskDetail), .params = {{std::string(params::kTaskId), std::string(id)}}};
-    }
-    if (const auto id = idAfter(link, "/media/"); !id.empty()) {
-        return Route{.name = std::string(routes::kMediaViewer),
-                     .params = {{std::string(params::kMediaId), std::string(id)}}};
-    }
-    if (link == "/media" || link == "/media/") {
-        return Route{.name = std::string(routes::kMedia), .params = {}};
-    }
-    if (link == "/notifications" || link == "/notifications/") {
-        return Route{.name = std::string(routes::kNotifications), .params = {}};
+    if (prefix == "tasks") {
+        if (link == "/tasks" || link == "/tasks/") {
+            return routes::tasks();
+        }
+        if (const auto id = idAfter(link, "/tasks/"); !id.empty()) {
+            return routes::taskDetail(id);
+        }
+    } else if (prefix == "media") {
+        if (const auto id = idAfter(link, "/media/"); !id.empty()) {
+            return routes::mediaViewer(id);
+        }
+        if (link == "/media" || link == "/media/") {
+            return routes::media();
+        }
+    } else if (prefix == "notifications") {
+        if (link == "/notifications" || link == "/notifications/") {
+            return routes::notifications();
+        }
     }
     return std::nullopt;
 }
 
+std::vector<std::string> Router::linkPrefixes() const {
+    return graph_->linkPrefixes();
+}
+
 bool Router::openLink(const QString& link) {
-    const auto route = routeForLink(link.toStdString());
+    const auto prefixes = graph_->linkPrefixes();
+    const auto route = routeForLink(link.toStdString(), prefixes);
     if (!route) {
         qCWarning(lcNavigation, "Router: ignoring unsupported in-app link");
         return false;
@@ -71,6 +89,10 @@ bool Router::openLink(const QString& link) {
 Router::Router(std::shared_ptr<const NavGraph> graph, QObject* parent) : QObject(parent), graph_(std::move(graph)) {}
 
 bool Router::push(const Route& route) {
+    if (locked_) {
+        qCInfo(lcNavigation, "Router: locked, ignoring push to '%s'", route.name.c_str());
+        return false;
+    }
     const auto view = graph_->resolve(route.name);
     if (!view) {
         qCWarning(lcNavigation, "Router: no destination registered for '%s'", route.name.c_str());
@@ -83,6 +105,10 @@ bool Router::push(const Route& route) {
 }
 
 bool Router::resetTo(const Route& route) {
+    if (locked_) {
+        qCInfo(lcNavigation, "Router: locked, ignoring reset to '%s'", route.name.c_str());
+        return false;
+    }
     const auto view = graph_->resolve(route.name);
     if (!view) {
         qCWarning(lcNavigation, "Router: no destination registered for '%s'", route.name.c_str());
@@ -95,6 +121,14 @@ bool Router::resetTo(const Route& route) {
     return true;
 }
 
+bool Router::lockTo(const Route& route) {
+    if (!resetTo(route)) {
+        return false;
+    }
+    locked_ = true;
+    return true;
+}
+
 bool Router::navigate(const QString& routeName, const QVariantMap& params) {
     return push(toRoute(routeName, params));
 }
@@ -104,6 +138,9 @@ bool Router::replaceAll(const QString& routeName, const QVariantMap& params) {
 }
 
 bool Router::goBack() {
+    if (locked_) {
+        return false;
+    }
     if (backStack_.size() <= 1) {
         return false;
     }

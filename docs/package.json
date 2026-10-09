@@ -8,7 +8,8 @@
     "postbuild": "pagefind --site .next/server/app --output-path public/_pagefind",
     "start": "next start",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\""
+    "clean": "node -e \"require('fs').rmSync('.next',{recursive:true,force:true})\"",
+    "test": "node --test \"lib/*.test.ts\""
   },
   "dependencies": {
     "next": "16.4.0",

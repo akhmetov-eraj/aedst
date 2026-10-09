@@ -33,7 +33,7 @@ class RequestHeadersInterceptor @Inject constructor(private val httpTelemetry: O
         val bytes = ByteArray(byteCount).also(random::nextBytes)
         // An all-zero id is invalid per the spec; flip one bit in the (astronomically unlikely) case.
         if (bytes.all { it == 0.toByte() }) bytes[0] = 1
-        return bytes.joinToString("") { "%02x".format(it) }
+        return bytes.toHexString()
     }
 
     companion object {

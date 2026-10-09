@@ -1,101 +1,47 @@
 "use server";
 
-import { ConnectError } from "@connectrpc/connect";
 import { cookies } from "next/headers";
-import { z } from "zod";
 
-import { createServerAuthClient } from "@/shared/api/connect/server";
+import { getOidcConfig } from "@/shared/lib/auth/oidc/config";
+import {
+  buildEndSessionUrl,
+  revokeRefreshToken,
+} from "@/shared/lib/auth/oidc/login-flow";
 import {
   clearSessionCookies,
+  ID_COOKIE,
   REFRESH_COOKIE,
-  writeSessionCookies,
 } from "@/shared/lib/auth/session-cookies";
-import { sessionTokensFromPair } from "@/shared/lib/auth/session-tokens";
 
 /**
- * Sign-in/up/out as Server Actions: the browser posts credentials to *this*
- * app, the server talks to apps/server, and the resulting tokens go straight
- * into httpOnly cookies. Only `{ ok, userId }` (or an error) ever returns to
- * the page. Server Actions also carry Next's built-in Origin check, which
- * covers CSRF for these mutations.
+ * Sign-out as a Server Action, so it carries Next's built-in Origin check
+ * (CSRF protection for this mutation). Sign-in is not here: it is the
+ * OpenID Connect redirect flow in `app/api/auth/{login,callback}`.
  */
 
-export type AuthActionResult =
-  | { ok: true; userId: string }
-  | {
-      ok: false;
-      error: "invalidInput" | "noTokens" | "rejected" | "failed";
-      message?: string;
-    };
+export type LogoutResult = {
+  /**
+   * The IdP's RP-initiated logout URL (`id_token_hint` +
+   * `post_logout_redirect_uri`) to navigate the browser to, or `null` when
+   * the IdP has none and the local sign-out is complete.
+   */
+  endSessionUrl: string | null;
+};
 
-const credentialsSchema = z.object({
-  email: z.email().max(254),
-  password: z.string().min(1).max(128),
-  deviceId: z.string().min(1).max(128),
-});
-
-const registrationSchema = credentialsSchema.extend({
-  password: z.string().min(8).max(128),
-});
-
-function failure(error: unknown): AuthActionResult {
-  const connectError = ConnectError.from(error);
-  return connectError.rawMessage
-    ? { ok: false, error: "rejected", message: connectError.rawMessage }
-    : { ok: false, error: "failed" };
-}
-
-export async function loginAction(input: unknown): Promise<AuthActionResult> {
-  const parsed = credentialsSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: "invalidInput" };
-  }
-
-  try {
-    const response = await createServerAuthClient().login(parsed.data);
-    const tokens = sessionTokensFromPair(response.tokens);
-    if (!tokens || !response.userId) {
-      return { ok: false, error: "noTokens" };
-    }
-    writeSessionCookies(await cookies(), tokens);
-    return { ok: true, userId: response.userId };
-  } catch (error) {
-    return failure(error);
-  }
-}
-
-export async function registerAction(
-  input: unknown,
-): Promise<AuthActionResult> {
-  const parsed = registrationSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false, error: "invalidInput" };
-  }
-
-  try {
-    const response = await createServerAuthClient().register(parsed.data);
-    const tokens = sessionTokensFromPair(response.tokens);
-    if (!tokens || !response.user?.id) {
-      return { ok: false, error: "noTokens" };
-    }
-    writeSessionCookies(await cookies(), tokens);
-    return { ok: true, userId: response.user.id };
-  } catch (error) {
-    return failure(error);
-  }
-}
-
-export async function logoutAction(): Promise<void> {
+export async function logoutAction(): Promise<LogoutResult> {
   const jar = await cookies();
   const refreshToken = jar.get(REFRESH_COOKIE)?.value;
+  const idToken = jar.get(ID_COOKIE)?.value;
+  // Always first: whatever happens at the IdP, this browser is signed out.
   clearSessionCookies(jar);
 
-  if (refreshToken) {
-    try {
-      await createServerAuthClient().logout({ refreshToken });
-    } catch {
-      // Best effort: the cookies are already gone, so this browser is signed
-      // out; the server-side session simply expires on its own.
+  try {
+    const config = getOidcConfig();
+    if (refreshToken) {
+      await revokeRefreshToken({ config, refreshToken });
     }
+    return { endSessionUrl: await buildEndSessionUrl({ config, idToken }) };
+  } catch {
+    return { endSessionUrl: null };
   }
 }

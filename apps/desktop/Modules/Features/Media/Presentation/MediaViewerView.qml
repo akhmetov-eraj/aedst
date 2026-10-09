@@ -27,14 +27,14 @@ Page {
 
         RowLayout {
             Layout.fillWidth: true
-            Label {
+            AedstLabel {
                 Layout.fillWidth: true
                 text: MediaViewerViewModel.fileName
                 font: Theme.headingFont
                 color: Theme.foreground
                 elide: Text.ElideMiddle
             }
-            Text {
+            AedstLabel {
                 visible: MediaViewerViewModel.sizeBytes > 0
                 text: (MediaViewerViewModel.sizeBytes / (1024 * 1024)).toFixed(1) + " MB"
                 font: Theme.captionFont
@@ -73,7 +73,7 @@ Page {
                 }
             }
 
-            Text {
+            AedstLabel {
                 anchors.centerIn: parent
                 visible: MediaViewerViewModel.kind === "document"
                 text: qsTr("No preview is available for this file type.")

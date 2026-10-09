@@ -1,2 +1,4 @@
-# App-specific R8 rules. Libraries (Hilt, Room, Tink, protobuf-lite, OkHttp,
-# connect-kotlin, kotlinx.serialization) ship their own consumer rules.
+# App-specific R8 rules (R8 full mode). Library consumer rules - including the protobuf-lite keep rules owned by
+# core/network/consumer-rules.pro - are merged automatically; see app/proguard-rules.pro for the rationale.
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile

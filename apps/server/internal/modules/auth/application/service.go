@@ -19,7 +19,7 @@ import (
 )
 
 // defaultRoles is assigned to every session until real role assignment
-// exists (RBAC is out of scope for Phase 1, see docs/content/modules.md).
+// exists (RBAC is out of scope for Phase 1, see docs/content/server/modules.md).
 var defaultRoles = []string{"user"}
 
 // MaxPasswordBytes bounds the password fed to the hasher. A memory-hard hash
@@ -254,7 +254,7 @@ func (s *Service) Logout(ctx context.Context, rawRefreshToken string) error {
 	if err != nil {
 		// An already-invalid token has nothing to revoke; logout is
 		// idempotent from the caller's point of view.
-		return nil
+		return nil //nolint:nilerr // an already-invalid token has nothing to revoke; logout stays idempotent
 	}
 	return s.sessions.Revoke(ctx, claims.SessionID, s.clock.Now())
 }

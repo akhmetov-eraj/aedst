@@ -138,28 +138,39 @@ type VariantKind int32
 
 const (
 	VariantKind_VARIANT_KIND_UNSPECIFIED VariantKind = 0
-	VariantKind_VARIANT_KIND_THUMBNAIL   VariantKind = 1
-	VariantKind_VARIANT_KIND_PREVIEW     VariantKind = 2
-	// Re-encoded/compressed rendition for playback or display.
-	VariantKind_VARIANT_KIND_OPTIMIZED VariantKind = 3
-	VariantKind_VARIANT_KIND_POSTER    VariantKind = 4
+	// Video poster frame extracted by ffmpeg (stored, presigned URL).
+	VariantKind_VARIANT_KIND_POSTER VariantKind = 4
+	// On-demand imgproxy renditions of an image (or a video poster); the url
+	// is a signed imgproxy URL, the format (WebP/AVIF/JPEG) is negotiated from
+	// the request Accept header and content_type/size_bytes are empty/0.
+	// width/height are the preset target box (card_400: width only, height
+	// proportional). Present only when the server has imgproxy enabled.
+	VariantKind_VARIANT_KIND_THUMB_64        VariantKind = 5
+	VariantKind_VARIANT_KIND_AVATAR_256      VariantKind = 6
+	VariantKind_VARIANT_KIND_CARD_400        VariantKind = 7
+	VariantKind_VARIANT_KIND_FEED_800X600    VariantKind = 8
+	VariantKind_VARIANT_KIND_STORY_1080X1350 VariantKind = 9
 )
 
 // Enum value maps for VariantKind.
 var (
 	VariantKind_name = map[int32]string{
 		0: "VARIANT_KIND_UNSPECIFIED",
-		1: "VARIANT_KIND_THUMBNAIL",
-		2: "VARIANT_KIND_PREVIEW",
-		3: "VARIANT_KIND_OPTIMIZED",
 		4: "VARIANT_KIND_POSTER",
+		5: "VARIANT_KIND_THUMB_64",
+		6: "VARIANT_KIND_AVATAR_256",
+		7: "VARIANT_KIND_CARD_400",
+		8: "VARIANT_KIND_FEED_800X600",
+		9: "VARIANT_KIND_STORY_1080X1350",
 	}
 	VariantKind_value = map[string]int32{
-		"VARIANT_KIND_UNSPECIFIED": 0,
-		"VARIANT_KIND_THUMBNAIL":   1,
-		"VARIANT_KIND_PREVIEW":     2,
-		"VARIANT_KIND_OPTIMIZED":   3,
-		"VARIANT_KIND_POSTER":      4,
+		"VARIANT_KIND_UNSPECIFIED":     0,
+		"VARIANT_KIND_POSTER":          4,
+		"VARIANT_KIND_THUMB_64":        5,
+		"VARIANT_KIND_AVATAR_256":      6,
+		"VARIANT_KIND_CARD_400":        7,
+		"VARIANT_KIND_FEED_800X600":    8,
+		"VARIANT_KIND_STORY_1080X1350": 9,
 	}
 )
 
@@ -1019,11 +1030,10 @@ const file_aedst_media_v1_media_proto_rawDesc = "" +
 	"\x0fGetMediaRequest\x12\x18\n" +
 	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\"?\n" +
 	"\x10GetMediaResponse\x12+\n" +
-	"\x05media\x18\x01 \x01(\v2\x15.aedst.media.v1.MediaR\x05media\"\xc9\x01\n" +
+	"\x05media\x18\x01 \x01(\v2\x15.aedst.media.v1.MediaR\x05media\"\xcb\x01\n" +
 	"\x10ListMediaRequest\x12$\n" +
-	"\atask_id\x18\x01 \x01(\tB\v\xbaH\b\xd8\x01\x01r\x03\xb0\x01\x01R\x06taskId\x12>\n" +
-	"\x05kinds\x18\x02 \x03(\x0e2\x19.aedst.media.v1.MediaKindB\r\xbaH\n" +
-	"\x92\x01\a\"\x05\x82\x01\x02\x10\x01R\x05kinds\x12&\n" +
+	"\atask_id\x18\x01 \x01(\tB\v\xbaH\b\xd8\x01\x01r\x03\xb0\x01\x01R\x06taskId\x12@\n" +
+	"\x05kinds\x18\x02 \x03(\x0e2\x19.aedst.media.v1.MediaKindB\x0f\xbaH\f\x92\x01\t\"\a\x82\x01\x04\x10\x01 \x00R\x05kinds\x12&\n" +
 	"\tpage_size\x18\x03 \x01(\x05B\t\xbaH\x06\x1a\x04\x18d(\x00R\bpageSize\x12'\n" +
 	"\n" +
 	"page_token\x18\x04 \x01(\tB\b\xbaH\x05r\x03\x18\x80\x04R\tpageToken\"h\n" +
@@ -1044,13 +1054,15 @@ const file_aedst_media_v1_media_proto_rawDesc = "" +
 	"\x1bMEDIA_STATUS_PENDING_UPLOAD\x10\x01\x12\x1b\n" +
 	"\x17MEDIA_STATUS_PROCESSING\x10\x02\x12\x16\n" +
 	"\x12MEDIA_STATUS_READY\x10\x03\x12\x17\n" +
-	"\x13MEDIA_STATUS_FAILED\x10\x04*\x96\x01\n" +
+	"\x13MEDIA_STATUS_FAILED\x10\x04*\xb0\x02\n" +
 	"\vVariantKind\x12\x1c\n" +
-	"\x18VARIANT_KIND_UNSPECIFIED\x10\x00\x12\x1a\n" +
-	"\x16VARIANT_KIND_THUMBNAIL\x10\x01\x12\x18\n" +
-	"\x14VARIANT_KIND_PREVIEW\x10\x02\x12\x1a\n" +
-	"\x16VARIANT_KIND_OPTIMIZED\x10\x03\x12\x17\n" +
-	"\x13VARIANT_KIND_POSTER\x10\x042\xc3\x03\n" +
+	"\x18VARIANT_KIND_UNSPECIFIED\x10\x00\x12\x17\n" +
+	"\x13VARIANT_KIND_POSTER\x10\x04\x12\x19\n" +
+	"\x15VARIANT_KIND_THUMB_64\x10\x05\x12\x1b\n" +
+	"\x17VARIANT_KIND_AVATAR_256\x10\x06\x12\x19\n" +
+	"\x15VARIANT_KIND_CARD_400\x10\a\x12\x1d\n" +
+	"\x19VARIANT_KIND_FEED_800X600\x10\b\x12 \n" +
+	"\x1cVARIANT_KIND_STORY_1080X1350\x10\t\"\x04\b\x01\x10\x01\"\x04\b\x02\x10\x02\"\x04\b\x03\x10\x03*\x16VARIANT_KIND_THUMBNAIL*\x14VARIANT_KIND_PREVIEW*\x16VARIANT_KIND_OPTIMIZED2\xc3\x03\n" +
 	"\fMediaService\x12Y\n" +
 	"\fCreateUpload\x12#.aedst.media.v1.CreateUploadRequest\x1a$.aedst.media.v1.CreateUploadResponse\x12_\n" +
 	"\x0eCompleteUpload\x12%.aedst.media.v1.CompleteUploadRequest\x1a&.aedst.media.v1.CompleteUploadResponse\x12M\n" +

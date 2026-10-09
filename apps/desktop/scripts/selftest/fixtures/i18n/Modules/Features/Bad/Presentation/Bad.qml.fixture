@@ -1,0 +1,13 @@
+import QtQuick
+
+// Fixture for scripts/check-i18n-extract.mjs: every i18n-* rule fires on this module. Not a real view.
+Item {
+    property int count: 2
+    property string dynamicKey: "x"
+
+    // qsTr("In a comment") must not count as a source string.
+    Text { text: qsTr("Hello") }
+    Text { text: qsTr("%n item(s)", "", count) }
+    Text { text: qsTr("Total: %1 of %2") }
+    Text { text: qsTr(dynamicKey) }
+}

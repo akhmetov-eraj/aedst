@@ -1,56 +1,41 @@
 "use client";
 
-import { useQuery } from "@connectrpc/connect-query";
-import { skipToken } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { useRouter } from "@/app/config/i18n/navigation";
 import { useCommandPalette } from "@/modules/search/lib/command-palette-store";
-import { normalizeQuery } from "@/modules/search/lib/search-params";
-import { HighlightedText } from "@/modules/search/ui/HighlightedText";
-import { SearchService } from "@/shared/api/connect/client";
 import { track } from "@/shared/lib/analytics/analytics";
 import { useFeatureFlag } from "@/shared/lib/analytics/use-feature-flag";
-import { useDebouncedValue } from "@/shared/lib/hooks/use-debounced-value";
-import {
-  Command,
-  CommandDialog,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
-} from "@/shared/ui/command";
+import { Button } from "@/shared/ui/button";
 import { Kbd } from "@/shared/ui/kbd";
 
-const DEBOUNCE_MS = 200;
-
-const ACTIONS = [
-  { href: "/tasks/new", key: "newTask" },
-  { href: "/tasks", key: "goTasks" },
-  { href: "/notifications", key: "goNotifications" },
-] as const;
+// cmdk and the dialog load on first open, keeping them out of every page's
+// first-load JS (this component is mounted in the signed-in layout).
+const CommandPaletteDialog = dynamic(
+  () => import("@/modules/search/ui/CommandPaletteDialog"),
+  { ssr: false },
+);
 
 /**
- * ⌘K / Ctrl+K palette (cmdk via shared/ui/command): quick actions, plus live
- * SearchService results for what is typed. Filtering is the server's job,
- * so cmdk's own fuzzy filter is off (`shouldFilter={false}`). Behind the
- * `command-palette` flag (default on) as the reference flag-gated feature.
+ * ⌘K / Ctrl+K palette: owns the shortcut and mounts the dialog lazily once
+ * it has been opened. Behind the `command-palette` flag (default on) as the
+ * reference flag-gated feature.
  */
 export function CommandPalette() {
-  const t = useTranslations("search.palette");
   const enabled = useFeatureFlag("command-palette");
-  const router = useRouter();
-  const { open, setOpen, toggle } = useCommandPalette();
-  const [input, setInput] = useState("");
-  const query = normalizeQuery(useDebouncedValue(input, DEBOUNCE_MS));
+  const { open, toggle } = useCommandPalette();
+  const hasOpened = useHasOpened(open);
 
   useEffect(() => {
     if (!enabled) {
       return;
     }
     const onKeyDown = (event: KeyboardEvent) => {
+      // An IME composition owns its key presses.
+      if (event.isComposing) {
+        return;
+      }
       if (event.key.toLowerCase() === "k" && (event.metaKey || event.ctrlKey)) {
         event.preventDefault();
         if (!useCommandPalette.getState().open) {
@@ -63,77 +48,21 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [enabled, toggle]);
 
-  const results = useQuery(
-    SearchService.method.search,
-    open && query ? { query, pageSize: 8 } : skipToken,
-    { meta: { feature: "search" } },
-  );
-
-  if (!enabled) {
+  if (!enabled || !hasOpened) {
     return null;
   }
+  return <CommandPaletteDialog />;
+}
 
-  function go(href: string) {
-    setOpen(false);
-    setInput("");
-    router.push(href);
-  }
-
-  return (
-    <CommandDialog
-      open={open}
-      onOpenChange={setOpen}
-      title={t("title")}
-      description={t("description")}
-    >
-      <Command shouldFilter={false}>
-        <CommandInput
-          value={input}
-          onValueChange={setInput}
-          placeholder={t("placeholder")}
-        />
-        <CommandList>
-          <CommandEmpty>
-            {results.isFetching ? t("searching") : t("noResults")}
-          </CommandEmpty>
-          {(results.data?.hits.length ?? 0) > 0 && (
-            <CommandGroup heading={t("results")}>
-              {results.data?.hits.map((hit) => (
-                <CommandItem
-                  key={`${hit.kind}:${hit.id}`}
-                  value={`hit:${hit.kind}:${hit.id}`}
-                  onSelect={() => go(hit.link || "/search")}
-                >
-                  <HighlightedText text={hit.title} />
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          )}
-          {query && (
-            <CommandGroup>
-              <CommandItem
-                value="search-all"
-                onSelect={() => go(`/search?q=${encodeURIComponent(query)}`)}
-              >
-                {t("searchAll", { query })}
-              </CommandItem>
-            </CommandGroup>
-          )}
-          <CommandGroup heading={t("actions")}>
-            {ACTIONS.map((action) => (
-              <CommandItem
-                key={action.key}
-                value={`action:${action.key}`}
-                onSelect={() => go(action.href)}
-              >
-                {t(action.key)}
-              </CommandItem>
-            ))}
-          </CommandGroup>
-        </CommandList>
-      </Command>
-    </CommandDialog>
-  );
+/** True from the first time `open` is true on, so the dialog stays mounted. */
+function useHasOpened(open: boolean): boolean {
+  const [hasOpened, setHasOpened] = useState(open);
+  useEffect(() => {
+    if (open) {
+      setHasOpened(true);
+    }
+  }, [open]);
+  return hasOpened;
 }
 
 /** Header button that opens the palette, showing the shortcut. */
@@ -141,21 +70,33 @@ export function CommandPaletteTrigger() {
   const t = useTranslations("search.palette");
   const enabled = useFeatureFlag("command-palette");
   const setOpen = useCommandPalette((state) => state.setOpen);
+  const apple = useIsApplePlatform();
   if (!enabled) {
     return null;
   }
   return (
-    <button
+    <Button
       type="button"
+      variant="outline"
       onClick={() => {
         track("command_palette_opened", { via: "button" });
         setOpen(true);
       }}
-      className="flex items-center gap-2 rounded-md border px-3 py-1.5 text-muted-foreground text-sm hover:bg-muted"
+      aria-keyshortcuts="Control+K Meta+K"
+      className="gap-2 rounded-md px-3 py-1.5 font-normal text-muted-foreground hover:bg-muted"
     >
       {t("open")}
       {/* text-foreground: the default muted-on-muted Kbd fails WCAG contrast. */}
-      <Kbd className="text-foreground">Ctrl K</Kbd>
-    </button>
+      <Kbd className="text-foreground">{apple ? "⌘K" : "Ctrl K"}</Kbd>
+    </Button>
+  );
+}
+
+/** Mac and iOS show the Command key; the server snapshot assumes Ctrl. */
+function useIsApplePlatform(): boolean {
+  return useSyncExternalStore(
+    () => () => {},
+    () => /Mac|iPhone|iPad|iPod/.test(navigator.userAgent),
+    () => false,
   );
 }

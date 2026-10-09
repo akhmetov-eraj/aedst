@@ -10,9 +10,9 @@ second, parallel component set:
   `packages/design-tokens/tokens` (single source for all platforms; edit the JSON and run
   `pnpm --dir packages/design-tokens build`, never the .qml). The only runtime state is
   `ThemeController` (`include/aedst/designsystem/theme_controller.hpp`): a native `QObject`
-  singleton exposing `dark`/`followsSystem`, registered as `Aedst.Theme`'s
-  `ThemeController` (`registerThemeController`, called once at startup from
-  `App/src/main.cpp`).
+  singleton exposing `dark`/`followsSystem`, declared with `QML_ELEMENT`/`QML_SINGLETON`
+  in the `AedstDesignSystem` module; the composition root supplies the instance with
+  `aedst::qmlsupport::SingletonSlot<ThemeController>::provide()` (`App/src/qml_singletons.cpp`).
 - **`Theme.qml`** (`pragma Singleton`) — the façade every component binds
   to. It re-exposes the `AedstTokens` values (picking light or dark from `ThemeController.dark`) under names that mirror the
   CSS custom properties in `apps/web/src/app/styles/globals.css` (shadcn's
@@ -30,8 +30,10 @@ second, parallel component set:
   `AEDST_DESIGNSYSTEM_QML_FILES` (`qt_add_qml_module`: the qmldir is generated and
   `qmlcachegen` compiles each file ahead of time; add new components only there). Every component reads color/spacing/radius/font values only
   from `Theme`, so light/dark follows `ThemeController.dark`
-  (OS-driven by default, `Theme.setDark()`/`followSystem()` to override)
-  with no hardcoded colors.
+  (OS-driven by default; `ThemeController.dark = true|false` sets it explicitly and `ThemeController.followSystem()` goes
+  back to the OS scheme) with no hardcoded colors. `Theme` also exposes `breakpointSm/Md/Lg` (generated
+  `breakpoint` tokens, window width in logical px; the shell collapses its toolbar below `breakpointMd`) and `textScale`
+  (the OS text size as a ratio of the platform's stock font, 1 to 2; every token font size is multiplied by it).
 
 Quality bar applied to every component: `variant`/`size` as QML `enum`
 declarations (not free-form strings), full dark-mode support via `Theme`,
@@ -65,6 +67,7 @@ Qt Quick Controls) where the underlying control supports it.
 | AedstTextField | `AedstTextField.qml` | `Input` + `Label` (rewritten) |
 | AedstTextArea | `AedstTextArea.qml` | `Textarea` |
 | AedstLabel | `AedstLabel.qml` | `Label` |
+| AedstListItem | `AedstListItem.qml` | `ItemDelegate` (themed list row; raw `ItemDelegate` is forbidden in features) |
 | AedstCheckBox | `AedstCheckBox.qml` | `Checkbox` (tri-state) |
 | AedstSwitch | `AedstSwitch.qml` | `Switch` |
 | AedstRadioButton / AedstRadioGroup | `AedstRadioButton.qml` / `AedstRadioGroup.qml` | `RadioGroup` / `RadioGroupItem` |
@@ -105,7 +108,7 @@ Qt Quick Controls) where the underlying control supports it.
 |---|---|---|
 | AedstAvatar | `AedstAvatar.qml` | `Avatar` (initials fallback, circular mask via `QtQuick.Effects.MultiEffect`) |
 | AedstTableView | `AedstTableView.qml` | `Table` |
-| AedstCalendar | `AedstCalendar.qml` | `Calendar` (hand-rolled month grid; QQC2's `Calendar` type was removed, see Skipped) |
+| AedstCalendar | `AedstCalendar.qml` | `Calendar` (`T.MonthGrid` + `T.DayOfWeekRow`: locale-aware first weekday, names and digits) |
 | AedstCarousel | `AedstCarousel.qml` | `Carousel` (`T.SwipeView`-based) |
 | AedstAccordion | `AedstAccordion.qml` | `Accordion` (stack of `AedstCollapsible`) |
 | AedstBreadcrumb | `AedstBreadcrumb.qml` | `Breadcrumb` |
@@ -124,10 +127,10 @@ rewritten), plus the `Theme.qml` singleton, `qmldir`, and the
   module has no existing app-wide overlay layer to hook into (Main.qml's
   `ApplicationWindow` has no overlay slot reserved for it). A future pass
   can add an `AedstToastHost` singleton once a call site needs it.
-- **`Calendar`** — Qt Quick Controls removed its `Calendar`/`CalendarModel`
-  types after Qt 5's "Extras" module; `AedstCalendar.qml` reimplements a
-  month grid directly on `Date` arithmetic rather than depending on a
-  removed/unstable API.
+- **`Calendar`** — Qt Quick Controls' old `Calendar`/`CalendarModel` (Qt 5 Extras) are gone, but `MonthGrid`,
+  `DayOfWeekRow` and `WeekNumberColumn` are part of Qt Quick Controls 2 in Qt 6. `AedstCalendar.qml` is built on
+  `MonthGrid` + `DayOfWeekRow`, so the first weekday, weekday names and digits follow the locale (no hand-written date
+  arithmetic). It has no week-number column or date range yet.
 - **`Chart`** — kept to a minimal `Canvas`-drawn bar/line renderer per the
   explicit instruction not to pull in a heavy charting dependency; it does
   not attempt to match shadcn's Recharts-based `ChartContainer` feature set

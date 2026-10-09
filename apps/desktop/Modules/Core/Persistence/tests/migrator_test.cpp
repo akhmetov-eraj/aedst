@@ -120,7 +120,7 @@ TEST_F(MigratorTest, RejectsMigrationListWithGaps) {
     auto version = migrator.migrate(*connection_);
 
     ASSERT_FALSE(version.has_value());
-    EXPECT_EQ(version.error().code, core::ErrorCode::InvalidArgument);
+    EXPECT_EQ(version.error().code, core::ErrorCode::InvalidInput);
     EXPECT_FALSE(tableExists(*connection_, "x"));
 }
 
@@ -152,8 +152,10 @@ TEST_F(MigratorTest, AppMigrationsAdoptPreMigratorDatabase) {
 /// SHA-256 of each shipped migration's SQL text, in order. A shipped migration must never change (databases of
 /// users already ran it); fix mistakes with a NEW migration. When you append migration N+1, append its hash here,
 /// and leave the existing entries alone. The test fails with the computed hash of whatever differs.
-constexpr std::array<std::string_view, 1> kShippedMigrationHashes{
+constexpr std::array<std::string_view, 3> kShippedMigrationHashes{
     "e5532b7c31d8aea3a84ba5d0de57ac3c57fe55c47bdc7457ede7b5bed46f29e1", // 1 create_auth_session
+    "de4541bfb0574a2025deb4b403899efdd4cad1f9f5c5cc883b23b460ffcf9ab9", // 2 create_outbox
+    "6b63e87e599197035b756042ec22e42bef7ce5fabdb54046424f7c92246be493", // 3 create_kv
 };
 
 TEST(SchemaHistoryTest, ShippedMigrationsAreFrozen) {

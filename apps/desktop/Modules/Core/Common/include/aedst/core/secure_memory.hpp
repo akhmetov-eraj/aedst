@@ -70,6 +70,9 @@ public:
         }
         return *this;
     }
+    /// Content equality (not constant-time: used for session bookkeeping and tests, never to authenticate a caller).
+    friend bool operator==(const SecretString& a, const SecretString& b) noexcept { return a.value_ == b.value_; }
+
     SecretString(SecretString&& other) noexcept : value_(std::move(other.value_)) { other.value_.clear(); }
     SecretString& operator=(SecretString&& other) noexcept {
         if (this != &other) {

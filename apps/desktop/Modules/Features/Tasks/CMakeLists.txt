@@ -34,6 +34,8 @@ add_library(AedstFeatureTasks STATIC
     Domain/create_task_use_case.cpp
     Data/connect_task_repository.hpp
     Data/connect_task_repository.cpp
+    Data/task_outbox_handlers.hpp
+    Data/task_outbox_handlers.cpp
     Presentation/task_list_model.hpp
     Presentation/task_list_model.cpp
     Presentation/task_list_view_model.hpp
@@ -46,17 +48,24 @@ add_library(AedstFeatureTasks STATIC
 )
 add_library(Aedst::Feature::Tasks ALIAS AedstFeatureTasks)
 
+# Declarative QML singletons (QML_ELEMENT + QML_SINGLETON, Aedst::QmlSupport); the module URI is the import name QML uses.
+# Only App links AedstFeatureTasksplugin, so QML test executables keep registering their fakes under this URI.
+target_link_libraries(AedstFeatureTasks PUBLIC Aedst::QmlSupport)
+qt_add_qml_module(AedstFeatureTasks URI Aedst.Feature.Tasks VERSION 1.0 RESOURCE_PREFIX /qt/qml)
+
 target_include_directories(AedstFeatureTasks PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 # PUBLIC where headers expose the type: Core (Outcome/ErrorSink), Network +
 # Contract (Data speaks generated messages), Navigation (Route), Media
-# (TaskDetailViewModel exposes MediaListModel / MediaUploadController).
+# (TaskDetailViewModel exposes MediaListModel / MediaUploadController), Outbox (OutboxHandler, OutboxService).
 target_link_libraries(AedstFeatureTasks
     PUBLIC
         Aedst::Core
         Aedst::Network
         Aedst::Contract
         Aedst::Navigation
+        Aedst::Outbox
+        Aedst::Plugin
         Aedst::Media
         Qt6::Core
     PRIVATE

@@ -2,9 +2,9 @@ package com.aedst.core.media.upload
 
 import androidx.work.ListenableWorker
 import com.aedst.core.common.AedstError
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertTrue
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Test
 
 class UploadWorkDataTest {
 
@@ -18,11 +18,18 @@ class UploadWorkDataTest {
 
     @Test
     fun `retryable errors retry until the attempt budget is spent, others fail at once`() {
-        assertTrue(UploadWorkData.resultFor(AedstError.Network("x"), 0) is ListenableWorker.Result.Retry)
+        assertTrue(UploadWorkData.resultFor(AedstError.Unavailable("x"), 0) is ListenableWorker.Result.Retry)
         assertTrue(
-            UploadWorkData.resultFor(AedstError.Network("x"), UploadWorkData.MAX_ATTEMPTS) is
+            UploadWorkData.resultFor(AedstError.Unavailable("x"), UploadWorkData.MAX_ATTEMPTS) is
                 ListenableWorker.Result.Failure,
         )
-        assertTrue(UploadWorkData.resultFor(AedstError.Validation("x"), 0) is ListenableWorker.Result.Failure)
+        assertTrue(UploadWorkData.resultFor(AedstError.InvalidInput("x"), 0) is ListenableWorker.Result.Failure)
+    }
+
+    @Test
+    fun `a step is retried exactly when its failure is retryable and attempts remain`() {
+        assertTrue(UploadWorkData.willRetry(AedstError.Offline(), 0))
+        assertTrue(!UploadWorkData.willRetry(AedstError.Offline(), UploadWorkData.MAX_ATTEMPTS))
+        assertTrue(!UploadWorkData.willRetry(AedstError.Forbidden(), 0))
     }
 }

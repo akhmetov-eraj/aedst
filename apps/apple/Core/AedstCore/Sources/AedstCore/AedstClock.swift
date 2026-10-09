@@ -6,9 +6,10 @@ import Foundation
 /// directly, so `AedstTesting`'s `ManualClock` can fast-forward retries and
 /// token-expiry checks in unit tests without real delays.
 ///
-/// Durations are `TimeInterval` (seconds), not `Duration`: `Duration` and
-/// `Task.sleep(for:)` are iOS 16 / macOS 13, above this package's floor
-/// (iOS 15 / macOS 12); `Task.sleep(nanoseconds:)` back-deploys to iOS 13.
+/// Durations are `TimeInterval` (seconds), not `Duration`: the protocol keeps
+/// a plain Foundation type so test doubles and call sites stay simple, even
+/// though `Duration` / `Task.sleep(for:)` are available at this package's
+/// floor (iOS 18 / macOS 15). `SystemClock` converts to nanoseconds.
 public protocol AedstClock: Sendable {
     var now: Date { get }
     func sleep(for duration: TimeInterval) async throws

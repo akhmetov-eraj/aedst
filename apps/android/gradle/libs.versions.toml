@@ -1,8 +1,8 @@
 [versions]
 # Version policy: latest STABLE release of everything (never alpha/beta/rc),
 # each verified against Maven Central / Google Maven metadata. Re-verify on
-# every bump; see docs/content/library-first.md. Last full re-verification: 2026-10-07
-# (every entry below was already the latest stable except the Gradle wrapper, 9.7.1 -> 9.8.0).
+# every bump; see docs/content/library-first.md. Last full re-verification: 2026-10-08
+# (new on that pass: JUnit 6.1.3, Roborazzi 1.76.0, AppAuth 0.11.1, Navigation 3 1.2.0; detekt is the one pre-release exception, see "static analysis" below).
 
 # --- language / build ---
 kotlin = "2.4.20"
@@ -26,8 +26,9 @@ coroutines = "1.11.0"
 # DI: Hilt (Dagger). Hilt >= 2.59 requires AGP 9 (satisfied). See the DI/AGP
 # decision in apps/android/README.md.
 hilt = "2.60.1"
-hilt-androidx = "1.4.0" # androidx.hilt: navigation-compose, work, compiler
-navigation-compose = "2.10.2"
+hilt-androidx = "1.4.0" # androidx.hilt: lifecycle-viewmodel-compose, work, compiler
+# Navigation 3: the back stack is app-owned state (a list of serializable NavKeys); see docs/content/android/architecture.md.
+navigation3 = "1.2.0"
 
 # --- networking ---
 # ConnectRPC/Protobuf generated client (see ../buf.gen.yaml). connect-kotlin
@@ -56,6 +57,10 @@ coil = "3.6.3"
 # --- TV ---
 tv-material = "1.1.0"
 
+# --- auth ---
+# Native OIDC client: Authorization Code + PKCE (S256) in a Custom Tab, never a WebView (RFC 8252).
+appauth = "0.11.1"
+
 # --- security ---
 # androidx.security:security-crypto is deprecated; secrets are stored with
 # Android Keystore + Google Tink AEAD (core/security).
@@ -72,6 +77,11 @@ media3 = "1.11.1"
 firebase-bom = "34.19.0"
 google-services-plugin = "4.5.0"
 
+# --- debug tooling ---
+# LeakCanary: debug builds only (debugImplementation, installed by its own content provider). 2.14 is the latest stable
+# on Maven Central (3.0 is alpha-only); verified 2026-10-09.
+leakcanary = "2.14"
+
 # --- monitoring ---
 # Sentry: crash/error reporting + OkHttp tracing (every io.sentry artifact aligned through the BOM).
 sentry = "8.59.0"
@@ -80,11 +90,25 @@ sentry-gradle-plugin = "6.23.0"
 posthog = "3.72.0"
 
 # --- static analysis ---
-detekt = "1.23.8"
+# EXCEPTION to the stable-only policy (explicit owner decision, 2026-10-08): detekt 2.0.0-alpha.6 (group dev.detekt,
+# alpha-only on Maven Central; embeds Kotlin 2.4.10 so it parses Kotlin 2.4 sources, unlike 1.23.8). Only dev.detekt
+# may carry a pre-release. Revisit trigger: dev.detekt 2.0.0 stable -> drop this exception (docs/content/decisions.md).
+detekt = "2.0.0-alpha.6"
 ktlint-plugin = "14.2.0"
+# Compose lint rules for detekt (mrmans0n/compose-rules). 0.6.7 is built against dev.detekt:detekt-core 2.0.0-alpha.6 (its POM), verified on Maven Central 2026-10-08.
+compose-rules = "0.6.7"
+# Kover (Kotlin coverage); plugin id org.jetbrains.kotlinx.kover, verified on the Gradle plugin portal 2026-10-08.
+kover = "0.9.11"
 
 # --- testing ---
-junit4 = "4.13.2"
+# JUnit 6 (Jupiter) is the test framework everywhere: pure JVM modules (`aedst.jvm.library`), Android library modules
+# (`aedst.android.library`). The ONLY JUnit 4 left on the JVM test classpath is what Robolectric,
+# the Compose test rules and AndroidJUnitRunner drag in themselves (they are JUnit 4 rules/runners with no Jupiter-native
+# equivalent): modules with such tests add `junit-vintage-engine` as testRuntimeOnly so Gradle's JUnit Platform runs
+# them next to the Jupiter tests. Instrumented tests (androidTest) and the benchmark module are JUnit 4 by Android's
+# design. `junit:junit` is therefore not a direct dependency of any module. See library-first.md.
+junit-jupiter = "6.1.3"
+roborazzi = "1.76.0" # screenshot (golden image) tests on the JVM through Robolectric native graphics
 androidx-test-junit = "1.3.0"
 mockk = "1.14.11"
 turbine = "1.2.1"
@@ -102,18 +126,16 @@ splashscreen = "1.2.0"
 androidx-appcompat = "1.8.0"
 desugar-jdk-libs = "2.1.5"
 
-# --- dependency update tooling (root project only; used by scripts/update-deps.sh) ---
-ben-manes-versions = "0.65.0"
-version-catalog-update = "1.1.1"
-
 [libraries]
 # classpath dependencies for build-logic convention plugins (Gradle plugin artifacts, not applied here)
 android-gradlePlugin = { module = "com.android.tools.build:gradle", version.ref = "agp" }
 kotlin-gradlePlugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }
 ksp-gradlePlugin = { module = "com.google.devtools.ksp:com.google.devtools.ksp.gradle.plugin", version.ref = "ksp" }
 hilt-gradlePlugin = { module = "com.google.dagger:hilt-android-gradle-plugin", version.ref = "hilt" }
-detekt-gradlePlugin = { module = "io.gitlab.arturbosch.detekt:detekt-gradle-plugin", version.ref = "detekt" }
+detekt-gradlePlugin = { module = "dev.detekt:detekt-gradle-plugin", version.ref = "detekt" }
 ktlint-gradlePlugin = { module = "org.jlleitschuh.gradle:ktlint-gradle", version.ref = "ktlint-plugin" }
+compose-rules-detekt = { module = "io.nlopez.compose.rules:detekt", version.ref = "compose-rules" }
+kover-gradlePlugin = { module = "org.jetbrains.kotlinx:kover-gradle-plugin", version.ref = "kover" }
 compose-compiler-gradlePlugin = { module = "org.jetbrains.kotlin:compose-compiler-gradle-plugin", version.ref = "kotlin" }
 
 javax-inject = { module = "javax.inject:javax.inject", version.ref = "javax-inject" }
@@ -143,11 +165,18 @@ compose-activity = { module = "androidx.activity:activity-compose", version.ref 
 compose-lifecycle-runtime = { module = "androidx.lifecycle:lifecycle-runtime-compose", version.ref = "compose-lifecycle" }
 compose-lifecycle-viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "compose-lifecycle" }
 
-navigation-compose = { module = "androidx.navigation:navigation-compose", version.ref = "navigation-compose" }
+navigation3-runtime = { module = "androidx.navigation3:navigation3-runtime", version.ref = "navigation3" }
+navigation3-ui = { module = "androidx.navigation3:navigation3-ui", version.ref = "navigation3" }
+lifecycle-viewmodel-navigation3 = { module = "androidx.lifecycle:lifecycle-viewmodel-navigation3", version.ref = "compose-lifecycle" }
+compose-material3-adaptive-navigation-suite = { module = "androidx.compose.material3:material3-adaptive-navigation-suite" }
+# Material 3 adaptive (window adaptive info, list-detail pane scaffold + navigator); all three are managed by the Compose BOM.
+compose-material3-adaptive = { module = "androidx.compose.material3.adaptive:adaptive" }
+compose-material3-adaptive-layout = { module = "androidx.compose.material3.adaptive:adaptive-layout" }
+compose-material3-adaptive-navigation = { module = "androidx.compose.material3.adaptive:adaptive-navigation" }
 
 hilt-android = { module = "com.google.dagger:hilt-android", version.ref = "hilt" }
 hilt-compiler = { module = "com.google.dagger:hilt-android-compiler", version.ref = "hilt" }
-hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hilt-androidx" }
+hilt-lifecycle-viewmodel-compose = { module = "androidx.hilt:hilt-lifecycle-viewmodel-compose", version.ref = "hilt-androidx" }
 hilt-work = { module = "androidx.hilt:hilt-work", version.ref = "hilt-androidx" }
 hilt-work-compiler = { module = "androidx.hilt:hilt-compiler", version.ref = "hilt-androidx" }
 
@@ -157,6 +186,7 @@ connect-kotlin-google-javalite-ext = { module = "com.connectrpc:connect-kotlin-g
 okhttp-core = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
 okhttp-logging-interceptor = { module = "com.squareup.okhttp3:logging-interceptor", version.ref = "okhttp" }
 okhttp-mockwebserver = { module = "com.squareup.okhttp3:mockwebserver", version.ref = "okhttp" }
+okhttp-coroutines = { module = "com.squareup.okhttp3:okhttp-coroutines", version.ref = "okhttp" }
 
 room-runtime = { module = "androidx.room:room-runtime", version.ref = "room" }
 room-ktx = { module = "androidx.room:room-ktx", version.ref = "room" }
@@ -168,11 +198,14 @@ protobuf-kotlin-lite = { module = "com.google.protobuf:protobuf-kotlin-lite", ve
 
 workmanager-runtime = { module = "androidx.work:work-runtime-ktx", version.ref = "workmanager" }
 
+leakcanary-android = { module = "com.squareup.leakcanary:leakcanary-android", version.ref = "leakcanary" }
+
 coil-compose = { module = "io.coil-kt.coil3:coil-compose", version.ref = "coil" }
 coil-network-okhttp = { module = "io.coil-kt.coil3:coil-network-okhttp", version.ref = "coil" }
 
 tv-material = { module = "androidx.tv:tv-material", version.ref = "tv-material" }
 
+appauth = { module = "net.openid:appauth", version.ref = "appauth" }
 tink-android = { module = "com.google.crypto.tink:tink-android", version.ref = "tink-android" }
 play-integrity = { module = "com.google.android.play:integrity", version.ref = "play-integrity" }
 
@@ -182,7 +215,6 @@ firebase-messaging = { module = "com.google.firebase:firebase-messaging" }
 sentry-bom = { module = "io.sentry:sentry-bom", version.ref = "sentry" }
 sentry-android = { module = "io.sentry:sentry-android" }
 sentry-okhttp = { module = "io.sentry:sentry-okhttp" }
-sentry-android-navigation = { module = "io.sentry:sentry-android-navigation" }
 posthog-android = { module = "com.posthog:posthog-android", version.ref = "posthog" }
 
 media3-common = { module = "androidx.media3:media3-common", version.ref = "media3" }
@@ -191,7 +223,14 @@ media3-ui-compose = { module = "androidx.media3:media3-ui-compose", version.ref 
 media3-transformer = { module = "androidx.media3:media3-transformer", version.ref = "media3" }
 media3-effect = { module = "androidx.media3:media3-effect", version.ref = "media3" }
 
-junit4 = { module = "junit:junit", version.ref = "junit4" }
+junit-jupiter-api = { module = "org.junit.jupiter:junit-jupiter-api" }
+junit-vintage-engine = { module = "org.junit.vintage:junit-vintage-engine" }
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit-jupiter" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+roborazzi = { module = "io.github.takahirom.roborazzi:roborazzi", version.ref = "roborazzi" }
+roborazzi-compose = { module = "io.github.takahirom.roborazzi:roborazzi-compose", version.ref = "roborazzi" }
+roborazzi-junit-rule = { module = "io.github.takahirom.roborazzi:roborazzi-junit-rule", version.ref = "roborazzi" }
 androidx-test-junit = { module = "androidx.test.ext:junit", version.ref = "androidx-test-junit" }
 androidx-test-espresso = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
 mockk = { module = "io.mockk:mockk", version.ref = "mockk" }
@@ -216,14 +255,15 @@ kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", versi
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }
-detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+detekt = { id = "dev.detekt", version.ref = "detekt" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlint-plugin" }
 google-services = { id = "com.google.gms.google-services", version.ref = "google-services-plugin" }
 sentry = { id = "io.sentry.android.gradle", version.ref = "sentry-gradle-plugin" }
 protobuf = { id = "com.google.protobuf", version.ref = "protobuf-plugin" }
+room = { id = "androidx.room", version.ref = "room" }
 baseline-profile = { id = "androidx.baselineprofile", version.ref = "androidx-benchmark" }
-ben-manes-versions = { id = "com.github.ben-manes.versions", version.ref = "ben-manes-versions" }
-version-catalog-update = { id = "nl.littlerobots.version-catalog-update", version.ref = "version-catalog-update" }
+roborazzi = { id = "io.github.takahirom.roborazzi", version.ref = "roborazzi" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 
 # build-logic convention plugins consumed from settings.gradle.kts / module build.gradle.kts
 android-application-convention = { id = "aedst.android.application" }

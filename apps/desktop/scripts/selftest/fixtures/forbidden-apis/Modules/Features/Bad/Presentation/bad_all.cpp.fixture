@@ -1,0 +1,28 @@
+// Fixture for scripts/check-forbidden-apis.sh: every line below MUST be reported. Not compiled.
+#include "aedst/core/logger.hpp"
+
+#include <QNetworkAccessManager>
+#include <QSettings>
+#include <QString>
+#include <QThread>
+
+#include <thread>
+
+Q_LOGGING_CATEGORY(lcBad, "aedst.bad")
+
+class Worker : public QThread {};
+
+void everythingWrong(QNetworkReply* reply, int n) {
+    reply->ignoreSslErrors();
+    std::thread t([] {});
+    QNetworkAccessManager manager;
+    qDebug("no category");
+    qWarning() << "no category either";
+    qmlRegisterSingletonType<Worker>("Bad", 1, 0, "Bad", nullptr);
+    QSettings store;
+    store.setValue("password", "hunter2");
+    aedst::core::AedstLogger::warn("Qt-aware code must use a category: {}", n);
+}
+
+// aedst-allow:
+void bareMarkerWithoutReasonIsItselfAnError() {}

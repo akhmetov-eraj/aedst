@@ -1,0 +1,27 @@
+#pragma once
+
+#include "Domain/{{name}}_entry.hpp"
+#include "Domain/{{name}}_repository.hpp"
+
+#include <memory>
+#include <vector>
+
+namespace aedst::feature::{{name}} {
+
+/// Screen state for the entry list (plain C++; wrap it in a QObject view model when a QML view is added).
+class {{Name}}ListState {
+public:
+    explicit {{Name}}ListState(std::shared_ptr<{{Name}}Repository> repository);
+
+    void load();
+
+    [[nodiscard]] const std::vector<{{Name}}Entry>& entries() const noexcept { return entries_; }
+    [[nodiscard]] bool isLoading() const noexcept { return loading_; }
+
+private:
+    std::shared_ptr<{{Name}}Repository> repository_;
+    std::vector<{{Name}}Entry> entries_;
+    bool loading_{false};
+};
+
+} // namespace aedst::feature::{{name}}

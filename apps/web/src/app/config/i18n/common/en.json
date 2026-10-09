@@ -7,7 +7,8 @@
     "save": "Save",
     "back": "Back",
     "goHome": "Go home",
-    "tryAgain": "Try again"
+    "tryAgain": "Try again",
+    "close": "Close"
   },
   "errors": {
     "generic": "Something went wrong. Please try again.",
@@ -28,17 +29,29 @@
       "timeout": "The request took too long. Try again.",
       "offline": "You’re offline. Check your connection.",
       "cancelled": "The request was cancelled.",
+      "upgradeRequired": "Update the app to continue.",
+      "storage": "Couldn’t read or save data on this device.",
       "unknown": "Something went wrong. Please try again."
     }
   },
   "a11y": {
-    "skipToContent": "Skip to main content"
+    "skipToContent": "Skip to main content",
+    "loading": "Loading",
+    "notifications": "Notifications"
+  },
+  "locale": {
+    "label": "Language"
   },
   "consent": {
     "title": "Analytics consent",
     "description": "Allow privacy-friendly analytics and performance measurement to help us improve the app?",
     "accept": "Allow",
-    "decline": "No thanks"
+    "decline": "No thanks",
+    "manage": "Privacy settings",
+    "withdraw": "Withdraw",
+    "privacyPolicy": "Privacy policy",
+    "currentlyAllowed": "Currently: allowed.",
+    "currentlyDeclined": "Currently: declined."
   },
   "nav": {
     "label": "Main",
@@ -51,7 +64,12 @@
     "banner": "You’re offline. Some features are unavailable until you reconnect.",
     "title": "You’re offline",
     "description": "This page isn’t available offline. Reconnect and try again.",
-    "retry": "Retry"
+    "retry": "Retry",
+    "queued": "Your changes are saved on this device and will be sent when you reconnect."
+  },
+  "sync": {
+    "pending": "Waiting to sync: {count}",
+    "failed": "Not synced: {count}"
   },
   "pwa": {
     "installTitle": "Install AEDST",

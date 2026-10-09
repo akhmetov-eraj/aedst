@@ -4,10 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"image"
-	"image/color"
-	"image/jpeg"
-	"image/png"
 	"log/slog"
 	"os/exec"
 	"testing"
@@ -23,67 +19,31 @@ import (
 	"github.com/aedst/server/internal/shared/ids"
 )
 
-func encodeImage(t *testing.T, w, h int, alpha bool) []byte {
-	t.Helper()
-	img := image.NewNRGBA(image.Rect(0, 0, w, h))
-	for y := range h {
-		for x := range w {
-			a := uint8(255)
-			if alpha && x == 0 {
-				a = 0
-			}
-			img.SetNRGBA(x, y, color.NRGBA{R: uint8(x), G: uint8(y), B: 100, A: a})
-		}
-	}
-	var buf bytes.Buffer
-	if alpha {
-		_ = png.Encode(&buf, img)
-	} else {
-		_ = jpeg.Encode(&buf, img, &jpeg.Options{Quality: 95})
-	}
-	return buf.Bytes()
+// fakeImages stands in for libvips so the worker is tested in default builds.
+type fakeImages struct {
+	res   processing.Sanitized
+	err   error
+	calls int
+	gotCT string
 }
 
-func TestImageVariants(t *testing.T) {
-	w, h, out, err := processing.ImageVariants(bytes.NewReader(encodeImage(t, 3000, 1500, false)), "image/jpeg", 50_000_000)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if w != 3000 || h != 1500 || len(out) != 3 {
-		t.Fatalf("got %dx%d, %d variants", w, h, len(out))
-	}
-	want := map[string][2]int{"thumbnail": {256, 128}, "preview": {1280, 640}, "optimized": {2560, 1280}}
-	for _, v := range out {
-		if dims := want[v.Name]; v.Width != dims[0] || v.Height != dims[1] || v.ContentType != "image/jpeg" {
-			t.Errorf("%s = %dx%d %s", v.Name, v.Width, v.Height, v.ContentType)
-		}
-	}
-
-	_, _, out, err = processing.ImageVariants(bytes.NewReader(encodeImage(t, 64, 32, true)), "image/png", 50_000_000)
-	if err != nil || out[0].ContentType != "image/png" || out[0].Width != 64 {
-		t.Fatalf("transparent png must stay png and never be upscaled: %+v, %v", out[0], err)
-	}
-}
-
-func TestImageVariants_RefusesBombsAndGarbage(t *testing.T) {
-	if _, _, _, err := processing.ImageVariants(bytes.NewReader(encodeImage(t, 100, 100, false)), "image/jpeg", 5_000); !errors.Is(err, processing.ErrUnprocessable) {
-		t.Errorf("over the pixel limit: %v", err)
-	}
-	if _, _, _, err := processing.ImageVariants(bytes.NewReader([]byte("not an image")), "image/png", 1e9); !errors.Is(err, processing.ErrUnprocessable) {
-		t.Errorf("garbage: %v", err)
-	}
+func (f *fakeImages) Sanitize(_ context.Context, _ []byte, ct string, _ int64) (processing.Sanitized, error) {
+	f.calls++
+	f.gotCT = ct
+	return f.res, f.err
 }
 
 type fakeStore struct {
 	m        domain.Media
 	ready    bool
 	variants []domain.Variant
+	width    int
 	failed   string
 }
 
 func (f *fakeStore) GetByID(context.Context, ids.ID) (domain.Media, error) { return f.m, nil }
-func (f *fakeStore) MarkReady(_ context.Context, _ ids.ID, _, _ int, _ int64, v []domain.Variant) error {
-	f.ready, f.variants = true, v
+func (f *fakeStore) MarkReady(_ context.Context, _ ids.ID, w, _ int, _ int64, v []domain.Variant) error {
+	f.ready, f.variants, f.width = true, v, w
 	return nil
 }
 
@@ -97,34 +57,75 @@ func run(t *testing.T, w *processing.Worker, id ids.ID) error {
 	return w.Work(context.Background(), &river.Job[mediajobs.ProcessArgs]{JobRow: &rivertype.JobRow{Attempt: 1, MaxAttempts: 5}, Args: mediajobs.ProcessArgs{MediaID: id.String()}})
 }
 
-func TestWorker_ImageEndToEndAndUnprocessable(t *testing.T) {
+func newImageFixture(t *testing.T, fake *fakeImages) (*processing.Worker, *fakeStore, *storage.Memory, ids.ID, string) {
+	t.Helper()
 	objects := storage.NewMemory()
 	owner, id := ids.New(), ids.New()
-	data := encodeImage(t, 600, 300, false)
+	data := []byte("raw-upload-with-gps")
 	key := domain.ObjectKey(owner, id, "original")
 	_ = objects.Put(context.Background(), key, bytes.NewReader(data), int64(len(data)), "image/jpeg")
 	store := &fakeStore{m: domain.Media{ID: id, OwnerID: owner, Kind: domain.KindImage, Status: domain.StatusProcessing, ContentType: "image/jpeg", ObjectKey: key, SizeBytes: int64(len(data))}}
-	w := processing.NewWorker(store, objects, processing.Config{MaxImagePixels: 50_000_000}, slog.New(slog.DiscardHandler))
-
-	if err := run(t, w, id); err != nil || !store.ready || len(store.variants) != 3 {
-		t.Fatalf("Work = %v, ready %v, variants %d", err, store.ready, len(store.variants))
+	cfg := processing.Config{MaxImagePixels: 50_000_000, MaxImageBytes: 1 << 20}
+	if fake != nil { // a typed nil must not become a non-nil interface
+		cfg.Images = fake
 	}
-	if len(objects.Keys()) != 4 {
-		t.Errorf("stored objects = %v, want original + 3 variants", objects.Keys())
+	w := processing.NewWorker(store, objects, cfg, slog.New(slog.DiscardHandler))
+	return w, store, objects, id, key
+}
+
+func TestWorker_ImageSanitizesOriginalAndStoresNoVariants(t *testing.T) {
+	fake := &fakeImages{res: processing.Sanitized{Width: 600, Height: 300, Changed: true, ContentType: "image/jpeg", Data: []byte("clean")}}
+	w, store, objects, id, key := newImageFixture(t, fake)
+
+	if err := run(t, w, id); err != nil || !store.ready || store.width != 600 {
+		t.Fatalf("Work = %v, ready %v, width %d", err, store.ready, store.width)
+	}
+	if len(store.variants) != 0 {
+		t.Errorf("generic renditions must not be pre-generated (imgproxy does it): %v", store.variants)
+	}
+	if keys := objects.Keys(); len(keys) != 1 || keys[0] != key {
+		t.Errorf("stored objects = %v, want only the original", keys)
+	}
+	body, _, err := objects.Get(context.Background(), key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	buf := new(bytes.Buffer)
+	_, _ = buf.ReadFrom(body)
+	if buf.String() != "clean" {
+		t.Errorf("original not replaced by the sanitized bytes: %q", buf.String())
+	}
+	if fake.gotCT != "image/jpeg" {
+		t.Errorf("processor got content type %q", fake.gotCT)
 	}
 
-	store.m.Status = domain.StatusReady
-	store.ready = false
-	if err := run(t, w, id); err != nil || store.ready {
+	// A retried job after success does nothing.
+	store.m.Status, store.ready, fake.calls = domain.StatusReady, false, 0
+	if err := run(t, w, id); err != nil || store.ready || fake.calls != 0 {
 		t.Fatal("a retried job after success must do nothing")
 	}
+}
 
-	_ = objects.Put(context.Background(), key, bytes.NewReader([]byte("garbage!")), 8, "image/jpeg")
-	store.m.Status, store.m.SizeBytes = domain.StatusProcessing, 8
+func TestWorker_UnchangedImageIsNotRewritten(t *testing.T) {
+	fake := &fakeImages{res: processing.Sanitized{Width: 10, Height: 10}} // e.g. animated GIF
+	w, store, objects, id, key := newImageFixture(t, fake)
+	if err := run(t, w, id); err != nil || !store.ready {
+		t.Fatalf("Work = %v", err)
+	}
+	body, _, _ := objects.Get(context.Background(), key)
+	buf := new(bytes.Buffer)
+	_, _ = buf.ReadFrom(body)
+	if buf.String() != "raw-upload-with-gps" {
+		t.Errorf("original was rewritten: %q", buf.String())
+	}
+}
+
+func TestWorker_UnprocessableImageFailsAndCancels(t *testing.T) {
+	w, store, _, id, _ := newImageFixture(t, &fakeImages{err: processing.ErrUnprocessable})
 	err := run(t, w, id)
 	var cancel *rivertype.JobCancelError
-	if !errors.As(err, &cancel) || store.failed == "" {
-		t.Fatalf("garbage: err %v, failed %q; want FAILED and a cancelled job", err, store.failed)
+	if !errors.As(err, &cancel) || store.failed == "" || store.ready {
+		t.Fatalf("err %v, failed %q, ready %v; want FAILED and a cancelled job", err, store.failed, store.ready)
 	}
 }
 
@@ -146,7 +147,7 @@ func TestFFmpeg_PosterAndProbe(t *testing.T) {
 		t.Fatalf("probe = %+v, %v", probe, err)
 	}
 	variants, err := f.Poster(context.Background(), clip, probe.DurationMs)
-	if err != nil || len(variants) != 2 || variants[0].Name != "poster" || variants[0].Width != 320 {
+	if err != nil || len(variants) != 1 || variants[0].Name != "poster" || variants[0].Width != 320 {
 		t.Fatalf("poster = %+v, %v", variants, err)
 	}
 }

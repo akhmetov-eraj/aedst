@@ -130,7 +130,24 @@ void ConnectTaskRepository::create(const NewTask& task, core::Completion<Task> d
     if (task.dueDate) {
         contract::setTimestamp(*request.mutable_due_date(), *task.dueDate);
     }
-    client_->unary(contract::kTasksCreateTask, request, mapTask<tasksv1::CreateTaskResponse>(std::move(done)));
+    client_->unary(contract::kTasksCreateTask, request, mapTask<tasksv1::CreateTaskResponse>(std::move(done)),
+                   network::CallOptions{.idempotencyKey = task.clientRequestId});
+}
+
+void ConnectTaskRepository::setDone(const std::string& id, bool done, const std::string& idempotencyKey,
+                                    core::Completion<Task> completion) {
+    const network::CallOptions options{.idempotencyKey = idempotencyKey};
+    if (done) {
+        tasksv1::CompleteTaskRequest request;
+        request.set_id(id);
+        client_->unary(contract::kTasksCompleteTask, request,
+                       mapTask<tasksv1::CompleteTaskResponse>(std::move(completion)), options);
+        return;
+    }
+    tasksv1::ReopenTaskRequest request;
+    request.set_id(id);
+    client_->unary(contract::kTasksReopenTask, request, mapTask<tasksv1::ReopenTaskResponse>(std::move(completion)),
+                   options);
 }
 
 void ConnectTaskRepository::complete(const std::string& id, core::Completion<Task> done) {

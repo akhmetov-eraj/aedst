@@ -34,7 +34,7 @@ T.Button {
     background: Rectangle {
         radius: Theme.radiusMd
         color: control.checked ? Theme.accent
-             : control.hovered ? Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.6)
+             : control.hovered ? Qt.alpha(Theme.accent, 0.6)
              : "transparent"
         opacity: control.enabled ? 1.0 : 0.5
 

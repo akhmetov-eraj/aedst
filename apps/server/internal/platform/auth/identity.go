@@ -9,7 +9,7 @@ import (
 // Identity is the authenticated principal, extracted from a verified access
 // token by the httpserver auth interceptor and placed on the context. Modules
 // consume it via FromContext — they never verify tokens themselves (see
-// docs/content/architecture.md).
+// docs/content/server/architecture.md).
 type Identity struct {
 	// UserID is the stable owner id modules key their data by. For an
 	// external OIDC token it is derived from (Issuer, Subject) via

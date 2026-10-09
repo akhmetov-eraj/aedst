@@ -52,6 +52,23 @@ TEST_F(AedstLoggerTest, SetLevelChangesFilteringAtRuntime) {
     EXPECT_NE(output.find("after"), std::string::npos);
 }
 
+TEST_F(AedstLoggerTest, RedactsOnceAndEverySinkSeesTheRedactedText) {
+    std::ostringstream second;
+    LoggerConfig config;
+    config.name = "test";
+    config.console = false;
+    AedstLogger::init(config, {std::make_shared<spdlog::sinks::ostream_sink_mt>(output_),
+                               std::make_shared<spdlog::sinks::ostream_sink_mt>(second)});
+
+    AedstLogger::info("Authorization: Bearer abcdef0123456789abcdef0123456789");
+    AedstLogger::flush();
+
+    for (const std::string& text : {output_.str(), second.str()}) {
+        EXPECT_EQ(text.find("abcdef0123456789"), std::string::npos) << text;
+        EXPECT_NE(text.find("Authorization"), std::string::npos) << text;
+    }
+}
+
 TEST_F(AedstLoggerTest, FallsBackToDefaultLoggerWhenNotInitialised) {
     AedstLogger::shutdown();
 

@@ -1,3 +1,4 @@
+#include "connect_client_test_support.hpp"
 #include "aedst/core/correlation.hpp"
 #include "aedst/contract/methods.hpp"
 #include "aedst/network/auth_interceptor.hpp"
@@ -21,84 +22,12 @@
 
 // End-to-end tests of ConnectClient: real QNetworkAccessManager against the
 // loopback FakeHttpServer, with the real generated messages from Aedst::Contract.
+// Fixtures: connect_client_test_support.hpp. Streaming/correlation tests: connect_client_stream_test.cpp.
 
 namespace aedst::network {
 namespace {
 
-using namespace std::chrono_literals;
-namespace authv1 = ::aedst::auth::v1;
-using testing::FakeHttpServer;
-using testing::FakeResponse;
-using testing::waitUntil;
-
-QByteArray serialized(const google::protobuf::MessageLite& message) {
-    return QByteArray::fromStdString(message.SerializeAsString());
-}
-
-authv1::LoginRequest loginRequest() {
-    authv1::LoginRequest request;
-    request.set_email("a@b.co");
-    request.set_password("x");
-    request.set_device_id("d");
-    return request;
-}
-
-QByteArray loginResponseBytes(const std::string& userId = "u1") {
-    authv1::LoginResponse response;
-    response.set_user_id(userId);
-    response.mutable_tokens()->set_access_token("access");
-    response.mutable_tokens()->set_refresh_token("refresh");
-    response.mutable_tokens()->set_access_token_expires_in_seconds(900);
-    return serialized(response);
-}
-
-QByteArray currentUserResponseBytes() {
-    authv1::GetCurrentUserResponse response;
-    response.mutable_user()->set_id("u1");
-    response.mutable_user()->set_email("a@b.co");
-    return serialized(response);
-}
-
-RetryPolicy fastRetry() {
-    return RetryPolicy{.maxAttempts = 3, .initialBackoff = 1ms, .maxBackoff = 2ms, .multiplier = 2.0};
-}
-
-class ConnectClientTest : public ::testing::Test {
-protected:
-    void SetUp() override {
-        ASSERT_TRUE(server_.isListening());
-        client_ = std::make_unique<ConnectClient>(
-            ClientConfig{.baseUrl = server_.baseUrl(),
-                         .defaultTimeout = 2s,
-                         .retry = fastRetry(),
-                         .allowInsecureLoopback = true}, // the fake server is plain http on loopback
-            interceptor_);
-    }
-
-    template <typename Res>
-    struct Outcome {
-        std::optional<ApiResult<Res>> result;
-        int completions{0};
-        bool done() const { return result.has_value(); }
-    };
-
-    template <typename Req, typename Res>
-    CallHandle call(const Method<Req, Res>& method, const Req& request, Outcome<Res>& out,
-                    const CallOptions& options = {}) {
-        return client_->unary(
-            method, request,
-            [&out](ApiResult<Res> result) {
-                out.result = std::move(result);
-                ++out.completions;
-            },
-            options);
-    }
-
-    FakeHttpServer server_;
-    std::shared_ptr<testing::StubTokenProvider> tokens_ = std::make_shared<testing::StubTokenProvider>("tok");
-    std::shared_ptr<AuthInterceptor> interceptor_ = std::make_shared<AuthInterceptor>(tokens_);
-    std::unique_ptr<ConnectClient> client_;
-};
+using namespace testsupport;
 
 TEST_F(ConnectClientTest, UnarySendsTheConnectWireFormatAndDecodesTheResponse) {
     server_.enqueue(FakeResponse::proto(loginResponseBytes("user-42")));
@@ -274,130 +203,6 @@ TEST_F(ConnectClientTest, MalformedProtobufIsADecodingError) {
 
     ASSERT_FALSE(out.result->has_value());
     EXPECT_EQ(out.result->error().kind, ApiErrorKind::Decoding);
-}
-
-// --- server streaming -----------------------------------------------------------
-
-constexpr auto kStreamMethod =
-    makeMethod<authv1::LoginRequest, authv1::LoginResponse>("/test.v1.Stream/Watch", AuthRequirement::Required);
-
-struct StreamOutcome {
-    std::vector<std::string> userIds;
-    std::optional<ApiResult<void>> done;
-};
-
-TEST_F(ConnectClientTest, ServerStreamDeliversMessagesAcrossArbitraryChunkBoundaries) {
-    const QByteArray wire = envelope::encode(0, loginResponseBytes("m1")) + envelope::encode(0, loginResponseBytes("m2")) +
-                            envelope::encode(envelope::kFlagEndStream, "{}");
-    server_.enqueue(FakeResponse::connectStream({wire.left(3), wire.mid(3, 20), wire.mid(23)}));
-    StreamOutcome out;
-
-    client_->serverStream(
-        kStreamMethod, loginRequest(),
-        [&out](authv1::LoginResponse message) { out.userIds.push_back(message.user_id()); },
-        [&out](ApiResult<void> result) { out.done = std::move(result); });
-    ASSERT_TRUE(waitUntil([&] { return out.done.has_value(); }));
-
-    EXPECT_TRUE(out.done->has_value());
-    EXPECT_EQ(out.userIds, (std::vector<std::string>{"m1", "m2"}));
-    ASSERT_EQ(server_.requests().size(), 1U);
-    const auto& request = server_.requests().front();
-    EXPECT_EQ(request.headers.value("content-type"), QByteArray("application/connect+proto"));
-    EXPECT_EQ(request.body, envelope::encode(0, serialized(loginRequest())));
-}
-
-TEST_F(ConnectClientTest, ServerStreamSurfacesAnErrorInTheEndOfStreamFrame) {
-    const QByteArray wire = envelope::encode(0, loginResponseBytes("m1")) +
-                            envelope::encode(envelope::kFlagEndStream,
-                                             R"({"error":{"code":"unavailable","message":"draining"}})");
-    server_.enqueue(FakeResponse::connectStream({wire}));
-    StreamOutcome out;
-
-    client_->serverStream(
-        kStreamMethod, loginRequest(),
-        [&out](authv1::LoginResponse message) { out.userIds.push_back(message.user_id()); },
-        [&out](ApiResult<void> result) { out.done = std::move(result); });
-    ASSERT_TRUE(waitUntil([&] { return out.done.has_value(); }));
-
-    ASSERT_FALSE(out.done->has_value());
-    EXPECT_EQ(out.done->error().kind, ApiErrorKind::Unavailable);
-    EXPECT_EQ(out.done->error().message, "draining");
-    EXPECT_EQ(out.userIds.size(), 1U);
-}
-
-TEST_F(ConnectClientTest, ServerStreamCutBeforeEndOfStreamIsATransportError) {
-    server_.enqueue(FakeResponse::connectStream({envelope::encode(0, loginResponseBytes("m1"))}));
-    StreamOutcome out;
-
-    client_->serverStream(
-        kStreamMethod, loginRequest(),
-        [&out](authv1::LoginResponse message) { out.userIds.push_back(message.user_id()); },
-        [&out](ApiResult<void> result) { out.done = std::move(result); });
-    ASSERT_TRUE(waitUntil([&] { return out.done.has_value(); }));
-
-    ASSERT_FALSE(out.done->has_value());
-    EXPECT_EQ(out.done->error().kind, ApiErrorKind::Transport);
-}
-
-TEST_F(ConnectClientTest, ServerStreamHttpErrorUsesTheUnaryErrorBody) {
-    server_.enqueue(FakeResponse::connectError(403, "permission_denied", "nope"));
-    StreamOutcome out;
-
-    client_->serverStream(
-        kStreamMethod, loginRequest(), [](authv1::LoginResponse) {},
-        [&out](ApiResult<void> result) { out.done = std::move(result); });
-    ASSERT_TRUE(waitUntil([&] { return out.done.has_value(); }));
-
-    ASSERT_FALSE(out.done->has_value());
-    EXPECT_EQ(out.done->error().kind, ApiErrorKind::PermissionDenied);
-}
-
-TEST_F(ConnectClientTest, EveryCallCarriesAValidCorrelationIdAndItDiffersPerCall) {
-    server_.enqueue(FakeResponse::proto(loginResponseBytes()));
-    server_.enqueue(FakeResponse::proto(loginResponseBytes()));
-    Outcome<authv1::LoginResponse> first;
-    Outcome<authv1::LoginResponse> second;
-
-    call(contract::kAuthLogin, loginRequest(), first);
-    ASSERT_TRUE(waitUntil([&] { return first.done(); }));
-    call(contract::kAuthLogin, loginRequest(), second);
-    ASSERT_TRUE(waitUntil([&] { return second.done(); }));
-
-    ASSERT_EQ(server_.requests().size(), 2U);
-    const QByteArray id1 = server_.requests()[0].headers.value("x-correlation-id");
-    const QByteArray id2 = server_.requests()[1].headers.value("x-correlation-id");
-    EXPECT_EQ(id1.size(), 16);
-    EXPECT_TRUE(core::isValidCorrelationId(id1.toStdString()));
-    EXPECT_TRUE(core::isValidCorrelationId(id2.toStdString()));
-    EXPECT_NE(id1, id2);
-}
-
-TEST_F(ConnectClientTest, ARetriedCallKeepsItsCorrelationId) {
-    server_.enqueue(FakeResponse::connectError(503, "unavailable", "try later"));
-    server_.enqueue(FakeResponse::proto(currentUserResponseBytes()));
-    Outcome<authv1::GetCurrentUserResponse> out;
-
-    call(contract::kAuthGetCurrentUser, authv1::GetCurrentUserRequest{}, out);
-    ASSERT_TRUE(waitUntil([&] { return out.done(); }));
-
-    ASSERT_EQ(server_.requests().size(), 2U);
-    const QByteArray first = server_.requests()[0].headers.value("x-correlation-id");
-    EXPECT_FALSE(first.isEmpty());
-    EXPECT_EQ(server_.requests()[1].headers.value("x-correlation-id"), first);
-}
-
-TEST_F(ConnectClientTest, ACallerCorrelationScopeIsPropagatedToTheServer) {
-    server_.enqueue(FakeResponse::proto(loginResponseBytes()));
-    Outcome<authv1::LoginResponse> out;
-
-    {
-        const core::CorrelationScope scope("flow-123");
-        call(contract::kAuthLogin, loginRequest(), out);
-    }
-    ASSERT_TRUE(waitUntil([&] { return out.done(); }));
-
-    ASSERT_EQ(server_.requests().size(), 1U);
-    EXPECT_EQ(server_.requests().front().headers.value("x-correlation-id"), QByteArray("flow-123"));
 }
 
 // --- Transport policy: a client with an unacceptable endpoint sends nothing ------

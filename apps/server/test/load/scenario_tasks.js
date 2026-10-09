@@ -13,6 +13,8 @@
 //   (AEDST_ACCESS_TOKEN_TTL_MINUTES), so keep total runtime below that or raise it.
 // - The public auth RPCs are IP rate limited (AEDST_AUTH_RATE_LIMIT_PER_MINUTE); setup
 //   makes a single Register call, so the default limit is not an issue.
+// - setup() calls AuthService/Register, so run the server with AEDST_AUTH_FIRST_PARTY_ENABLED=true
+//   (off by default; IdP-first). Behind an IdP use api.js with TOKEN instead.
 // - Request/response shapes: api/proto/aedst/{auth,tasks}/v1/*.proto, api/bruno/.
 import http from "k6/http";
 import { check, group, fail } from "k6";

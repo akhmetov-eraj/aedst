@@ -1,32 +1,27 @@
-#include "aedst/oidc/oidc_session.hpp"
+#include "aedst/core/guarded.hpp"
+#include "oidc_session_internal.hpp"
 
 #include "aedst/logging/log_categories.hpp"
 
 #include <QDateTime>
 #include <QDesktopServices>
-#include <QHostAddress>
 #include <QNetworkAccessManager>
-#include <QNetworkReply>
-#include <QNetworkRequest>
-#include <QOAuth2AuthorizationCodeFlow>
 #include <QOAuthHttpServerReplyHandler>
-#include <QPointer>
-#include <QTimer>
-#include <QUrlQuery>
+#include <QUrl>
 
 #include <ctime>
-#include <string>
 #include <memory>
+#include <string>
 #include <utility>
 
+// OidcSession: state, discovery, restore and the single-flight refresh. Sign-in lives in
+// oidc_session_signin.cpp, sign-out in oidc_session_signout.cpp.
+
 namespace aedst::oidc {
+
+namespace internal {
+
 namespace {
-
-constexpr auto kFallbackLifetime = std::chrono::minutes{5};
-
-[[nodiscard]] std::chrono::milliseconds toMs(std::chrono::seconds seconds) {
-    return std::chrono::duration_cast<std::chrono::milliseconds>(seconds);
-}
 
 /// OAuth error codes that mean "this refresh token will never work again".
 [[nodiscard]] bool isTerminalGrantError(const QString& error) {
@@ -34,7 +29,9 @@ constexpr auto kFallbackLifetime = std::chrono::minutes{5};
            error == QLatin1String("invalid_client") || error == QLatin1String("unauthorized_client");
 }
 
-[[nodiscard]] core::Error serverError(const QString& error, const QString& description) {
+} // namespace
+
+core::Error serverError(const QString& error, const QString& description) {
     std::string message = "OIDC provider reported: " + error.toStdString();
     if (!description.isEmpty()) {
         message += " (" + description.toStdString() + ")";
@@ -45,21 +42,19 @@ constexpr auto kFallbackLifetime = std::chrono::minutes{5};
     if (isTerminalGrantError(error)) {
         return core::Error::unauthenticated(std::move(message));
     }
-    return core::Error::network(std::move(message)); // temporarily_unavailable, server_error, ...
+    return core::Error::unavailable(std::move(message)); // temporarily_unavailable, server_error, ...
 }
 
-[[nodiscard]] QByteArray formField(const QByteArray& name, const QString& value) {
-    return name + '=' + QUrl::toPercentEncoding(value);
-}
+} // namespace internal
+
+namespace {
+
+constexpr auto kFallbackLifetime = std::chrono::minutes{5};
 
 } // namespace
 
-struct OidcSession::SignInAttempt {
-    core::Completion<OidcUser> done;
-    QPointer<QOAuth2AuthorizationCodeFlow> flow;
-    QPointer<QTimer> timeout;
-    bool exchanging{false};
-};
+using internal::serverError;
+using internal::toMs;
 
 OidcSession::OidcSession(OidcConfig config, Dependencies dependencies, QObject* parent)
     : QObject(parent), config_(std::move(config)), deps_(std::move(dependencies)) {
@@ -160,7 +155,7 @@ void OidcSession::persistRotatedRefreshToken() {
 
 void OidcSession::resolveEndpoints(core::Completion<OidcEndpoints> done) {
     if (endpoints_) {
-        done(*endpoints_);
+        core::invokeGuarded("OIDC completion", [&] { done(*endpoints_); });
         return;
     }
     endpointWaiters_.push_back(std::move(done));
@@ -184,93 +179,6 @@ void OidcSession::resolveEndpoints(core::Completion<OidcEndpoints> done) {
 
 // --- Sign-in --------------------------------------------------------------------------------
 
-void OidcSession::signIn(core::Completion<OidcUser> done) {
-    if (auto valid = validateOidcConfig(config_); !valid) {
-        done(core::fail(valid.error()));
-        return;
-    }
-    if (signIn_) {
-        done(core::fail(core::Error::invalidArgument("A sign-in is already in progress")));
-        return;
-    }
-    signIn_ = std::make_unique<SignInAttempt>();
-    signIn_->done = std::move(done);
-
-    QPointer<OidcSession> self(this);
-    resolveEndpoints([self](core::Outcome<OidcEndpoints> endpoints) {
-        if (!self || !self->signIn_) {
-            return; // destroyed or cancelled while discovering
-        }
-        if (!endpoints) {
-            self->finishSignIn(core::fail(endpoints.error()));
-            return;
-        }
-        self->startAuthorization(*endpoints);
-    });
-}
-
-void OidcSession::startAuthorization(const OidcEndpoints& endpoints) {
-    auto* flow = new QOAuth2AuthorizationCodeFlow(deps_.network, this);
-    flow->setClientIdentifier(config_.clientId);
-    flow->setAuthorizationUrl(endpoints.authorization);
-    flow->setTokenUrl(endpoints.token);
-    flow->setRequestedScopeTokens(config_.scopeTokens());
-    flow->setPkceMethod(QOAuth2AuthorizationCodeFlow::PkceMethod::S256);
-
-    // RFC 8252: loopback redirect on 127.0.0.1 with a port the OS picks (or the configured fixed one).
-    auto* handler = new QOAuthHttpServerReplyHandler(QHostAddress::LocalHost, config_.loopbackPort, flow);
-    if (!handler->isListening()) {
-        flow->deleteLater();
-        finishSignIn(core::fail(core::Error::network("Could not open a loopback port for the sign-in redirect")));
-        return;
-    }
-    handler->setCallbackPath(QStringLiteral("/callback"));
-    handler->setCallbackText(QStringLiteral(
-        "<!doctype html><html><head><meta charset=\"utf-8\"><title>AEDST</title></head><body style=\"font-family:"
-        "sans-serif;text-align:center;margin-top:20vh\"><h2>AEDST</h2><p>You can close this tab and return to the "
-        "application.</p></body></html>"));
-    flow->setReplyHandler(handler);
-
-    signIn_->flow = flow;
-    signIn_->timeout = new QTimer(flow);
-    signIn_->timeout->setSingleShot(true);
-
-    QPointer<OidcSession> self(this);
-    QObject::connect(signIn_->timeout, &QTimer::timeout, flow, [self]() {
-        if (self) {
-            self->finishSignIn(core::fail(core::Error::cancelled("Sign-in timed out")));
-        }
-    });
-    QObject::connect(flow, &QAbstractOAuth::authorizeWithBrowser, flow, [self](const QUrl& url) {
-        if (self && !self->deps_.openBrowser(url)) {
-            self->finishSignIn(core::fail(core::Error::unknown("Could not open the system browser")));
-        }
-    });
-    QObject::connect(flow, &QAbstractOAuth2::serverReportedErrorOccurred, flow,
-                     [self](const QString& error, const QString& description, const QUrl&) {
-                         if (self) {
-                             self->finishSignIn(core::fail(serverError(error, description)));
-                         }
-                     });
-    QObject::connect(flow, &QAbstractOAuth::requestFailed, flow, [self](QAbstractOAuth::Error error) {
-        if (self) {
-            self->finishSignIn(core::fail(core::Error::network("Sign-in request failed (Qt OAuth error " +
-                                                               std::to_string(static_cast<int>(error)) + ")")));
-        }
-    });
-    QObject::connect(flow, &QAbstractOAuth::granted, flow, [self, flow]() {
-        if (!self || !self->signIn_ || self->signIn_->exchanging) {
-            return;
-        }
-        self->signIn_->exchanging = true;
-        self->completeSignIn(self->readTokens(*flow));
-    });
-
-    signIn_->timeout->start(static_cast<int>(toMs(config_.signInTimeout).count()));
-    qCInfo(lcAuth, "Starting browser sign-in (loopback port %d)", static_cast<int>(handler->port()));
-    flow->grant();
-}
-
 OidcSession::Tokens OidcSession::readTokens(const QOAuth2AuthorizationCodeFlow& flow) const {
     Tokens tokens;
     tokens.access = core::SecretString(flow.token().toStdString());
@@ -283,76 +191,11 @@ OidcSession::Tokens OidcSession::readTokens(const QOAuth2AuthorizationCodeFlow& 
     return tokens;
 }
 
-void OidcSession::completeSignIn(Tokens tokens) {
-    if (tokens.access.empty()) {
-        finishSignIn(core::fail(core::Error::unauthenticated("The provider did not return an access token")));
-        return;
-    }
-    if (tokens.refresh.empty()) {
-        finishSignIn(core::fail(core::Error::unauthenticated(
-            "The provider did not return a refresh token; check that the application allows refresh tokens "
-            "(scope offline_access)")));
-        return;
-    }
-    auto user = validateIdToken(tokens.idToken.reveal(), config_, now());
-    if (!user) {
-        finishSignIn(core::fail(user.error()));
-        return;
-    }
-
-    QPointer<OidcSession> self(this);
-    const StoredIdentity identity{.refreshToken = tokens.refresh, .subject = user->subject};
-    deps_.store->save(identity, [self, tokens = std::move(tokens), user = *user](core::VoidOutcome saved) mutable {
-        if (!self) {
-            return;
-        }
-        if (!saved) {
-            // Never keep a session that cannot be restored securely: discard the grant at the provider.
-            qCWarning(lcAuth, "Sign-in aborted, credential storage unavailable: %s", saved.error().message.c_str());
-            if (self->endpoints_) {
-                self->revokeRefreshToken(*self->endpoints_, tokens.refresh, [] {});
-            }
-            self->finishSignIn(core::fail(saved.error()));
-            return;
-        }
-        self->refreshToken_ = tokens.refresh; // applyTokens() sees "unchanged" and does not re-save
-        self->applyTokens(std::move(tokens));
-        self->user_ = user;
-        emit self->signedInChanged();
-        self->finishSignIn(user);
-    });
-}
-
-void OidcSession::finishSignIn(core::Outcome<OidcUser> result) {
-    if (!signIn_) {
-        return;
-    }
-    const auto attempt = std::move(signIn_);
-    if (attempt->timeout) {
-        attempt->timeout->stop();
-    }
-    if (attempt->flow) {
-        attempt->flow->deleteLater(); // also closes the loopback server (child of the flow)
-    }
-    if (result) {
-        qCInfo(lcAuth, "Browser sign-in completed");
-    } else {
-        qCInfo(lcAuth, "Browser sign-in did not complete: %s", result.error().message.c_str());
-    }
-    if (attempt->done) {
-        attempt->done(std::move(result));
-    }
-}
-
-void OidcSession::cancelSignIn() {
-    finishSignIn(core::fail(core::Error::cancelled("Sign-in was cancelled")));
-}
-
 // --- Restore and refresh ---------------------------------------------------------------------
 
 void OidcSession::restore(core::Completion<std::optional<OidcUser>> done) {
     if (isSignedIn() && hasValidAccessToken()) {
-        done(user_);
+        core::invokeGuarded("OIDC completion", [&] { done(user_); });
         return;
     }
     QPointer<OidcSession> self(this);
@@ -361,11 +204,11 @@ void OidcSession::restore(core::Completion<std::optional<OidcUser>> done) {
             return;
         }
         if (!loaded) {
-            done(core::fail(loaded.error()));
+            core::invokeGuarded("OIDC completion", [&] { done(core::fail(loaded.error())); });
             return;
         }
         if (!loaded->has_value()) {
-            done(std::optional<OidcUser>{});
+            core::invokeGuarded("OIDC completion", [&] { done(std::optional<OidcUser>{}); });
             return;
         }
         self->refreshToken_ = std::move((*loaded)->refreshToken);
@@ -376,10 +219,10 @@ void OidcSession::restore(core::Completion<std::optional<OidcUser>> done) {
                 return;
             }
             if (!refreshed) {
-                done(core::fail(refreshed.error())); // offline keeps the identity; rejected already cleared it
+                core::invokeGuarded("OIDC completion", [&] { done(core::fail(refreshed.error())); }); // offline keeps the identity; rejected already cleared it
                 return;
             }
-            done(self->user_);
+            core::invokeGuarded("OIDC completion", [&] { done(self->user_); });
         });
         self->startRefresh();
     });
@@ -387,11 +230,11 @@ void OidcSession::restore(core::Completion<std::optional<OidcUser>> done) {
 
 void OidcSession::ensureFreshAccessToken(core::Completion<std::string> done) {
     if (!isSignedIn()) {
-        done(core::fail(core::Error::unauthenticated("Not signed in")));
+        core::invokeGuarded("OIDC completion", [&] { done(core::fail(core::Error::unauthenticated("Not signed in"))); });
         return;
     }
     if (hasValidAccessToken()) {
-        done(accessToken_.reveal());
+        core::invokeGuarded("OIDC completion", [&] { done(accessToken_.reveal()); });
         return;
     }
     refreshWaiters_.push_back(std::move(done));
@@ -400,12 +243,12 @@ void OidcSession::ensureFreshAccessToken(core::Completion<std::string> done) {
 
 void OidcSession::refreshAfterRejection(const std::string& rejectedToken, core::Completion<std::string> done) {
     if (!isSignedIn()) {
-        done(core::fail(core::Error::unauthenticated("Not signed in")));
+        core::invokeGuarded("OIDC completion", [&] { done(core::fail(core::Error::unauthenticated("Not signed in"))); });
         return;
     }
     // Several in-flight calls fail with the same stale token: only the first one refreshes.
     if (!refreshing_ && hasValidAccessToken() && accessToken_.reveal() != rejectedToken) {
-        done(accessToken_.reveal());
+        core::invokeGuarded("OIDC completion", [&] { done(accessToken_.reveal()); });
         return;
     }
     refreshWaiters_.push_back(std::move(done));
@@ -469,11 +312,11 @@ void OidcSession::runRefresh(const OidcEndpoints& endpoints) {
                      });
     QObject::connect(flow, &QAbstractOAuth::requestFailed, flow, [settle](QAbstractOAuth::Error error) {
         // No OAuth error body: treat as transport trouble and keep the session.
-        settle(core::fail(core::Error::network("Token refresh request failed (Qt OAuth error " +
+        settle(core::fail(core::Error::unavailable("Token refresh request failed (Qt OAuth error " +
                                                std::to_string(static_cast<int>(error)) + ")")));
     });
     QObject::connect(guard, &QTimer::timeout, flow, [settle]() {
-        settle(core::fail(core::Error::network("Token refresh timed out")));
+        settle(core::fail(core::Error::unavailable("Token refresh timed out")));
     });
     guard->start(static_cast<int>(toMs(config_.requestTimeout * 2).count()));
     flow->refreshTokens();
@@ -519,78 +362,6 @@ void OidcSession::failRefreshWaiters(const core::Error& error) {
     auto waiters = std::exchange(refreshWaiters_, {});
     for (auto& waiter : waiters) {
         waiter(core::fail(error));
-    }
-}
-
-// --- Sign-out --------------------------------------------------------------------------------
-
-void OidcSession::signOut(core::Completion<void> done) {
-    cancelSignIn();
-    const core::SecretString refresh = refreshToken_;
-    const core::SecretString idToken = idToken_;
-    clearMemory();
-    failRefreshWaiters(core::Error::unauthenticated("Signed out"));
-
-    QPointer<OidcSession> self(this);
-    deps_.store->clear([self, refresh, idToken, done = std::move(done)](core::VoidOutcome stored) {
-        // The user is signed out locally from here on; tell the caller now and finish the
-        // provider-side cleanup in the background (it may take a network timeout when offline).
-        done(stored);
-        if (!self || refresh.empty()) {
-            return;
-        }
-        self->resolveEndpoints([self, refresh, idToken](core::Outcome<OidcEndpoints> endpoints) {
-            if (!self || !endpoints) {
-                return;
-            }
-            self->revokeRefreshToken(*endpoints, refresh, [self, endpoints = *endpoints, idToken]() {
-                if (self) {
-                    self->openEndSession(endpoints, idToken);
-                }
-            });
-        });
-    });
-}
-
-void OidcSession::revokeRefreshToken(const OidcEndpoints& endpoints, const core::SecretString& refreshToken,
-                                     std::function<void()> finished) {
-    if (endpoints.revocation.isEmpty() || refreshToken.empty()) {
-        finished();
-        return;
-    }
-    QNetworkRequest request(endpoints.revocation);
-    request.setHeader(QNetworkRequest::ContentTypeHeader, QByteArrayLiteral("application/x-www-form-urlencoded"));
-    request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::ManualRedirectPolicy);
-    request.setTransferTimeout(static_cast<int>(toMs(config_.requestTimeout).count()));
-
-    QByteArray body = formField("token", QString::fromStdString(refreshToken.reveal()));
-    body += "&token_type_hint=refresh_token&" + formField("client_id", config_.clientId);
-
-    QNetworkReply* reply = deps_.network->post(request, body);
-    QObject::connect(reply, &QNetworkReply::finished, reply, [reply, finished = std::move(finished)]() {
-        reply->deleteLater();
-        if (reply->error() != QNetworkReply::NoError) {
-            qCWarning(lcAuth, "Token revocation failed: %s", qUtf8Printable(reply->errorString()));
-        } else {
-            qCInfo(lcAuth, "Refresh token revoked");
-        }
-        finished();
-    });
-}
-
-void OidcSession::openEndSession(const OidcEndpoints& endpoints, const core::SecretString& idToken) {
-    if (!config_.endSessionInBrowser || endpoints.endSession.isEmpty()) {
-        return;
-    }
-    QUrl url = endpoints.endSession;
-    QUrlQuery query(url);
-    if (!idToken.empty()) {
-        query.addQueryItem(QStringLiteral("id_token_hint"), QString::fromStdString(idToken.reveal()));
-    }
-    query.addQueryItem(QStringLiteral("client_id"), config_.clientId);
-    url.setQuery(query);
-    if (!deps_.openBrowser(url)) {
-        qCWarning(lcAuth, "Could not open the browser to end the provider session");
     }
 }
 

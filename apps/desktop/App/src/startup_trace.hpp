@@ -1,6 +1,6 @@
 #pragma once
 
-#include "aedst/core/logger.hpp"
+#include "aedst/logging/log_categories.hpp"
 
 #include <QElapsedTimer>
 
@@ -22,7 +22,8 @@ public:
     StartupTrace() noexcept { timer_.start(); }
 
     void mark(std::string_view phase) const {
-        core::AedstLogger::info("startup +{} ms: {}", timer_.elapsed(), phase);
+        qCInfo(lcApp, "startup +%lld ms: %.*s", static_cast<long long>(timer_.elapsed()), static_cast<int>(phase.size()),
+               phase.data());
     }
 
 private:

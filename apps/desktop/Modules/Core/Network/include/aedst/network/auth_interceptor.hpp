@@ -41,7 +41,7 @@ public:
     virtual ~TokenRefresher() = default;
 
     /// A token that stays valid for a while; refreshes first when the current one is about to expire.
-    /// ErrorCode::Unauthenticated = the session is over; ErrorCode::Network = could not refresh now.
+    /// ErrorCode::Unauthenticated = the session is over; ErrorCode::Unavailable = could not refresh now.
     virtual void ensureFreshAccessToken(core::Completion<std::string> done) = 0;
 
     /// The API answered `unauthenticated` for `rejectedToken`. If a newer token already exists it is

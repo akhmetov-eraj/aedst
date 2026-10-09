@@ -13,7 +13,10 @@ per-OS implementation and a runtime availability check:
   launch forwards sanitized arguments and exits. A live but unreachable lock
   holder yields `Role::Unavailable` (fail open), never lock stealing.
 - Deep links: pure allow-list parser `parseDeepLink` (length limits, percent
-  decoding validation, control characters rejected).
+  decoding validation, control characters rejected). Hosts: `auth/callback` and
+  `settings` are fixed; every other host is a link prefix declared by an active
+  route (`RouteContribution::linkPrefixes`, passed in by the caller), the same
+  set `Router::openLink` uses, so the two allow-lists cannot diverge.
 - Autostart: Windows `HKCU\...\Run`, Linux XDG autostart `.desktop` (atomic
   `QSaveFile`). Flatpak: portal documented, not
   implemented (`UnsupportedAutostartManager`).
@@ -24,8 +27,10 @@ per-OS implementation and a runtime availability check:
 
 **Crash reporting (`Aedst::CrashReporting`)** — local capture only (Windows
 `MiniDumpWriteDump`; POSIX `sigaction` + `sigaltstack` + `backtrace_symbols_fd`).
-Upload happens only through `ConsentGatedCrashUploader` (consent, daily rate
-limit, size limit, path scrubbing) over an injected `HttpPoster`. The
+`ConsentGatedCrashUploader` (consent, daily rate limit, size limit, path scrubbing)
+over an injected `HttpPoster` is implemented and unit-tested, but **no production
+`HttpPoster` exists and the app does not construct the uploader**: the only real
+upload path is sentry-native (ADR-0022) and without a DSN reports stay local. The
 signal/minidump path is process-fatal code and is verified manually (checklist in
 its `CMakeLists.txt`), not by unit tests.
 

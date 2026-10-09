@@ -24,8 +24,7 @@ const adminTableFeatures = tableFeatures({});
 export type AdminColumn<TData extends RowData> = ColumnDef<
   typeof adminTableFeatures,
   TData,
-  // biome-ignore lint/suspicious/noExplicitAny: column value types differ per column, as in TanStack's own ColumnDef[] typing
-  any
+  unknown
 >;
 
 const EMPTY: never[] = [];
@@ -67,7 +66,13 @@ export function DataTable<TData extends RowData>({
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="overflow-x-auto rounded-md border">
+      {/* Scrollable region: focusable so keyboard users can scroll it. */}
+      <section
+        aria-label={label}
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must be keyboard reachable
+        tabIndex={0}
+        className="overflow-x-auto rounded-md border focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <Table aria-label={label} aria-busy={isLoading}>
           <TableHeader>
             {table.getHeaderGroups().map((group) => (
@@ -105,7 +110,7 @@ export function DataTable<TData extends RowData>({
             )}
           </TableBody>
         </Table>
-      </div>
+      </section>
       <nav aria-label={t("pagination")} className="flex justify-end gap-2">
         <Button
           variant="outline"

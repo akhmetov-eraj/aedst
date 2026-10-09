@@ -59,7 +59,7 @@ Page {
             clip: true
             Accessible.role: Accessible.List
             Accessible.name: qsTr("Suggestions")
-            delegate: ItemDelegate {
+            delegate: AedstListItem {
                 required property string modelData
                 width: ListView.view.width
                 text: modelData
@@ -68,7 +68,7 @@ Page {
             }
         }
 
-        Text {
+        AedstLabel {
             visible: SearchViewModel.hasSearched && SearchViewModel.totalEstimate > 0
             text: qsTr("About %n result(s)", "", SearchViewModel.totalEstimate)
             font: Theme.smallFont
@@ -103,7 +103,7 @@ Page {
                 Accessible.name: qsTr("Search results")
                 onAtYEndChanged: if (atYEnd && SearchViewModel.hasMore) SearchViewModel.loadMore()
 
-                delegate: ItemDelegate {
+                delegate: AedstListItem {
                     id: hit
                     required property int index
                     required property string title
@@ -131,7 +131,7 @@ Page {
                                 variant: AedstBadge.Variant.Secondary
                                 text: hit.kind === "task" ? qsTr("Task") : hit.kind === "media" ? qsTr("File") : hit.kind
                             }
-                            Text {
+                            AedstLabel {
                                 Layout.fillWidth: true
                                 text: hit.title
                                 textFormat: Text.PlainText
@@ -140,7 +140,7 @@ Page {
                                 elide: Text.ElideRight
                             }
                         }
-                        Text {
+                        AedstLabel {
                             Layout.fillWidth: true
                             visible: hit.snippet.length > 0
                             // Escaped by SearchResultsModel; only <b> is ever produced.

@@ -9,10 +9,9 @@ import (
 	authdb "github.com/aedst/server/gen/db/auth"
 	"github.com/aedst/server/internal/modules/auth/application"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
+	"github.com/aedst/server/internal/shared/like"
 	"github.com/aedst/server/internal/shared/pagination"
 )
-
-var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
 
 // ListUsers pages the first-party user directory for operators, newest first.
 func (r *CredentialRepository) ListUsers(ctx context.Context, search string, limit int, after *pagination.Cursor) (application.UserPage, error) {
@@ -23,7 +22,7 @@ func (r *CredentialRepository) ListUsers(ctx context.Context, search string, lim
 		cursorID = toPgUUID(after.ID)
 	}
 	rows, err := authdb.New(r.pool).ListCredentialsPage(ctx, authdb.ListCredentialsPageParams{
-		Search: likeEscaper.Replace(strings.TrimSpace(search)), CursorKey: cursorKey, CursorID: cursorID, PageLimit: int32(limit) + 1,
+		Search: like.Escape(strings.TrimSpace(search)), CursorKey: cursorKey, CursorID: cursorID, PageLimit: int32(limit) + 1,
 	})
 	if err != nil {
 		return application.UserPage{}, sharederrors.Wrap("auth.ListUsers", err)

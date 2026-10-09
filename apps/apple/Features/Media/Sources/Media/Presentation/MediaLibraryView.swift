@@ -1,6 +1,5 @@
 import AedstDesignSystem
 import AedstMedia
-import Perception
 import SwiftUI
 
 /// All of the user's files as a grid, with upload.
@@ -16,48 +15,46 @@ public struct MediaLibraryView: View {
     }
 
     public var body: some View {
-        WithPerceptionTracking {
-            @Perception.Bindable var viewModel = viewModel
+        @Bindable var viewModel = viewModel
 
-            ScrollView {
-                VStack(alignment: .leading, spacing: AedstSpacing.md) {
-                    UploadProgressList(uploads: viewModel.uploads)
-                    if viewModel.hasLoaded, viewModel.items.isEmpty, viewModel.uploads.isEmpty {
-                        Text(String(localized: "mediaEmpty", bundle: .module))
-                            .foregroundStyle(AedstColor.mutedForeground)
-                    }
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: AedstSpacing.sm)], spacing: AedstSpacing.sm) {
-                        ForEach(viewModel.items) { item in
-                            Button {
-                                onOpen(item.id)
-                            } label: {
-                                MediaThumbnailView(item: item, side: 104)
-                            }
-                            .buttonStyle(.plain)
-                            .task { await viewModel.loadMoreIfNeeded(after: item) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: AedstSpacing.md) {
+                UploadProgressList(uploads: viewModel.uploads)
+                if viewModel.hasLoaded, viewModel.items.isEmpty, viewModel.uploads.isEmpty {
+                    Text(String(localized: "mediaEmpty", bundle: .module))
+                        .foregroundStyle(AedstColor.mutedForeground)
+                }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: AedstSpacing.sm)], spacing: AedstSpacing.sm) {
+                    ForEach(viewModel.items) { item in
+                        Button {
+                            onOpen(item.id)
+                        } label: {
+                            MediaThumbnailView(item: item, side: 104)
                         }
-                    }
-                }
-                .padding(AedstSpacing.lg)
-            }
-            .refreshable { await viewModel.refresh() }
-            .navigationTitle(String(localized: "mediaTitle", bundle: .module))
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        isPickerPresented = true
-                    } label: {
-                        Label(String(localized: "mediaUpload", bundle: .module), systemImage: "square.and.arrow.up")
+                        .buttonStyle(.plain)
+                        .task { await viewModel.loadMoreIfNeeded(after: item) }
                     }
                 }
             }
-            .mediaPicker(isPresented: $isPickerPresented) { files in
-                Task { await viewModel.upload(files) }
+            .padding(AedstSpacing.lg)
+        }
+        .refreshable { await viewModel.refresh() }
+        .navigationTitle(String(localized: "mediaTitle", bundle: .module))
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    isPickerPresented = true
+                } label: {
+                    Label(String(localized: "mediaUpload", bundle: .module), systemImage: "square.and.arrow.up")
+                }
             }
-            .aedstErrorPresenter($viewModel.error)
-            .task {
-                if !viewModel.hasLoaded { await viewModel.refresh() }
-            }
+        }
+        .mediaPicker(isPresented: $isPickerPresented) { files in
+            Task { await viewModel.upload(files) }
+        }
+        .aedstErrorPresenter($viewModel.error)
+        .task {
+            if !viewModel.hasLoaded { await viewModel.refresh() }
         }
     }
 }
@@ -76,39 +73,37 @@ public struct TaskAttachmentsView: View {
     }
 
     public var body: some View {
-        WithPerceptionTracking {
-            @Perception.Bindable var viewModel = viewModel
+        @Bindable var viewModel = viewModel
 
-            VStack(alignment: .leading, spacing: AedstSpacing.sm) {
-                UploadProgressList(uploads: viewModel.uploads)
-                if viewModel.hasLoaded, viewModel.items.isEmpty, viewModel.uploads.isEmpty {
-                    Text(String(localized: "mediaNoAttachments", bundle: .module))
-                        .aedstFont(AedstTypography.caption)
-                        .foregroundStyle(AedstColor.mutedForeground)
-                }
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: AedstSpacing.sm) {
-                        ForEach(viewModel.items) { item in
-                            Button {
-                                onOpen(item.id)
-                            } label: {
-                                MediaThumbnailView(item: item, side: 88)
-                            }
-                            .buttonStyle(.plain)
+        VStack(alignment: .leading, spacing: AedstSpacing.sm) {
+            UploadProgressList(uploads: viewModel.uploads)
+            if viewModel.hasLoaded, viewModel.items.isEmpty, viewModel.uploads.isEmpty {
+                Text(String(localized: "mediaNoAttachments", bundle: .module))
+                    .aedstFont(AedstTypography.caption)
+                    .foregroundStyle(AedstColor.mutedForeground)
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: AedstSpacing.sm) {
+                    ForEach(viewModel.items) { item in
+                        Button {
+                            onOpen(item.id)
+                        } label: {
+                            MediaThumbnailView(item: item, side: 88)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
-                AedstButton(String(localized: "mediaAttach", bundle: .module), systemImage: "paperclip", variant: .outline, size: .sm) {
-                    isPickerPresented = true
-                }
             }
-            .mediaPicker(isPresented: $isPickerPresented) { files in
-                Task { await viewModel.upload(files) }
+            AedstButton(String(localized: "mediaAttach", bundle: .module), systemImage: "paperclip", variant: .outline, size: .sm) {
+                isPickerPresented = true
             }
-            .aedstErrorPresenter($viewModel.error)
-            .task {
-                if !viewModel.hasLoaded { await viewModel.refresh() }
-            }
+        }
+        .mediaPicker(isPresented: $isPickerPresented) { files in
+            Task { await viewModel.upload(files) }
+        }
+        .aedstErrorPresenter($viewModel.error)
+        .task {
+            if !viewModel.hasLoaded { await viewModel.refresh() }
         }
     }
 }
@@ -122,6 +117,7 @@ private struct UploadProgressList: View {
                 Text(upload.filename)
                     .aedstFont(AedstTypography.caption)
                     .lineLimit(1)
+                    .aedstSensitive()
                 switch upload.phase {
                 case .preparing:
                     AedstProgressView(label: String(localized: "mediaPreparing", bundle: .module))

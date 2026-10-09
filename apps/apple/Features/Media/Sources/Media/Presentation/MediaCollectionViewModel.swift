@@ -2,13 +2,13 @@ import AedstAnalytics
 import AedstCore
 import AedstMedia
 import Foundation
-import Perception
+import Observation
 
 /// A list of media plus in-flight uploads. The same model backs the media
 /// library (`taskID == nil`) and a task's attachments (`taskID` set: uploads
 /// are attached to that task via `CreateUploadRequest.task_id`).
 @MainActor
-@Perceptible
+@Observable
 public final class MediaCollectionViewModel {
     /// An upload shown as a progress row until it finishes.
     public struct UploadProgress: Identifiable, Equatable, Sendable {
@@ -25,7 +25,7 @@ public final class MediaCollectionViewModel {
     /// Bound to `aedstErrorPresenter`.
     public var error: AedstError?
 
-    private var nextPageToken: String?
+    @ObservationIgnored private var nextPageToken: String?
     private let repository: any MediaRepository
     private let uploadMedia: UploadMediaUseCase
     private let analytics: AnalyticsClient
@@ -67,7 +67,7 @@ public final class MediaCollectionViewModel {
             switch result {
             case .success(let item):
                 items.insert(item, at: 0)
-                analytics.track(AnalyticsEvent(name: "media_uploaded", parameters: ["attached": taskID == nil ? "false" : "true"]))
+                analytics.track(AnalyticsEvent(name: "media_uploaded", parameters: ["attached_to_task": taskID == nil ? "false" : "true"]))
             case .failure(let failure):
                 error = failure
                 analytics.recordError(failure, context: ["operation": "media_upload"])

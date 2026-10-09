@@ -15,7 +15,9 @@ test.describe("search", () => {
     // Text typed before hydration is reset when React takes over the
     // controlled input; retry until it is live.
     await expect(async () => {
-      await page.getByLabel("Search everything").fill("Seed task 07");
+      const box = page.getByLabel("Search everything");
+      await box.fill(""); // refilling the same value fires no input event
+      await box.fill("Seed task 07");
       await expect(page).toHaveURL(/q=Seed\+task\+07|q=Seed%20task%2007/, {
         timeout: 1_500,
       });

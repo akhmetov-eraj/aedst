@@ -34,7 +34,7 @@ data class Page<T>(val items: List<T>, val nextPageToken: String?)
  * Operator reads/writes (AdminService). Every RPC requires the `admin` role, enforced by the server's
  * RoleInterceptor; the client-side role check only hides the UI.
  */
-interface AdminRepository {
+internal interface AdminRepository {
     suspend fun overview(): Outcome<AdminOverview>
 
     suspend fun users(query: String, pageToken: String? = null): Outcome<Page<AdminUserRow>>

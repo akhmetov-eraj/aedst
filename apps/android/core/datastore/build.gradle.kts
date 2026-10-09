@@ -29,4 +29,6 @@ dependencies {
     // DataStore<UserPrefs> and the generated UserPrefs type are this module's API (core/analytics, feature/notifications).
     api(libs.datastore.core)
     api(libs.protobuf.javalite)
+
+    testImplementation(libs.kotlinx.coroutines.test)
 }

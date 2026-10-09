@@ -5,7 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"image/jpeg"
+	"image"
+	_ "image/jpeg" // registers the JPEG decoder for image.DecodeConfig
 	"os"
 	"os/exec"
 	"strconv"
@@ -87,7 +88,8 @@ func (f FFmpeg) Probe(ctx context.Context, path string) (Probe, error) {
 }
 
 // Poster extracts one frame (at 1s, or the middle of a shorter clip) and
-// returns it as a JPEG variant plus a thumbnail.
+// returns it as a single JPEG variant. Thumbnails and other sizes of the
+// poster are produced on demand by imgproxy, not pre-generated.
 func (f FFmpeg) Poster(ctx context.Context, path string, durationMs int64) ([]Encoded, error) {
 	at := 1.0
 	if durationMs > 0 && durationMs < 2000 {
@@ -106,21 +108,15 @@ func (f FFmpeg) Poster(ctx context.Context, path string, durationMs int64) ([]En
 		"-frames:v", "1", "-vf", "scale='min(1280,iw)':-2", "-q:v", "3", outPath); err != nil {
 		return nil, err
 	}
-	data, err := os.ReadFile(outPath)
+	data, err := os.ReadFile(outPath) //nolint:gosec // G304: outPath is a file this process created in its own temp dir
 	if err != nil {
 		return nil, fmt.Errorf("media: read poster: %w", err)
 	}
-	img, err := jpeg.Decode(bytes.NewReader(data))
+	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("%w: poster: %w", ErrUnprocessable, err)
 	}
-	b := img.Bounds()
-	thumb, err := Thumbnail(img)
-	if err != nil {
-		return nil, err
-	}
 	return []Encoded{
-		{Name: "poster", ContentType: "image/jpeg", Ext: "jpg", Width: b.Dx(), Height: b.Dy(), Data: data},
-		thumb,
+		{Name: "poster", ContentType: "image/jpeg", Ext: "jpg", Width: cfg.Width, Height: cfg.Height, Data: data},
 	}, nil
 }

@@ -1,3 +1,8 @@
+---
+title: "Platform status and profiles"
+description: "What has actually been run, and which parts of the template a project needs. Read this before building on a platform: \"Accepted\" in decisions.md records a..."
+---
+
 # Platform status and profiles
 
 What has actually been run, and which parts of the template a project needs. Read this before building on a platform: "Accepted" in [decisions.md](/decisions) records a *decision*, not that the code builds.
@@ -6,13 +11,27 @@ What has actually been run, and which parts of the template a project needs. Rea
 
 | Platform | Status | Evidence |
 |---|---|---|
-| Server | **Verified** | `go build ./...`, `go vet ./...` and `go test ./...` (unit tests) pass. Integration tests need Postgres (Docker or `AEDST_TEST_DATABASE_URL`); Helm/CloudNativePG/Argo CD manifests are **not verified against a cluster** ([deployment](/deployment#verification-status-read-this-before-trusting-the-manifests)) |
-| Web | **Verified** | `tsc --noEmit`, Biome and the Vitest suite (371 passed, 35 skipped) pass; `next build` and Playwright were not run in this pass. Playwright runs against an in-memory mock of the server, not the real one |
-| Android | **Not compiled** | Written without a JDK/Android SDK. First `make generate` + Gradle build is the acceptance test |
-| Apple | **Not built** | Written without Xcode. First `tuist generate` + `xcodebuild` is the acceptance test; the release scripts have never run |
-| Desktop | **Not built** | Written without a Qt/vcpkg toolchain. First CMake configure/compile is the acceptance test; the CI gates have never executed |
+| Server | **Verified** (build, vet, unit tests, integration tests by the work agent) / **UNVERIFIED** (image CI job, cluster) | `CGO_ENABLED=0 go build ./... && go vet ./... && go test ./...` pass (run by the maintainer). The work agent also ran the integration tests against embedded Postgres 18.6 (pass after reruns; the media postgres test now skips without libvips). Not run: `test:vips:integration` (no libvips here); the CI `image` job (build, Trivy, Syft SBOM, ghcr push, keyless cosign) was parsed but **never executed on GitHub**; Helm/CloudNativePG/Argo CD manifests are **not verified against a cluster** ([deployment](/server/deployment#verification-status-read-this-before-trusting-the-manifests)). Two pre-existing lint findings remain in `internal/platform/push/fcm.go` (bodyclose, deprecated `Message.Token`) |
+| Web | **Verified** (build, tests, Storybook, e2e in CI mode) / **UNVERIFIED** (real IdP) | `pnpm typecheck`, Biome and knip clean; unit 34 files / 278 tests; browser project 40 files / 184 tests; Storybook tests 62 files / 177 tests green (twice) and `build-storybook` succeeds; `next build` ok; bundle budget 787.8/840 KB total, 99.5/110 KB largest chunk, 33.7/36 KB CSS (budget **not** raised); Playwright chromium 101/101 passed in CI mode (`CI=1`, `next start`; dev mode under 8 workers times out on sign-in, so CI mode is the reference). The web sign-in is OpenID Connect Authorization Code + PKCE (`oauth4webapi`); it has **never been run against a real ZITADEL**: `prompt=create`, JWT access tokens with the project audience, role assertion and `end_session` are written from ZITADEL documentation, and the signed-in email needs "User Info inside ID Token" on the app (`bootstrap.sh` does not set it). Other Playwright projects were not run. Visual-regression baselines are **not recorded** |
+| Android | **Verified on JVM** (unit tests, debug and release assemble, lint, ktlint, detekt) / **UNVERIFIED** (device) | `./gradlew --continue --no-build-cache ktlintCheck detekt lintDebug testDebugUnitTest assembleDebug` ended BUILD SUCCESSFUL on the authoring machine (2026-10-09, JDK 21 via Gradle toolchain, SDK from `local.properties`): 503 JVM test cases, 0 failures, 2 skipped on Windows by design (`MigrationTestHelper` and the DataStore rename-over-existing test; both run on Linux CI). `:app:assembleRelease` and `:app-tv:assembleRelease -Paedst.allowUnpinnedRelease=true` build (R8, the protobuf-lite keep rule is in both `configuration.txt`), and `:app-tv:preReleaseBuild` is refused without pins. Shell gates (`check-policies`, `check-feature-boundaries`, `check-room-schemas`) pass. New since the last row: the offline write path is real (`task.create`/`task.complete` outbox handlers, idempotency keys, sign-out wipes the queue and caches, a failed-writes alert), Room schemas are committed and checked, DataStore recovers from a corrupt file, the Tink store fails closed, uploads clean up their staged files, every ViewModel follows one contract, every `*Screen.kt` has a `*ScreenTest` with an accessibility check, App Links, and LeakCanary/locale config/pin gate for `app-tv` too. Dependencies are fetched online (`--offline` lacks the JUnit 6 vintage engine); on Windows run `./gradlew --stop` before a build that rewrites module jars (the Kotlin daemon keeps them open). **Not run**: any device or emulator (Keystore/Tink and the new fail-closed check, AppAuth, Play Integrity, FCM, androidTest, benchmarks, App Link verification, the Hilt + Navigation 3 `SavedStateHandle` path). **No baseline profile has been recorded** (needs a device). The TV app has the device sign-in, the account screen and the forced-upgrade screen; it has no capability filtering |
+| Apple | **Not built** (UNVERIFIED) | Nothing compiled (this round adds the GRDB outbox, `ClientUpgradeInterceptor`, the forced-upgrade screen, capability negotiation and the fixture replay tests, all uncompiled): ID-token signature verification (`OIDCJWS`/`OIDCKeySet`/`IDTokenVerifier`) and its 16 negative tests, the refresh-generation counter, new Admin/Navigation/Analytics/Tasks/Search/Notifications/Media test suites, `SignInFlowTests`, pruned design system, `GeneratedStubsSentinel`. Snapshot **reference images are not recorded**, so the snapshot suite **skips** until the first run of the manual workflow `apple-record-snapshots.yml` (pinned simulator `iPhone 17` / iOS `26.6` and the scheme name are guesses); after that it is strict ([snapshots](/apple/snapshots)). No on-device run of Keychain/App Attest. fastlane lanes and workflows have never run |
+| Desktop | **Not built** | Written without a Qt/vcpkg toolchain. This round added file splits, the plugin architecture (ADR-0033), the SQLite outbox and client gate (ADR-0034) and capability negotiation (ADR-0035); none of it has been compiled and the fixture replay tests have never run. First CMake configure/compile is the acceptance test; the CI gates have never executed |
 
 Expect the first real build of Android, Apple and Desktop to surface compile errors, version mismatches and CI gates that need tuning. Record each finding (and the fix) in [decisions.md](/decisions) instead of silently patching, and update this table when a platform passes its first build.
+
+### What can be verified where (the 2026-10-08 authoring machine)
+
+`task doctor` prints this for the machine you are on; `task verify:<platform>` prints the exact commands. The highest level reached on the authoring machine (Windows, Go, Node and pnpm installed; no JDK, Android SDK, Xcode, CMake, vcpkg or Qt):
+
+| Platform | Level reached here | What ran | What cannot run here |
+|---|---|---|---|
+| Server | tests (unit + integration against embedded Postgres) | `CGO_ENABLED=0 go build ./... && go vet ./... && go test ./...`; `task check:boundaries` | libvips integration (`test:vips:integration`), the CI image job, cluster manifests |
+| Web | tests + build + Storybook + e2e | See the table above; repo-wide scripts as listed below | Real IdP, other Playwright projects, visual baselines |
+| Android | tests + build (JVM) | Gradle unit tests, debug assemble, lint, ktlint, detekt, repo-wide scripts | Device or emulator runs |
+| Apple | static only | Same repo-wide scripts | Everything Xcode-based |
+| Desktop | static only | Same repo-wide scripts (read-only) | Everything CMake/Qt-based |
+
+"Static only" means no compiler has seen the code. Passing a repo-wide policy script says nothing about whether the platform builds.
 
 ### Exit criteria for "Verified"
 
@@ -20,7 +39,7 @@ A platform moves to **Verified** only when all of these have run on a clean mach
 
 - **Android**: `task android:generate android:lint android:test android:build` (JDK 21).
 - **Apple**: `task apple:generate apple:lint apple:test` on macOS with Xcode, plus a simulator launch.
-- **Desktop**: `task desktop:build desktop:test` on one preset per OS (`msvc-*`, `gcc-*`, `macos-*`).
+- **Desktop**: `task desktop:build desktop:test` on one preset per OS (`msvc-*`, `gcc-*`; macOS is not a desktop target).
 
 ## Profiles
 
@@ -32,7 +51,7 @@ The template is deliberately complete; most products need less. Pick a profile a
 | **Core + mobile** | Core + `apps/android` and/or `apps/apple` | `apps/desktop` |
 | **Full** | everything | — |
 
-Infrastructure scales the same way. Start with Docker Compose (`task dev`) and one Postgres. Move to the HA Postgres / Helm / GitOps setup in [deployment](/deployment) when you have a production target; none of it is needed to develop.
+Infrastructure scales the same way. Start with Docker Compose (`task dev`) and one Postgres. Move to the HA Postgres / Helm / GitOps setup in [deployment](/server/deployment) when you have a production target; none of it is needed to develop.
 
 ### Removing a platform
 
@@ -43,3 +62,44 @@ Infrastructure scales the same way. Start with Docker Compose (`task dev`) and o
 5. Keep the server `.proto` contract unchanged; it is shared by every client.
 
 Run `task check` afterwards: naming, boundaries and tooling checks must still pass.
+
+## Repo-wide policy checks
+
+Cheap checks that span all apps; run them with `task check` (individually: `task check:naming|file-size|colors|i18n|boundaries`) and in CI via `policies-ci.yml`. Apps add their own, stricter checks.
+
+| Check | Command | Rule | Configuration |
+|---|---|---|---|
+| File size | `task check:file-size` | Hand-written source: up to 300 lines green, 301-400 yellow, 401-500 orange (high warning), over 500 red and fails | `scripts/file-size.config`; policy in `CONVENTIONS.md` |
+| Color literals | `task check:colors` | No hex/rgb/hsl/oklch/`Color(0x...)`/QML color strings in hand-written UI code; use design tokens. Enforced on every platform including Desktop (`--report-desktop` makes Desktop report-only, for local use) | `scripts/color-literals.allowlist` |
+| i18n parity | `task check:i18n` | Same keys and placeholders in en, ru, tg, uz, ar within each platform (`--cross` for the cross-platform report) | `scripts/i18n-parity.allowlist`; [i18n](/i18n) |
+| Boundaries | `task check:boundaries` | No feature-to-feature dependency on web, android, apple, desktop; server `architecturetest` | per-app scripts |
+| Naming | `task check:naming` | File and directory naming | `CONVENTIONS.md` |
+
+### Findings on 2026-10-08 (working tree, real script output)
+
+- **File size** (`task check:file-size`): no file over 500 lines on any platform (0 red). Orange (401-500): 6 in `apps/server` (`push_test.go` 470, `postgres_integration_test.go` 454, `appattest/application/service_test.go` 452, `config.go` 416, `notifications/infrastructure/postgres/postgres.go` 410, `tasks/infrastructure/postgres/postgres.go` 407) and 2 in `apps/desktop` (`Main.qml` 420, `notifications_view_model.cpp` 410); none in web, android or apple. Yellow (301-400): server 12, web 5, apple 4, desktop 14, android 0.
+- **Color literals** (`task check:colors`): `OK: no gating colour literals`; nothing fails on any platform.
+- **i18n parity** (`task check:i18n`): `OK`. Web 6 bundles, android 10, apple 9, desktop 8; each with 0 missing keys, 0 extra keys, 0 placeholder mismatches and 0 absent locale files.
+- **Boundaries** (`task check:boundaries`): all five platforms pass (web, android, apple and desktop scripts; server `architecturetest`).
+
+These are the results of running the four scripts on the working tree on 2026-10-08. A pass says nothing about whether Apple or Desktop compile.
+
+## Open items after the 2026-10-08 round
+
+Not done (recorded honestly, not hidden):
+
+- Desktop, still open: the hardening flags (`/guard:cf`, `/DYNAMICBASE`, CETCOMPAT, `-fstack-protector-strong`, `-D_FORTIFY_SOURCE=3`, PIE, RELRO) are now set in `cmake/AedstHardening.cmake` and checked by `verify-install-*`, but never compiled or run; replacing the 0600 key-file fallback and unifying the two secret stores (owner decision, ADR-0003 proposal), the Velopack re-hash decision (ADR-0029 proposal), a clang-tidy baseline, and pruning the Desktop UI kit.
+- `LICENSE`: the owner must choose one.
+- Apple and Desktop have never been compiled; there is no on-device run of Keystore/Tink/AppAuth/Play Integrity/App Attest/Keychain on any platform (Android compiles and passes JVM tests).
+- CI workflows `policies-ci` and the server `image` job have never executed on GitHub.
+- Apple snapshot baselines and web visual-regression baselines are unrecorded (run `apple-record-snapshots.yml` on GitHub or a Mac; web baselines on the CI runner).
+- Two pre-existing lint findings in `apps/server/internal/platform/push/fcm.go` (bodyclose, deprecated `Message.Token`).
+
+Open owner questions:
+
+- **Apple design-system pruning** removed 30 components (kept 18), broader than the five requested (Carousel, MenuBar, HoverCard, CommandPalette, Chart); it includes basics such as Dialog, Select and Tabs. Files are restorable from git HEAD. Confirm or restore.
+- **Trivy gate**: the server `image` job fails on fixable HIGH/CRITICAL findings and is part of the `ci` needs, so it blocks merges. Keep it blocking or make it advisory?
+
+## Parity matrix (2026-10-08)
+
+`features.yaml` is the machine-checked source for feature x platform and behaviour x platform status ([parity](/parity)). `task check:features -- --require-complete` passes: 0 behaviour gaps across offline-outbox, idempotency-key, client-identification, forced-upgrade-ux, session-refresh and capability-negotiation. Known deviations: web keeps the refresh cookie on the first `invalid_grant` (15 s multi-replica rotation window); the web `tasks` module is at 479.9 / 480 KB with no headroom; the TV app does not filter features.

@@ -122,6 +122,25 @@ describe("decideRoute", () => {
     }
   });
 
+  it("also refuses a role route while the session is only refreshable", () => {
+    expect(
+      decideRoute({
+        pathname: "/en/admin",
+        search: "",
+        session: "refreshable",
+        roles: ["user"],
+      }),
+    ).toEqual({ type: "redirect", location: "/en/forbidden" });
+    expect(
+      decideRoute({
+        pathname: "/en/admin",
+        search: "",
+        session: "refreshable",
+        roles: ["admin"],
+      }),
+    ).toEqual({ type: "next" });
+  });
+
   it("sends a signed-in user without the admin role to the forbidden page", () => {
     expect(
       decideRoute({
@@ -186,6 +205,27 @@ describe("decideRoute", () => {
         search: "",
         session: "anonymous",
       }),
+    ).toEqual({ type: "next" });
+  });
+});
+
+describe("decideRoute with a module switched off by the server", () => {
+  it("sends a signed-in user to the forbidden page, a signed-out one to login first", () => {
+    const base = {
+      pathname: "/en/search/x",
+      search: "",
+      disabledPrefixes: ["/search"],
+    };
+    expect(decideRoute({ ...base, session: "active" })).toEqual({
+      type: "redirect",
+      location: "/en/forbidden",
+    });
+    expect(decideRoute({ ...base, session: "anonymous" })).toMatchObject({
+      type: "redirect",
+      location: expect.stringContaining("/en?next="),
+    });
+    expect(
+      decideRoute({ ...base, pathname: "/en/tasks", session: "active" }),
     ).toEqual({ type: "next" });
   });
 });

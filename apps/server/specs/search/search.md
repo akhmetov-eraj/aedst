@@ -1,63 +1,63 @@
-# Спека: search/search
+# Spec: search/search
 
-Тип: Query (+ проекция событий)
-Модуль: search
-Статус: Реализовано
+Type: Query (+ event projection)
+Module: search
+Status: Implemented
 
-## Контекст
+## Context
 
-Кросс-модульный поиск по собственному контенту пользователя. Модуль владеет
-проекцией `search.documents` (Postgres FTS: `tsvector` с конфигурацией `simple`,
-`websearch_to_tsquery`, `ts_rank_cd`, `ts_headline` с маркерами U+E000/U+E001;
-`pg_trgm` для Suggest) и строит её только из integration events
+Cross-module search over the user's own content. The module owns the
+projection `search.documents` (Postgres FTS: `tsvector` with the `simple` configuration,
+`websearch_to_tsquery`, `ts_rank_cd`, `ts_headline` with markers U+E000/U+E001;
+`pg_trgm` for Suggest) and builds it only from integration events
 (`tasks.v1.TaskCreated/TaskUpdated/TaskDeleted`, `media.v1.MediaReady/MediaDeleted`),
-никогда не читая чужие схемы.
+never reading other modules' schemas.
 
-## Сценарии
+## Scenarios
 
 **Happy path**
 
-- Given задача создана/изменена
-- When событие доставлено
-- Then документ upsert-ится в inbox-транзакции, если версия события новее сохранённой.
+- Given a task is created/changed
+- When the event is delivered
+- Then the document is upserted in the handler's transaction (River delivery) if the event version is newer than the stored one.
 
-- Given запрос `Search{query}`
-- Then возвращаются только документы вызывающего, по убыванию ранга, keyset-страницами
-  (курсор = (score, id), привязан к тексту запроса), `total_estimate` (cap 1000) — только на первой странице.
+- Given a request `Search{query}`
+- Then only the caller's documents are returned, by descending rank, in keyset pages
+  (cursor = (score, id), bound to the query text); `total_estimate` (cap 1000) only on the first page.
 
-**Граничные случаи**
+**Edge cases**
 
-- События приходят не по порядку → побеждает большая версия; удаление оставляет tombstone
-  (`deleted=true`, версия +1), старый снапшот его не «воскресит»; tombstone-ы чистит retention
-  после `AEDST_RETENTION_INBOX_HOURS`.
-- Токен от другого запроса или мусор → `INVALID_ARGUMENT`.
-- Пустой/слишком длинный запрос → `INVALID_ARGUMENT`.
+- Events arrive out of order → the higher version wins; a deletion leaves a tombstone
+  (`deleted=true`, version +1), so an old snapshot cannot "resurrect" it; tombstones are cleaned by retention
+  after `AEDST_RETENTION_TOMBSTONE_HOURS` (must exceed the delivery retry window).
+- A token from another query or garbage → `INVALID_ARGUMENT`.
+- An empty or too long query → `INVALID_ARGUMENT`.
 
-## Ошибки
+## Errors
 
-| Условие | `sharederrors.Kind` | `connect.Code` |
-| ------- | ------------------- | -------------- |
-| Пустой запрос / префикс, плохой page_token | Validation | INVALID_ARGUMENT |
-| Нет identity | Unauthorized | UNAUTHENTICATED |
+| Condition | `sharederrors.Kind` | `connect.Code` |
+| --------- | ------------------- | -------------- |
+| Empty query / prefix, bad page_token | Validation | INVALID_ARGUMENT |
+| No identity | Unauthorized | UNAUTHENTICATED |
 
 ## API
 
-`aedst.search.v1.SearchService` — `Search`, `Suggest`.
+`aedst.search.v1.SearchService`: `Search`, `Suggest`.
 
-## События
+## Events
 
-| Тип события | Версия | partition_key | Payload | Потребители |
-| ----------- | ------ | -------------- | ------- | ----------- |
-| tasks.v1.TaskCreated / TaskUpdated | 1 | task_id | `TaskSnapshot` (с `version`) | search |
+| Event type | Version | partition_key | Payload | Consumers |
+| ---------- | ------- | ------------- | ------- | --------- |
+| tasks.v1.TaskCreated / TaskUpdated | 1 | task_id | `TaskSnapshot` (with `version`) | search |
 | tasks.v1.TaskDeleted | 1 | task_id | `TaskDeletedEvent` (version = last+1) | search |
 | media.v1.MediaReady / MediaDeleted | 1 | media_id | media/api/events.go | search, notifications |
 
-## Кросс-модульные зависимости
+## Cross-module dependencies
 
-Только типы событий из `tasks/api` и `media/api`.
+Only the event types from `tasks/api` and `media/api`.
 
 ## NFR
 
-- Caller-scoped: `owner_id` в каждом запросе.
-- Индексы: GIN(tsv), GIN(title gin_trgm_ops), (owner_id, updated_at, entity_id).
+- Caller-scoped: `owner_id` in every query.
+- Indexes: GIN(tsv), GIN(title gin_trgm_ops), (owner_id, updated_at, entity_id).
 - Hot path: Search/Suggest (k6 `test/load/api.js`).

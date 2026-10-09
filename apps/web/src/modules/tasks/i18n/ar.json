@@ -30,7 +30,8 @@
     "priorityFilterLabel": "تصفية حسب الأولوية",
     "sortLabel": "فرز المهام",
     "paginationLabel": "ترقيم الصفحات",
-    "resultsLabel": "المهام"
+    "resultsLabel": "المهام",
+    "resultCount": "{count, plural, zero {لا مهام} one {مهمة واحدة} two {مهمتان} few {# مهام} many {# مهمة} other {# مهمة}}"
   },
   "status": {
     "todo": "قيد الانتظار",
@@ -78,10 +79,18 @@
     "deleteCancelAction": "إلغاء",
     "notFoundTitle": "المهمة غير موجودة",
     "notFoundDescription": "ربما تم حذفها أو أنها تخص مستخدمًا آخر.",
-    "loadErrorTitle": "تعذّر تحميل هذه المهمة"
+    "loadErrorTitle": "تعذّر تحميل هذه المهمة",
+    "pageTitle": "المهمة"
   },
   "a11y": {
     "priority": "الأولوية",
     "status": "الحالة"
+  },
+  "sync": {
+    "pendingBadge": "في انتظار المزامنة",
+    "failedBadge": "لم تتم المزامنة",
+    "discard": "تجاهل",
+    "queuedTitle": "في انتظار المزامنة",
+    "queuedHint": "تم الحفظ على الجهاز. سيتم الإرسال تلقائيًا."
   }
 }

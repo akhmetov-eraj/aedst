@@ -8,7 +8,9 @@ Checks: >
   bugprone-*,
   cert-*,
   clang-analyzer-*,
+  concurrency-*,
   cppcoreguidelines-*,
+  misc-*,
   modernize-*,
   performance-*,
   readability-*,
@@ -30,6 +32,9 @@ Checks: >
   -readability-named-parameter,
   -readability-uppercase-literal-suffix,
   -readability-use-anyofallof,
+  -misc-const-correctness,
+  -misc-non-private-member-variables-in-classes,
+  -misc-no-recursion,
   -modernize-use-trailing-return-type,
   -modernize-use-designated-initializers,
   -modernize-avoid-c-arrays,
@@ -65,6 +70,15 @@ Checks: >
 #   uppercase-literal-suffix / use-anyofallof: style preferences that fight Qt slot and
 #   override signatures and the clang-format style.
 #
+# - misc-const-correctness: flags every local that could be const (hundreds of Qt signal/lambda captures); review
+#   judgement, not a gate. misc-non-private-member-variables-in-classes duplicates the disabled cppcoreguidelines
+#   check (DTO structs). misc-no-recursion: the JSON/QML tree walkers and the protobuf visitors recurse by design.
+# - misc-include-cleaner is ON but told to ignore Qt and generated headers (IgnoreHeaders below): Qt's umbrella headers
+#   (<QString> -> qstring.h, <QtQml/qqmlregistration.h>) and moc/protobuf output cannot be mapped to the declaring
+#   header by include-cleaner, so every Qt include would be reported as unused.
+# - concurrency-*: on (concurrency-mt-unsafe flags getenv/localtime/strerror-style calls; startup-only uses carry
+#   // NOLINT(concurrency-mt-unsafe) with a reason). Naming and concurrency findings are errors (WarningsAsErrors).
+#
 # readability-identifier-naming below stays the real naming gate (CONVENTIONS.md).
 #
 # Scope note: the Qt moc output is never analysed (it lives under build/**), so no
@@ -74,7 +88,7 @@ Checks: >
 # third_party/ are never linted: HeaderFilterRegex only admits Modules/ and App/
 # headers, run-clang-tidy is filtered to Modules/|App/, and the AedstContractProto
 # target clears CXX_CLANG_TIDY for AEDST_ENABLE_CLANG_TIDY=ON builds.
-WarningsAsErrors: ''
+WarningsAsErrors: 'readability-identifier-naming,concurrency-*'
 HeaderFilterRegex: '.*/(Modules|App)/.*\.hpp$'
 FormatStyle: file
 CheckOptions:
@@ -90,6 +104,8 @@ CheckOptions:
     value: _
   - key: readability-identifier-naming.ConstexprVariablePrefix
     value: k
+  - key: misc-include-cleaner.IgnoreHeaders
+    value: '(.*/)?Q[A-Za-z0-9_]+;(.*/)?q[a-z0-9_]+\.h;(.*/)?moc_.*;(.*/)?mocs_compilation.*;.*_autogen/.*;.*\.pb\.h;google/protobuf/.*'
   - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
     value: true
   - key: performance-unnecessary-value-param.AllowedTypes

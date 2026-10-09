@@ -5,13 +5,15 @@ import { Notification03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useTranslations } from "next-intl";
 import { useEffect } from "react";
-
-import { Link } from "@/app/config/i18n/navigation";
 import { useMarkNotifications } from "@/modules/notifications/lib/use-notifications";
+import { usePushKeyRotation } from "@/modules/notifications/lib/use-push-key-rotation";
 import { usePushSignOutCleanup } from "@/modules/notifications/lib/use-push-sign-out-cleanup";
 import { NotificationsService } from "@/shared/api/connect/client";
+import { Link } from "@/shared/i18n/navigation";
 import { track } from "@/shared/lib/analytics/analytics";
+import { reportError } from "@/shared/lib/errors/report-error";
 import { useOnlineStatus } from "@/shared/lib/hooks/use-online-status";
+import { setAppBadge } from "@/shared/lib/pwa/app-badge";
 
 const POLL_MS = 60_000;
 
@@ -25,6 +27,7 @@ export function NotificationBell() {
   const online = useOnlineStatus();
   const { invalidate } = useMarkNotifications();
   usePushSignOutCleanup();
+  usePushKeyRotation();
   const { data } = useQuery(
     NotificationsService.method.getUnreadCount,
     {},
@@ -36,12 +39,27 @@ export function NotificationBell() {
   );
   const unread = data?.unread ?? 0;
 
+  // Installed PWA: mirror the unread count on the app icon (cleared at sign-out).
+  useEffect(() => {
+    void setAppBadge(unread);
+  }, [unread]);
+
   useEffect(() => {
     const container = navigator.serviceWorker;
     if (!container) {
       return;
     }
     const onMessage = (event: MessageEvent) => {
+      if (event.data?.type === "SW_ERROR") {
+        reportError(
+          new Error(String(event.data.message ?? "service worker error")),
+          {
+            source: "service-worker",
+            feature: String(event.data.feature ?? "notifications"),
+          },
+        );
+        return;
+      }
       if (event.data?.type === "NOTIFICATION_CLICKED") {
         track("notification_opened", {
           kind: String(event.data.kind ?? "unknown"),

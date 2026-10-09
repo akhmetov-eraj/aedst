@@ -1,0 +1,81 @@
+name: web-visual
+
+# Nightly visual regression: every Storybook story is screenshot-compared (light
+# and dark) against the committed baselines in apps/web/visual-baselines.
+# Record or refresh the baselines with web-record-baselines.yml (they must come
+# from this same runner image). Without baselines the job skips and says so.
+on:
+  schedule:
+    - cron: "43 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-visual-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: apps/web
+
+env:
+  NODE_VERSION: "24"
+  PNPM_VERSION: "12.6.0"
+
+jobs:
+  visual:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Baselines present?
+        id: baselines
+        run: |
+          if [ -d visual-baselines ] && [ -n "$(ls -A visual-baselines)" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::no apps/web/visual-baselines yet; run web-record-baselines.yml and commit its artifact"
+          fi
+
+      - if: steps.baselines.outputs.present == 'true'
+        uses: pnpm/action-setup@fc06bc1257f339d1d5d8b3a19a8cae5388b55320 # v4.4.0
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - if: steps.baselines.outputs.present == 'true'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - if: steps.baselines.outputs.present == 'true'
+        name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - if: steps.baselines.outputs.present == 'true'
+        name: Generate ConnectRPC client stubs
+        run: pnpm connect:generate
+
+      - if: steps.baselines.outputs.present == 'true'
+        name: Install Playwright Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - if: steps.baselines.outputs.present == 'true'
+        name: Visual regression
+        run: pnpm test:visual
+
+      - name: Upload diffs
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: web-visual-diffs
+          path: |
+            apps/web/**/__diffs__/
+            apps/web/visual-baselines/
+          if-no-files-found: ignore
+          retention-days: 7

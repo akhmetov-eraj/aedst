@@ -34,9 +34,11 @@ T.ComboBox {
         }
     }
 
+    // Anchored (not positioned by x): anchors follow LayoutMirroring, so the arrow sits at the trailing edge in RTL too.
     indicator: Text {
-        x: control.width - width - Theme.spacingSm
-        y: (control.height - height) / 2
+        anchors.right: control.right
+        anchors.rightMargin: Theme.spacingSm
+        anchors.verticalCenter: control.verticalCenter
         text: "▾"
         color: Theme.mutedForeground
     }

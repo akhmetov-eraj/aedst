@@ -4,10 +4,12 @@
 #include "Domain/notification_stream.hpp"
 #include "Presentation/notification_realtime.hpp"
 #include "Presentation/notification_list_model.hpp"
+#include "aedst/qmlsupport/singleton_slot.hpp"
 
 #include <QObject>
 #include <QString>
 #include <QTimer>
+#include <QtQml/qqmlregistration.h>
 
 #include <memory>
 #include <string>
@@ -49,6 +51,8 @@ class NotificationRepository;
 /// (signed in) and stop() (signed out).
 class NotificationsViewModel final : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
     Q_PROPERTY(int unreadCount READ unreadCount NOTIFY unreadCountChanged)
     Q_PROPERTY(QAbstractItemModel* inbox READ inbox CONSTANT)
     Q_PROPERTY(bool unreadOnly READ unreadOnly WRITE setUnreadOnly NOTIFY unreadOnlyChanged)
@@ -66,6 +70,9 @@ class NotificationsViewModel final : public QObject {
     Q_PROPERTY(QString deliveryMode READ deliveryMode NOTIFY deliveryModeChanged)
 
 public:
+    static NotificationsViewModel* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<NotificationsViewModel>::create(engine, script);
+    }
     static constexpr int kPollIntervalMs = 30'000;
     static constexpr int kBackgroundPollIntervalMs = 120'000;
     static constexpr int kMaxBackoffMs = 300'000;
@@ -102,6 +109,10 @@ public:
     Q_INVOKABLE void stop();
     /// Window became active/inactive: poll faster while the user looks at the app.
     Q_INVOKABLE void setForeground(bool foreground);
+    /// Reachability from ConnectivityMonitor: offline stops the poll timer (no request can succeed); coming back
+    /// online polls immediately. The stream (when present) reconnects on its own.
+    void setOnline(bool online);
+    [[nodiscard]] bool isOnline() const noexcept { return online_; }
     Q_INVOKABLE void pollNow();
 
     Q_INVOKABLE void reload();
@@ -156,6 +167,7 @@ private:
     int failedPolls_{0};
     bool running_{false};
     bool foreground_{true};
+    bool online_{true};
     bool unreadOnly_{false};
     bool isLoading_{false};
     bool preferencesLoaded_{false};

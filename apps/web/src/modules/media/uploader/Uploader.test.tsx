@@ -1,15 +1,14 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { useUploadQueue } from "@/modules/media/lib/upload-queue-store";
 import { Uploader } from "@/modules/media/uploader/Uploader";
-import { useUploadQueue } from "@/modules/media/uploader/upload-queue-store";
 import {
   MediaKind,
   MediaService,
   MediaStatus,
 } from "@/shared/api/connect/generated/aedst/media/v1/media_pb";
-import { rpcErrorHandler, rpcHandler } from "@/test/mocks/connect";
-import { server } from "@/test/mocks/server";
+import { backend, Code, rpc, rpcError } from "@/test/mocks/transport";
 import { messages, renderWithProviders } from "@/test/render";
 
 const t = messages.media.uploader;
@@ -82,8 +81,8 @@ describe("Uploader", () => {
   it("creates an upload, PUTs to the presigned URL, then completes it", async () => {
     const created: { taskId: string; sha256: string; filename: string }[] = [];
     let completed = "";
-    server.use(
-      rpcHandler(MediaService.method.createUpload, (input) => {
+    backend.use(
+      rpc(MediaService.method.createUpload, (input) => {
         created.push({
           taskId: input.taskId,
           sha256: input.sha256,
@@ -96,7 +95,7 @@ describe("Uploader", () => {
           headers: { "Content-Type": "application/pdf" },
         };
       }),
-      rpcHandler(MediaService.method.completeUpload, (input) => {
+      rpc(MediaService.method.completeUpload, (input) => {
         completed = input.id;
         return {
           media: {
@@ -133,12 +132,8 @@ describe("Uploader", () => {
   });
 
   it("explains a rejected file and offers a retry", async () => {
-    server.use(
-      rpcErrorHandler(
-        MediaService.method.createUpload,
-        "invalid_argument",
-        "type",
-      ),
+    backend.use(
+      rpcError(MediaService.method.createUpload, Code.InvalidArgument, "type"),
     );
     renderWithProviders(<Uploader />);
     await userEvent.upload(
@@ -158,12 +153,12 @@ describe("Uploader", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     FakeXhr.statuses = [503];
     let creates = 0;
-    server.use(
-      rpcHandler(MediaService.method.createUpload, () => {
+    backend.use(
+      rpc(MediaService.method.createUpload, () => {
         creates += 1;
         return { media: { id: MEDIA_ID }, uploadUrl: `https://s/${creates}` };
       }),
-      rpcHandler(MediaService.method.completeUpload, () => ({
+      rpc(MediaService.method.completeUpload, () => ({
         media: { id: MEDIA_ID, kind: MediaKind.IMAGE },
       })),
     );
@@ -184,8 +179,8 @@ describe("Uploader", () => {
 
   it("cancels an upload in flight and can retry it", async () => {
     FakeXhr.hang = true;
-    server.use(
-      rpcHandler(MediaService.method.createUpload, () => ({
+    backend.use(
+      rpc(MediaService.method.createUpload, () => ({
         media: { id: MEDIA_ID },
         uploadUrl: "https://s/put",
       })),

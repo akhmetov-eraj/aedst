@@ -9,8 +9,7 @@ import {
   PushPlatform,
 } from "@/shared/api/connect/generated/aedst/notifications/v1/notifications_pb";
 import { runBeforeSignOut } from "@/shared/lib/auth/sign-out-hooks";
-import { rpcErrorHandler, rpcHandler } from "@/test/mocks/connect";
-import { server } from "@/test/mocks/server";
+import { backend, Code, rpc, rpcError } from "@/test/mocks/transport";
 import { messages, renderWithProviders } from "@/test/render";
 
 const t = messages.notifications;
@@ -18,8 +17,8 @@ const DEVICE_ID = "00000000-0000-4000-8000-000000000401";
 
 function servePreferences() {
   let saved: Record<string, boolean> | undefined;
-  server.use(
-    rpcHandler(NotificationsService.method.getPreferences, () => ({
+  backend.use(
+    rpc(NotificationsService.method.getPreferences, () => ({
       preferences: {
         pushEnabled: true,
         taskCompleted: true,
@@ -27,7 +26,7 @@ function servePreferences() {
         mediaReady: false,
       },
     })),
-    rpcHandler(NotificationsService.method.updatePreferences, (input) => {
+    rpc(NotificationsService.method.updatePreferences, (input) => {
       saved = { ...input.preferences } as unknown as Record<string, boolean>;
       return { preferences: input.preferences };
     }),
@@ -86,8 +85,8 @@ afterEach(() => {
 describe("NotificationPreferences", () => {
   it("saves a toggle optimistically and confirms", async () => {
     const saved = servePreferences();
-    server.use(
-      rpcHandler(NotificationsService.method.getWebPushConfig, () => ({
+    backend.use(
+      rpc(NotificationsService.method.getWebPushConfig, () => ({
         vapidPublicKey: "",
       })),
     );
@@ -104,9 +103,15 @@ describe("NotificationPreferences", () => {
   });
 
   it("explains when this browser has no Push API", async () => {
+    vi.stubGlobal("PushManager", undefined);
+    vi.stubGlobal("Notification", undefined);
+    Object.defineProperty(navigator, "serviceWorker", {
+      configurable: true,
+      value: undefined,
+    });
     servePreferences();
-    server.use(
-      rpcHandler(NotificationsService.method.getWebPushConfig, () => ({
+    backend.use(
+      rpc(NotificationsService.method.getWebPushConfig, () => ({
         vapidPublicKey: "BOk",
       })),
     );
@@ -119,18 +124,18 @@ describe("NotificationPreferences", () => {
     const { pushManager, unsubscribe } = stubPushApis();
     const registered: { platform: PushPlatform; endpoint?: string }[] = [];
     const unregistered: string[] = [];
-    server.use(
-      rpcHandler(NotificationsService.method.getWebPushConfig, () => ({
+    backend.use(
+      rpc(NotificationsService.method.getWebPushConfig, () => ({
         vapidPublicKey: "AQID",
       })),
-      rpcHandler(NotificationsService.method.registerPushDevice, (input) => {
+      rpc(NotificationsService.method.registerPushDevice, (input) => {
         registered.push({
           platform: input.platform,
           endpoint: input.webPush?.endpoint,
         });
         return { deviceId: DEVICE_ID };
       }),
-      rpcHandler(NotificationsService.method.unregisterPushDevice, (input) => {
+      rpc(NotificationsService.method.unregisterPushDevice, (input) => {
         unregistered.push(input.deviceId);
         return {};
       }),
@@ -161,8 +166,8 @@ describe("NotificationPreferences", () => {
   it("reports blocked notifications", async () => {
     servePreferences();
     stubPushApis("denied");
-    server.use(
-      rpcHandler(NotificationsService.method.getWebPushConfig, () => ({
+    backend.use(
+      rpc(NotificationsService.method.getWebPushConfig, () => ({
         vapidPublicKey: "AQID",
       })),
     );
@@ -171,13 +176,9 @@ describe("NotificationPreferences", () => {
   });
 
   it("offers a retry when preferences fail to load", async () => {
-    server.use(
-      rpcErrorHandler(
-        NotificationsService.method.getPreferences,
-        "internal",
-        "x",
-      ),
-      rpcHandler(NotificationsService.method.getWebPushConfig, () => ({})),
+    backend.use(
+      rpcError(NotificationsService.method.getPreferences, Code.Internal, "x"),
+      rpc(NotificationsService.method.getWebPushConfig, () => ({})),
     );
     renderWithProviders(<NotificationPreferences />);
     expect(
@@ -191,11 +192,15 @@ describe("NotificationBell", () => {
     stubPushApis();
     localStorage.setItem("aedst-push-device-id", DEVICE_ID);
     const unregistered: string[] = [];
-    server.use(
-      rpcHandler(NotificationsService.method.getUnreadCount, () => ({
+    backend.use(
+      rpc(NotificationsService.method.getUnreadCount, () => ({
         unread: 120,
       })),
-      rpcHandler(NotificationsService.method.unregisterPushDevice, (input) => {
+      // Opted-in browser: the key-rotation check reads the current VAPID key.
+      rpc(NotificationsService.method.getWebPushConfig, () => ({
+        vapidPublicKey: "AQID",
+      })),
+      rpc(NotificationsService.method.unregisterPushDevice, (input) => {
         unregistered.push(input.deviceId);
         return {};
       }),

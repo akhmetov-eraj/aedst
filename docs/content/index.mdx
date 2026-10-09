@@ -1,4 +1,5 @@
 ---
+description: "Architecture, module boundaries and decision records for the aedst monorepo — a Go backend (apps/server) plus four clients (apps/web, apps/android,..."
 title: Overview
 ---
 
@@ -6,24 +7,27 @@ title: Overview
 
 Architecture, module boundaries and decision records for the `aedst` monorepo — a Go backend (`apps/server`) plus four clients (`apps/web`, `apps/android`, `apps/apple`, `apps/desktop`) built around one shared principle: **monolith first, boundaries first, microservices later**.
 
-## Start here
+## General
 
-- **[Platform status & profiles](/status)** — what has actually been built and run (Server and Web; Android, Apple and Desktop are not yet), and the Core profile for projects that only need Server + Web.
-- **[Backend architecture](/architecture)** — the modular monolith, its module boundary rule (ADR‑0006), and the extraction path to real services.
-- **[Modules](/modules)** — the full planned module set, which ones are implemented, and their dependency graph.
-- **[Database](/database)** — schema ownership and per-module data boundaries.
-- **[Events](/events)** — the transactional outbox, relay and inbox: event naming, versioning, delivery guarantees, lag metrics.
-- **[Scaling guide](/scaling)** — what to measure, when to extract a module, pool budgets, load testing, known limits.
-- **[Deployment](/deployment)** — how `aedst-server` ships and sits behind the edge.
+Cross-platform pages that apply to everything:
 
-## Clients
+- **[Stack overview](/stack)** — headline stack per platform and how to keep versions current.
+- **[Library-First Development](/library-first)** — approved libraries, order of preference, explicit rejections.
+- **[Platform status & profiles](/status)** — what has actually been built and run, and the Core profile (Server + Web only).
+- **[UI kit](/ui-kit)** — cross-platform design tokens and component parity.
+- **[i18n overview](/i18n)** — locales and per-module translation rules.
+- **[Decision records](/decisions)** — the ADRs behind the stack choices.
 
-Each native client translates the backend's module-boundary rule to its own build graph — read the backend architecture first, then the client:
+## Platforms
 
-- **[Android architecture](/architecture-android)** — Gradle module graph (`feature/*` → `core/*`).
-- **[Apple architecture](/architecture-apple)** — SwiftPM package graph (`Features/*` → `Core/*`), shared between iOS and macOS.
-- **[Desktop architecture](/architecture-desktop)** — CMake target graph (`Aedst::Feature::*` → `Aedst::*`), C++23 / Qt 6.
+Each platform has its own section with the same shape: **Architecture**, **Stack**, and the topics that only exist for it.
 
-## Decision records
+| Platform | Pages |
+|---|---|
+| **[Server](/server)** | [Architecture](/server/architecture) · [Stack](/server/stack) · [Modules](/server/modules) · [Database](/server/database) · [Events](/server/events) · [Scaling](/server/scaling) · [Deployment](/server/deployment) · [Runbook](/server/runbook) |
+| **[Web](/web)** | [Architecture](/web/architecture) · [Stack](/web/stack) · [i18n](/web/i18n) |
+| **[Android](/android)** | [Architecture](/android/architecture) · [Stack](/android/stack) · [i18n](/android/i18n) |
+| **[Apple](/apple)** | [Architecture](/apple/architecture) · [Stack](/apple/stack) · [i18n](/apple/i18n) · [Release & signing](/apple/release) |
+| **[Desktop](/desktop)** | [Architecture](/desktop/architecture) · [Stack](/desktop/stack) · [i18n](/desktop/i18n) |
 
-**[Decisions](/decisions)** holds the ADRs behind the stack choices referenced throughout these docs — why ConnectRPC over REST/GraphQL, why PostgreSQL, why the outbox relay replaced NATS, why River for background jobs, and the module-boundary rule itself.
+Read the [Server architecture](/server/architecture) first: each client translates its module-boundary rule to its own build graph (Gradle, SwiftPM, CMake).

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Fails if any apps/apple/Features/<Name>/Package.swift declares a local
 # package dependency on another Features/* package. See "The boundary rule,
-# translated" in docs/architecture-apple.md — Features/* may depend on
+# translated" in docs/content/apple/architecture.md — Features/* may depend on
 # Core/*, never on another Features/* package.
 set -euo pipefail
 
@@ -26,5 +26,16 @@ done
 if [ "$status" -eq 0 ]; then
   echo "OK: no feature package depends on another feature package."
 fi
+
+
+# The remaining repo-policy checks ride on this entry point (CI and `task boundaries` both
+# call it): no color literals outside the generated tokens, the file-size policy, the approved-package list,
+# confinement of Keychain / web-auth APIs, and the library-first custom rules (static mirror of SwiftLint).
+bash scripts/check-color-literals.sh || status=1
+bash scripts/check-file-size.sh || status=1
+bash scripts/check-dependencies.sh || status=1
+bash scripts/check-apple-sensitive-apis.sh || status=1
+bash scripts/check-swiftlint-rules-static.sh || status=1
+bash scripts/check-plist-locales.sh || status=1
 
 exit "$status"

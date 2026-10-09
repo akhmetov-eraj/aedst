@@ -1,10 +1,12 @@
 #pragma once
 
 #include "aedst/core/error_sink.hpp"
+#include "aedst/qmlsupport/singleton_slot.hpp"
 
 #include <QElapsedTimer>
 #include <QObject>
 #include <QString>
+#include <QtQml/qqmlregistration.h>
 
 #include <string>
 
@@ -15,18 +17,24 @@ namespace aedst::telemetry {
 /// port; this class
 ///  1. logs it (AedstLogger) and records a crash-reporter breadcrumb,
 ///  2. maps the code to a stable UI kind string that QML turns into a localized
-///     title (App/qml/Main.qml's toast host / banner): "network", "unauthenticated",
-///     "permission_denied", "not_found", "invalid_argument", "storage", "unknown",
+///     title (App/qml/Main.qml's toast host / banner): the shared kind
+///     name (core::toString, error-kinds.json): "unavailable", "offline", "unauthenticated", "forbidden", ...,
 ///  3. emits errorRaised() unless the visibility is Silent, collapsing identical
 ///     errors within kDedupWindowMs so a failing poll cannot stack toasts,
 ///  4. emits sessionExpired() for Unauthenticated so App/ can route to login once.
-/// Cancelled errors are dropped (user intent, not a failure). Unknown errors are
-/// additionally captured as a Sentry event (they mean a bug or a contract gap).
+/// Cancelled errors are dropped (user intent, not a failure). Reportable errors
+/// (core::isReportable: unknown, storage - a bug, a contract gap or a disk fault) are additionally captured as a
+/// Sentry event. isRetryable follows core::isRetryable, the same flags as the outbox and the other clients.
 /// GUI thread only (it is a QObject used from QML).
 class ErrorCenter final : public QObject, public core::ErrorSink {
     Q_OBJECT
+    QML_NAMED_ELEMENT(Errors)
+    QML_SINGLETON
 
 public:
+    static ErrorCenter* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<ErrorCenter>::create(engine, script);
+    }
     static constexpr qint64 kDedupWindowMs = 3000;
 
     explicit ErrorCenter(QObject* parent = nullptr);

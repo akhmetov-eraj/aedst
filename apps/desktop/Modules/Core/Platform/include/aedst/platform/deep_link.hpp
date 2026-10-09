@@ -3,6 +3,7 @@
 #include "aedst/core/outcome.hpp"
 
 #include <cstddef>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -37,12 +38,14 @@ struct DeepLink {
 /// repairs, anything unusual:
 ///  - empty input, length > kMaxDeepLinkLength, other schemes;
 ///  - control characters, non-ASCII bytes, spaces, backslashes, fragments (`#`);
-///  - userinfo (`@`) / ports (`:`): the host must be in the allow-list, which is
-///    auth/callback, tasks[/<id>] and settings (see deep_link.cpp);
+///  - userinfo (`@`) / ports (`:`): the host must be in the allow-list, which is auth/callback and settings
+///    (fixed, see deep_link.cpp) plus `<routeHost>[/<id>]` for each of `routeHosts`: the link prefixes of the
+///    ACTIVE routes (navigation::NavGraph::linkPrefixes()), the same set Router::openLink uses, so the two
+///    allow-lists cannot diverge;
 ///  - `.`/`..`/empty/non-identifier path segments;
 ///  - `+` in the query, malformed percent escapes, decoded control characters,
 ///    invalid UTF-8, duplicate/oversize/too many parameters.
 /// One trailing `/` after the path is tolerated (some OSes append it).
-[[nodiscard]] core::Outcome<DeepLink> parseDeepLink(std::string_view url);
+[[nodiscard]] core::Outcome<DeepLink> parseDeepLink(std::string_view url, std::span<const std::string> routeHosts);
 
 } // namespace aedst::platform

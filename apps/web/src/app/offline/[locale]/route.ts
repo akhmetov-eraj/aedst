@@ -1,5 +1,5 @@
-import { type Locale, locales } from "@/app/config/i18n/locales";
 import { renderOfflinePage } from "@/app/config/pwa/offline-page";
+import { type Locale, locales } from "@/shared/i18n/locales";
 
 /**
  * The service worker's navigation fallback (precached per locale): shown

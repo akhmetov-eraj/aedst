@@ -29,7 +29,7 @@ beforeEach(() => {
 
 describe("reportError", () => {
   it("reports server faults with consistent tags and a per-procedure fingerprint", () => {
-    const error = new ConnectError("db down", Code.Unavailable);
+    const error = new ConnectError("db down", Code.Internal);
     expect(
       reportError(error, {
         source: "query",
@@ -38,12 +38,9 @@ describe("reportError", () => {
         extra: { attempt: 2 },
       }),
     ).toBe("event-id");
-    expect(sentry.scope.setTag).toHaveBeenCalledWith(
-      "error.kind",
-      "unavailable",
-    );
+    expect(sentry.scope.setTag).toHaveBeenCalledWith("error.kind", "unknown");
     expect(sentry.scope.setTag).toHaveBeenCalledWith("error.source", "query");
-    expect(sentry.scope.setTag).toHaveBeenCalledWith("rpc.code", "Unavailable");
+    expect(sentry.scope.setTag).toHaveBeenCalledWith("rpc.code", "Internal");
     expect(sentry.scope.setTag).toHaveBeenCalledWith(
       "rpc.procedure",
       "aedst.tasks.v1.TasksService/GetTask",
@@ -52,7 +49,7 @@ describe("reportError", () => {
     expect(sentry.scope.setFingerprint).toHaveBeenCalledWith([
       "{{ default }}",
       "aedst.tasks.v1.TasksService/GetTask",
-      "Unavailable",
+      "Internal",
     ]);
     expect(sentry.captureException).toHaveBeenCalledWith(error);
   });

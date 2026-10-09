@@ -35,17 +35,50 @@ namespace wx = winrt::Windows::Data::Xml::Dom;
 constexpr wchar_t kAppUserModelId[] = L"com.aedst.Desktop";
 constexpr std::size_t kMaxLiveToasts = 20;
 
+/// True when the shortcut at `linkPath` carries System.AppUserModel.ID == kAppUserModelId.
+bool shortcutCarriesAumid(const QString& linkPath) {
+    winrt::com_ptr<IShellLinkW> link;
+    if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(link.put())))) {
+        return false;
+    }
+    const std::wstring target = QDir::toNativeSeparators(linkPath).toStdWString();
+    if (FAILED(link.as<IPersistFile>()->Load(target.c_str(), STGM_READ))) {
+        return false;
+    }
+    PROPVARIANT value{};
+    PropVariantInit(&value);
+    bool matches = false;
+    if (SUCCEEDED(link.as<IPropertyStore>()->GetValue(PKEY_AppUserModel_ID, &value)) && value.vt == VT_LPWSTR &&
+        value.pwszVal != nullptr) {
+        matches = std::wstring(value.pwszVal) == kAppUserModelId;
+    }
+    PropVariantClear(&value);
+    return matches;
+}
+
 /// Windows only shows toasts of unpackaged apps whose AUMID is bound to a Start Menu shortcut.
-/// Creates `<Start Menu>\Programs\AEDST.lnk` (with System.AppUserModel.ID) when no shortcut exists yet.
+///
+/// VERIFY first: the installer owns the shortcut (`Programs\AEDST\AEDST.lnk` or `Programs\AEDST.lnk`, per machine or
+/// per user). If one of them carries the AUMID nothing is created. Only when none does, a per-user fallback
+/// `Programs\AEDST.lnk` with the AUMID is written (self-healing for portable/ZIP installs and for an installer that
+/// could not set the property); the uninstaller removes that fallback again (installer.nsi.in, Windows.cmake).
 bool ensureStartMenuShortcut(const QString& displayName) {
+    const QStringList programDirectories = QStandardPaths::standardLocations(QStandardPaths::ApplicationsLocation);
+    for (const QString& directory : programDirectories) {
+        for (const QString& candidate : {QDir(directory).filePath(displayName + QStringLiteral(".lnk")),
+                                         QDir(directory).filePath(displayName + QStringLiteral("/") + displayName +
+                                                                  QStringLiteral(".lnk"))}) {
+            if (QFileInfo::exists(candidate) && shortcutCarriesAumid(candidate)) {
+                return true; // the installer's shortcut is in order
+            }
+        }
+    }
     const QString programs = QStandardPaths::writableLocation(QStandardPaths::ApplicationsLocation);
     if (programs.isEmpty()) {
         return false;
     }
     const QString linkPath = QDir(programs).filePath(displayName + QStringLiteral(".lnk"));
-    if (QFileInfo::exists(linkPath)) {
-        return true; // installed by the installer (or by an earlier run)
-    }
+    qCWarning(lcNotifications, "No Start Menu shortcut with the AppUserModelID found; writing a per-user fallback");
     QDir().mkpath(programs);
 
     winrt::com_ptr<IShellLinkW> link;

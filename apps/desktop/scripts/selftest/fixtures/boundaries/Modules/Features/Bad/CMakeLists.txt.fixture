@@ -1,0 +1,3 @@
+# Fixture for scripts/check-feature-boundaries.sh. Not configured.
+add_library(AedstFeatureBad STATIC)
+add_library(Aedst::Feature::Bad ALIAS AedstFeatureBad)

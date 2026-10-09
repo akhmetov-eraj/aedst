@@ -17,8 +17,12 @@ issue).
 | Tokens/passwords in memory | Core dump, swap, crash report | `SecretString` / `secureWipe`; write-only `LoginViewModel.password`; crash reports scrubbed and consent-gated |
 | Traffic | MITM, downgrade to http | https required, TLS ≥ 1.2, `ignoreSslErrors` never called, optional SPKI pinning ([ADR-0004](docs/adr/0004-transport-policy.md)) |
 | Logs / telemetry | Secrets or PII leaking into support bundles | Redaction layer on every sink (`Aedst::Core`), no bodies/headers logged, analytics is a no-op port by default |
-| Updates | Malicious manifest / rollback / tampered installer | Ed25519-signed manifest, key rotation, rollback protection, https-only URLs, SHA-256 + size check ([ADR-0006](docs/adr/0006-platform-services-and-updates.md)) |
+| Updates | Malicious manifest / rollback / tampered installer | Ed25519-signed manifest, key rotation, rollback protection, https-only URLs, SHA-256 + size bound to the signed manifest (checked again after download only where the installer reports the file; for Velopack installs Velopack verifies the package against the feed hash, see the ADR-0029 proposal) ([ADR-0006](docs/adr/0006-platform-services-and-updates.md)) |
 | Deep links / second-launch arguments | Injection through `aedst://` URLs or argv | Strict allow-list parser (`parseDeepLink`), length limits, control characters stripped |
+| Plugins (code loading) | Unsigned or swapped library loaded into the process | Off by default (`AEDST_ENABLE_RUNTIME_PLUGINS`); when on: only `<app dir>/plugins`, files pinned by an Ed25519-signed allowlist, nothing loads in a release build without it, user-writable directory refused, `qrc:/` routes only, no sandbox ([ADR-0033](docs/adr/0033-feature-plugin-architecture.md)) |
+| Memory-safety bugs in the process | Exploitation of a parsing or buffer bug | Exploit mitigations on every first-party target: CFG, `/sdl`, ASLR/high-entropy ASLR/DEP/CET on Windows; stack protector, stack-clash protection, CET, PIE, `_FORTIFY_SOURCE=3`, full RELRO, non-executable stack on Linux (`cmake/AedstHardening.cmake`; the install-verify scripts check the shipped binary) |
+| Server responses | Oversized or substituted responses | Unary bodies are aborted past 16 MiB (`ClientConfig::maxResponseBytes`); the OIDC sign-in sends a random `nonce` that the ID token must echo; the session tokens are `SecretString`s and a `Public` request body (login, refresh) is wiped after the call |
+| User data left behind | The next user of the machine | Sign-out clears the media disk cache, decoded images and video thumbnails, the outbox and the in-memory view models |
 | Release artifacts | Tampered build | Authenticode / detached GPG signatures in CI when secrets exist (unsigned otherwise) |
 
 ## Rules for contributors
@@ -34,8 +38,8 @@ issue).
 4. **Validate at the boundary.** Deep links: `platform::parseDeepLink`. Update
    manifests: `update::ManifestVerifier`. Server data: Protovalidate on the
    server plus Domain validation here.
-5. **Minimum OS permissions.** The Flatpak manifest requests only network, the
-   Secret Service and Notifications bus names.
+5. **Minimum OS permissions.** The Flatpak manifest requests network, display, GPU, audio, the Secret
+   Service and the tray watcher (table in `packaging/README.md`); notifications and portals need no permission.
 6. **Dependencies:** vcpkg baseline pinned (`vcpkg.json`); Qt pinned
    (`qt-version.txt`). Adding a dependency requires updating
    `docs/content/library-first.md` in the same change.
@@ -46,8 +50,12 @@ issue).
   SHA-256 fingerprint stored for diagnostics.
 - **Logout / rejected session:** `TokenStore::clear()` deletes the row, sets
   `secure_delete`, and truncates the WAL so ciphertext does not linger.
-- **Crash reports:** written locally to `<data>/crashes`; uploaded only after
-  explicit consent, rate-limited, size-limited, home-directory paths scrubbed.
+- **Crash reports:** written locally to `<data>/crashes`. The ONLY production upload
+  path is sentry-native/crashpad, active when a Sentry DSN is configured and the user
+  consented (ADR-0022, ADR-0030). Without a DSN nothing is ever uploaded: reports stay
+  on the machine. `ConsentGatedCrashUploader` (consent, daily rate limit, size limit,
+  path scrubbing) is implemented and unit-tested but has **no production `HttpPoster`**
+  and is not wired into the app; it is kept for a possible self-hosted endpoint (ADR-0006).
   Binary minidumps cannot be scrubbed — that is why consent is mandatory.
 
 ## Known limitations (honest list)

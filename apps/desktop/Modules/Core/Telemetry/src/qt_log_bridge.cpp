@@ -81,8 +81,10 @@ void bridgeHandler(QtMsgType type, const QMessageLogContext& context, const QStr
             const std::string text = message.toStdString();
             // Through AedstLogger so redaction (tokens, e-mails) applies to Qt text too.
             if (ours) {
+                // aedst-allow: this file IS the Qt-to-spdlog bridge (ADR-0024)
                 core::AedstLogger::get()->log(toSpdlog(level), "[{}] {}", category, text);
             } else {
+                // aedst-allow: this file IS the Qt-to-spdlog bridge (ADR-0024)
                 core::AedstLogger::get()->log(toSpdlog(level), "[qt:{}] {}", category, text);
             }
             if (gOptions.breadcrumbs && (level >= core::LogLevel::Warn || (ours && level == core::LogLevel::Info))) {
@@ -93,6 +95,7 @@ void bridgeHandler(QtMsgType type, const QMessageLogContext& context, const QStr
                                                      : BreadcrumbLevel::Info);
             }
             if (type == QtFatalMsg) {
+                // aedst-allow: this file IS the Qt-to-spdlog bridge (ADR-0024)
                 core::AedstLogger::flush(); // Qt aborts right after the handlers return.
             }
         }

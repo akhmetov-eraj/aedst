@@ -13,6 +13,7 @@ Q_LOGGING_CATEGORY(lcTelemetry, "aedst.telemetry")
 Q_LOGGING_CATEGORY(lcUpdater, "aedst.updater")
 Q_LOGGING_CATEGORY(lcNotifications, "aedst.notifications")
 Q_LOGGING_CATEGORY(lcAuth, "aedst.auth")
+Q_LOGGING_CATEGORY(lcOutbox, "aedst.outbox")
 
 namespace aedst::logging {
 

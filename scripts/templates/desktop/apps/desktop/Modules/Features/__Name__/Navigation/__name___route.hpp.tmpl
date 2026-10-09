@@ -1,0 +1,11 @@
+#pragma once
+
+#include <string_view>
+
+namespace aedst::feature::{{name}} {
+
+/// Route name of the {{name}} screen. Register it in the NavGraph (Core/Navigation routes) and contribute it through
+/// a feature plugin (see Features/Search `makeSearchPlugin`) once the module has a QML view.
+inline constexpr std::string_view k{{Name}}Route = "{{name}}/list";
+
+} // namespace aedst::feature::{{name}}

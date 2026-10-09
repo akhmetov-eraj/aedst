@@ -13,6 +13,8 @@ struct LoginViewModelTests {
         let repository = SpyAuthRepository(loginResult: result)
         let viewModel = LoginViewModel(
             loginUseCase: LoginUseCase(repository: repository),
+            signInUseCase: SignInUseCase(repository: repository),
+            signInMode: .password,
             analytics: analytics,
             deviceID: { "device-1" }
         )
@@ -35,21 +37,21 @@ struct LoginViewModelTests {
 
     @Test("wrong credentials show the localized invalid-credentials message, not a raw error")
     func wrongCredentials() async {
-        let (viewModel, _) = makeViewModel(.failure(.unauthorized))
+        let (viewModel, _) = makeViewModel(.failure(.unauthenticated))
         viewModel.email = "a@b.com"
         viewModel.password = "wrong"
 
         await viewModel.submit()
 
         #expect(viewModel.session == nil)
-        #expect(viewModel.errorMessage == LoginViewModel.message(for: .unauthorized))
+        #expect(viewModel.errorMessage == LoginViewModel.message(for: .unauthenticated))
         #expect(viewModel.errorMessage?.isEmpty == false)
         #expect(viewModel.errorMessage?.hasPrefix("auth") == false, "missing localization key")
     }
 
     @Test("a network failure never leaks its technical reason into the UI")
     func networkFailureIsHumanized() async {
-        let (viewModel, _) = makeViewModel(.failure(.network(reason: "NSURLErrorDomain -1009 secret-host")))
+        let (viewModel, _) = makeViewModel(.failure(.unavailable(reason: "NSURLErrorDomain -1009 secret-host")))
         viewModel.email = "a@b.com"
         viewModel.password = "x"
 
@@ -84,7 +86,7 @@ struct LoginViewModelTests {
     @Test("analytics receive only the PII-free error category")
     func analyticsAreScrubbed() async {
         let recorder = RecordingAnalytics()
-        let (viewModel, _) = makeViewModel(.failure(.network(reason: "user@example.com leaked")), analytics: recorder)
+        let (viewModel, _) = makeViewModel(.failure(.unavailable(reason: "user@example.com leaked")), analytics: recorder)
         viewModel.email = "a@b.com"
         viewModel.password = "x"
 

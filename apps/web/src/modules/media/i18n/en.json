@@ -33,11 +33,16 @@
     "retry": "Retry",
     "processing": "Processing…",
     "open": "Open {name}",
-    "delete": "Delete {name}"
+    "delete": "Delete {name}",
+    "deleteConfirmTitle": "Delete this attachment?",
+    "deleteConfirmDescription": "{name} will be removed permanently. This can't be undone.",
+    "deleteCancelAction": "Keep it",
+    "deleteConfirmAction": "Delete"
   },
   "player": {
     "processing": "This file is still being processed.",
     "failed": "This file couldn’t be processed.",
-    "open": "Open {name}"
+    "open": "Open {name}",
+    "imageError": "The image couldn’t be loaded. Its link may have expired."
   }
 }

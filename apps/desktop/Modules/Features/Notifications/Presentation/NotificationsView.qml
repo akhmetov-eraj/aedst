@@ -33,7 +33,7 @@ Page {
         RowLayout {
             Layout.fillWidth: true
             spacing: Theme.spacingMd
-            Label {
+            AedstLabel {
                 text: qsTr("Notifications")
                 font: Theme.titleFont
                 color: Theme.foreground
@@ -90,7 +90,7 @@ Page {
                 Accessible.name: qsTr("Notification list")
                 onAtYEndChanged: if (atYEnd && NotificationsViewModel.hasMore) NotificationsViewModel.loadMore()
 
-                delegate: ItemDelegate {
+                delegate: AedstListItem {
                     id: entry
                     required property int index
                     required property string notificationId
@@ -124,7 +124,7 @@ Page {
                         ColumnLayout {
                             Layout.fillWidth: true
                             spacing: 2
-                            Text {
+                            AedstLabel {
                                 Layout.fillWidth: true
                                 text: entry.title
                                 textFormat: Text.PlainText
@@ -133,7 +133,7 @@ Page {
                                 color: Theme.foreground
                                 elide: Text.ElideRight
                             }
-                            Text {
+                            AedstLabel {
                                 Layout.fillWidth: true
                                 visible: entry.body.length > 0
                                 text: entry.body
@@ -145,7 +145,7 @@ Page {
                                 elide: Text.ElideRight
                             }
                         }
-                        Text {
+                        AedstLabel {
                             Layout.alignment: Qt.AlignTop
                             text: Qt.formatDateTime(entry.createdAt, Locale.ShortFormat)
                             font: Theme.captionFont

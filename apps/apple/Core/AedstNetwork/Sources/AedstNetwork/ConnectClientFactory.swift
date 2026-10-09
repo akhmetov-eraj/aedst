@@ -26,11 +26,13 @@ public enum ConnectClientFactory {
     }
 
     /// Every call except `AuthService.Login`/`RefreshToken` goes through this
-    /// client: it attaches the bearer token. Pair it with
+    /// client: it attaches the bearer token and identifies the app (`X-Aedst-Client`, via `RequestHeadersInterceptor`). Pair it with
     /// `AuthorizedRequestExecutor` at the call site for refresh-and-retry.
     public static func makeClient(
         environment: APIEnvironment,
-        tokenProvider: any TokenProvider
+        tokenProvider: any TokenProvider,
+        identity: ClientIdentity = .fromBundle(),
+        upgradeMonitor: ClientUpgradeMonitor? = nil
     ) -> ProtocolClient {
         ProtocolClient(
             httpClient: URLSessionHTTPClient(configuration: makeSessionConfiguration()),
@@ -39,24 +41,34 @@ public enum ConnectClientFactory {
                 networkProtocol: .connect,
                 codec: ProtoCodec(),
                 interceptors: [
+                    InterceptorFactory { _ in RequestHeadersInterceptor(identity: identity) },
+                    InterceptorFactory { _ in ClientUpgradeInterceptor(monitor: upgradeMonitor) },
                     InterceptorFactory { _ in AuthInterceptor(tokenProvider: tokenProvider) },
                 ]
             )
         )
     }
 
-    /// No `AuthInterceptor` — used only for the calls that can't possibly have
+    /// No `AuthInterceptor` (only `RequestHeadersInterceptor` and `ClientUpgradeInterceptor`) — used only for the calls that can't possibly have
     /// a bearer token yet: `AuthService.Login` and `RefreshToken` (and
     /// `Logout`, which authenticates with the refresh token in its body).
     /// Breaks what would otherwise be a circular dependency (the authenticated
     /// client needs a `TokenProvider`, whose refresh handler needs a client).
-    public static func makePlainClient(environment: APIEnvironment) -> ProtocolClient {
+    public static func makePlainClient(
+        environment: APIEnvironment,
+        identity: ClientIdentity = .fromBundle(),
+        upgradeMonitor: ClientUpgradeMonitor? = nil
+    ) -> ProtocolClient {
         ProtocolClient(
             httpClient: URLSessionHTTPClient(configuration: makeSessionConfiguration()),
             config: ProtocolClientConfig(
                 host: environment.baseURL.absoluteString,
                 networkProtocol: .connect,
-                codec: ProtoCodec()
+                codec: ProtoCodec(),
+                interceptors: [
+                    InterceptorFactory { _ in RequestHeadersInterceptor(identity: identity) },
+                    InterceptorFactory { _ in ClientUpgradeInterceptor(monitor: upgradeMonitor) },
+                ]
             )
         )
     }

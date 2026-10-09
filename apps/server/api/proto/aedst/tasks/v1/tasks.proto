@@ -9,7 +9,7 @@ import "google/protobuf/timestamp.proto";
 option go_package = "github.com/aedst/server/gen/go/aedst/tasks/v1;tasksv1";
 
 // TasksService is the tasks module's public API boundary (see
-// docs/modules.md). It is the reference module for the AEDST pattern: every
+// docs/content/server/modules.md). It is the reference module for the AEDST pattern: every
 // RPC here demonstrates the same module shape (domain/application/
 // infrastructure/transport/api) any future module should follow.
 //
@@ -109,8 +109,14 @@ enum SortDirection {
 
 message ListTasksRequest {
   // Empty means "any status"; same for priorities below.
-  repeated TaskStatus statuses = 1 [(buf.validate.field).repeated.items.enum.defined_only = true];
-  repeated TaskPriority priorities = 2 [(buf.validate.field).repeated.items.enum.defined_only = true];
+  repeated TaskStatus statuses = 1 [(buf.validate.field).repeated.items.enum = {
+    defined_only: true
+    not_in: [0]
+  }];
+  repeated TaskPriority priorities = 2 [(buf.validate.field).repeated.items.enum = {
+    defined_only: true
+    not_in: [0]
+  }];
   // Case-insensitive substring match against title + description (LIKE
   // wildcards in the input match literally).
   string search = 3 [(buf.validate.field).string.max_len = 200];
@@ -119,12 +125,15 @@ message ListTasksRequest {
   // Defaults to DESC if unspecified.
   SortDirection sort_direction = 5;
   // Defaults to 20, clamped to 100, if unspecified.
-  int32 page_size = 6 [(buf.validate.field).int32.gte = 0];
+  int32 page_size = 6 [(buf.validate.field).int32 = {
+    gte: 0
+    lte: 100
+  }];
   // Opaque keyset cursor — echo back exactly what a previous response returned
   // in next_page_token, with the same filters and sort. Empty means "first
   // page". A token issued for a different sort order is rejected with
   // INVALID_ARGUMENT. Never parse or construct one: the format may change.
-  string page_token = 7;
+  string page_token = 7 [(buf.validate.field).string.max_len = 512];
 }
 
 message ListTasksResponse {
@@ -135,7 +144,8 @@ message ListTasksResponse {
   // just this page — what the UI shows next to "Tasks". Populated on the
   // FIRST page only (request page_token empty) and 0 on every later page:
   // counting the matching set is O(rows) and would otherwise be paid on every
-  // page. Clients should keep the value from the first response.
+  // page. Clients should keep the value from the first response. Capped at
+  // 10,000: a larger match set reports 10000, meaning "at least 10000".
   int32 total_count = 3;
 }
 

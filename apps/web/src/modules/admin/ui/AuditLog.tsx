@@ -5,8 +5,6 @@ import { useQuery } from "@connectrpc/connect-query";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { useMemo } from "react";
-
-import type { Locale } from "@/app/config/i18n/locales";
 import { useCursorPages } from "@/modules/admin/lib/use-cursor-pages";
 import { type AdminColumn, DataTable } from "@/modules/admin/ui/DataTable";
 import { AdminService } from "@/shared/api/connect/client";
@@ -18,7 +16,7 @@ const PAGE_SIZE = 50;
 /** Append-only record of every admin mutation, newest first. */
 export function AuditLog() {
   const t = useTranslations("admin.audit");
-  const locale = useLocale() as Locale;
+  const locale = useLocale();
   const pages = useCursorPages();
   const log = useQuery(
     AdminService.method.listAuditLog,

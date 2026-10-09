@@ -25,15 +25,38 @@ public struct LoginUseCase: UseCase {
         // Trim what a keyboard/autofill commonly leaves behind; never touch the password.
         let email = input.credentials.email.trimmingCharacters(in: .whitespacesAndNewlines)
         guard email.contains("@") else {
-            return .failure(.validation(fields: ["email"]))
+            return .failure(.invalidInput(fields: ["email"]))
         }
         guard !input.credentials.password.isEmpty else {
-            return .failure(.validation(fields: ["password"]))
+            return .failure(.invalidInput(fields: ["password"]))
         }
         return await repository.login(
             with: Credentials(email: email, password: input.credentials.password),
             deviceID: input.deviceID
         )
+    }
+}
+
+/// Interactive browser sign-in (Authorization Code + PKCE); the browser-mode
+/// counterpart of `LoginUseCase`. There are no credentials to validate here:
+/// the identity provider owns them.
+public struct SignInUseCase: UseCase {
+    private let repository: AuthRepository
+
+    public init(repository: AuthRepository) {
+        self.repository = repository
+    }
+
+    public func callAsFunction(_ input: SignInInput) async -> Outcome<Session> {
+        await repository.signIn(deviceID: input.deviceID)
+    }
+}
+
+public struct SignInInput: Sendable {
+    public let deviceID: String
+
+    public init(deviceID: String) {
+        self.deviceID = deviceID
     }
 }
 

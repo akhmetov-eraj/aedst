@@ -1,7 +1,7 @@
 # aedst-server
 
-The AEDST backend: a modular monolith (see [../../docs/content/architecture.md](../../docs/content/architecture.md)
-for the full architecture and [../../docs/content/modules.md](../../docs/content/modules.md) for
+The AEDST backend: a modular monolith (see [../../docs/content/server/architecture.md](../../docs/content/server/architecture.md)
+for the full architecture and [../../docs/content/server/modules.md](../../docs/content/server/modules.md) for
 the module list and dependency graph).
 
 ## Prerequisites
@@ -16,8 +16,17 @@ the module list and dependency graph).
 
 ```bash
 cp .env.example .env   # edit AEDST_JWT_SIGNING_KEY etc. for anything beyond a laptop
-make dev                # starts Postgres + Valkey, runs migrations, runs the server
+task dev                # starts Postgres + Valkey, applies migrations, runs the server
 ```
+
+Authentication is IdP-first and first-party auth is **off** in `.env.example`, so
+the server needs one of: a ZITADEL (`task up PROFILES="--profile idp"` +
+`deployments/zitadel/bootstrap.sh`, then set `AEDST_OIDC_*`), or, for a quick local
+run, the explicit opt-in `AEDST_AUTH_FIRST_PARTY_ENABLED=true` (development only;
+the Register call below, the Bruno collection and the k6 scripts need it).
+Without either the server refuses to start ("no authentication configured").
+`.env` is not read by the binary: export it into the shell (`set -a; . ./.env; set +a`)
+before `task run`.
 
 The server listens on `:8080` (ConnectRPC — Connect/JSON, gRPC and gRPC-Web all
 work against it). Health: `GET /livez` (process up), `GET /readyz` (Postgres required; Valkey optional — reported as `degraded`, never 503) and standard gRPC health (`grpc.health.v1`).
@@ -25,8 +34,9 @@ Draining reports 503. Telemetry is OpenTelemetry (OTLP) — see
 [Observability](#observability); a Prometheus scrape endpoint is opt-in via
 `AEDST_METRICS_ADDR`.
 
-Try it against the running server (Connect's protocol accepts plain JSON over
-HTTP/1.1, so `curl` works with no gRPC tooling):
+Try it against the running server with first-party auth enabled (Connect's
+protocol accepts plain JSON over HTTP/1.1, so `curl` works with no gRPC tooling;
+with an IdP, send its access token as the bearer instead of calling Register):
 
 ```bash
 curl -s http://localhost:8080/aedst.auth.v1.AuthService/Register \
@@ -59,72 +69,80 @@ one, so this is a real, runnable, git-committed collection instead).
 
 | Command | What it does |
 |---|---|
-| `make up` / `make down` | start/stop local Postgres + Valkey (`task up PROFILES="--profile observability --profile idp"` adds Grafana otel-lgtm and Keycloak) |
-| `make migrate-up` / `make migrate-down` | apply/roll back migrations, per module schema |
-| `make generate` | regenerate proto (buf) and SQL (sqlc) code — commit the diff |
-| `make lint` | format check, vet, golangci-lint, buf lint/format, architecture boundary tests |
-| `make breaking` | fail if this branch's proto changes break compatibility against `main` |
-| `make test` | unit tests (no external services needed) |
-| `make integration-test` | tests against a real Postgres via Testcontainers (advisory locks, outbox, session CAS, repositories) |
+| `task up` / `task down` | start/stop local Postgres + Valkey (`task up PROFILES="--profile observability --profile idp"` adds Grafana otel-lgtm and ZITADEL) |
+| `task migrate` / `task migrate:down` | apply/roll back migrations for every module schema (list: `MODULES` in `Taskfile.yml`) |
+| `task gen` | regenerate proto (buf) and SQL (sqlc) code — commit the diff |
+| `task lint` | format check, vet, golangci-lint, buf lint/format, `sqlc vet`, architecture boundary tests |
+| `task breaking` | fail if this branch's proto changes break compatibility against `main` |
+| `task test` | unit tests (no external services needed) |
+| `task test:integration` | tests against a real Postgres via Testcontainers (advisory locks, River event delivery, session CAS, repositories) |
 | `task lint:migrations` | squawk migration safety lint (Up sections; PATH, npx or Docker) |
-| `task lint` | also runs `sqlc vet` |
-| `make security` | `govulncheck` |
-| `make build` | compile `bin/aedst-server` |
+| `task vuln` | `govulncheck` |
+| `task build` | compile `bin/aedst-server` |
+
+`make <target>` is a shim that forwards to `task <target>` (`Makefile`); there are no separate Make recipes.
 
 ## API governance (Buf)
 
 `api/proto/` is the single source of truth every client generates from
 (`apps/web`, `apps/apple`, and this server's own Go stubs — see
 `buf.gen.yaml` in each). `buf.yaml` pins the lint ruleset (`STANDARD`) and
-breaking-change detection (`FILE`-level compatibility). `make lint` runs
+breaking-change detection (`FILE`-level compatibility). `task lint` runs
 `buf lint` + `buf format -d --exit-code` (fails on unformatted `.proto`);
-`make breaking` checks the current branch against `main` — CI runs the
+`task breaking` checks the current branch against `main` — CI runs the
 equivalent of both on every PR touching `apps/server/**`
 (`.github/workflows/server-ci.yml`), plus a check that `gen/` isn't stale
 relative to `api/proto/`.
 
 ## Adding a module
 
-1. Add a row + dependency edges to [../../docs/content/modules.md](../../docs/content/modules.md).
-2. Scaffold `internal/modules/<name>/{domain,application,infrastructure,repository,transport,events,api}`.
-3. Add `api/proto/aedst/<name>/v1/<name>.proto` (+ `events.proto` if it publishes events) and `make generate`.
-4. Add `migrations/<name>/` (its own schema) and `sql/<name>/` + an `sqlc.yaml` entry.
-5. Wire it in `cmd/server/main.go`.
-6. `go test ./architecturetest/...` — this fails if the new module's imports
-   don't match what you declared in `modules.md`.
+1. Add a row + dependency edges to [../../docs/content/server/modules.md](../../docs/content/server/modules.md).
+2. Scaffold `internal/modules/<name>/{api,domain,application,infrastructure,transport,module}` (`application` holds `ports.go` + `service.go`; copy `internal/modules/tasks`).
+3. Add `api/proto/aedst/<name>/v1/<name>.proto` (+ `events.proto` if it publishes events) and run `task gen`.
+4. Add `migrations/<name>/` (its own schema) and `sql/<name>/` + an `sqlc.yaml` entry; add the name to `MODULES` and `MODULES_REVERSE` in `Taskfile.yml` and to `scripts/lint-migrations.sh`.
+5. Register it in `internal/modules/<name>/module/module.go` with `modulekit.Register` and add one blank-import line to `cmd/server/modules.go` (nothing else in `cmd/server`).
+6. Add the name to `expectedModules` in `architecturetest/layers_test.go`, then `task arch`: it fails if the module's imports do not match `modules.md` or it is not registered.
 
 ## Verifying this environment
 
 `go build ./...`, `go vet ./...`, `golangci-lint run ./...`, `govulncheck ./...`
 and `go test ./...` (architecture boundary tests + unit tests) all run without
-Docker. `make dev` / `make integration-test` need Docker for Postgres/Valkey.
+Docker. `task dev` / `task test:integration` need Docker for Postgres/Valkey.
 
 ## Stack at a glance
 
 | Concern | Choice | Notes |
 |---|---|---|
-| Router / RPC | Chi + ConnectRPC (Protobuf, Buf, Protovalidate) | Chi kept on purpose: template project, familiar middleware ecosystem (CORS, timeout, client-IP) |
+| Router / RPC | net/http ServeMux + ConnectRPC (Protobuf, Buf, Protovalidate) | stdlib router (chi replaced by owner decision); realclientip-go for client IP, rs/cors for CORS |
 | Data | PostgreSQL 18, pgx, sqlc, Goose | `sqlc vet` + squawk in the lint gate |
-| Async | **Postgres outbox + inbox + River** | one mechanism family, no broker; `internal/platform/messaging.Publisher` is the seam if a broker is ever justified |
+| Async | **River** (jobs and events: `InsertTx` in the producer's transaction, ADR-0014) | one mechanism, no broker; `internal/platform/events.Publisher` is the seam when a consumer becomes a separate service |
 | Locks | PostgreSQL advisory locks (`internal/platform/lock`) | no Redlock/RedSync |
 | Cache / rate limits | Valkey via go-redis + redis_rate (`internal/platform/valkey`) | `AEDST_VALKEY_*` |
-| Auth | OIDC resource server (any IdP) + optional first-party module | [ADR-0001](docs/adr/0001-identity-provider.md) |
+| Auth | OIDC resource server (any IdP) + optional first-party module | [ADR-0017](docs/adr/0017-identity-provider.md) |
 | Observability | OpenTelemetry (traces, metrics, logs) over OTLP; optional `/metrics` | any backend |
 
 ## Authentication
 
 Two verifiers behind one interface (`platformauth.Verifier`):
 
-- **External IdP (recommended for new projects):** set `AEDST_OIDC_ISSUER`,
-  `AEDST_OIDC_AUDIENCE` (and `AEDST_OIDC_ROLES_CLAIM` if roles are not in
-  `roles`). Discovery, JWKS caching and rotation are automatic. `docker compose
-  --profile idp up` starts a pre-configured Keycloak; see
-  [ADR-0001](docs/adr/0001-identity-provider.md) for the provider analysis
-  (Keycloak vs Zitadel vs Ory) and a curl walkthrough.
-- **First-party (`AEDST_AUTH_FIRST_PARTY_ENABLED=true`, default):** the
-  existing `AuthService` for the four clients: argon2id, atomic refresh
-  rotation with reuse detection, per-IP and per-account rate limits. Turn it off
-  when an IdP is the system of record.
+- **External IdP (the default; ZITADEL in the template):** set
+  `AEDST_OIDC_ISSUER`, `AEDST_OIDC_AUDIENCE` (the ZITADEL project id) and
+  `AEDST_OIDC_ROLES_CLAIM=urn:zitadel:iam:org:project:roles`. Discovery, JWKS
+  caching and rotation are automatic. `task up PROFILES="--profile idp"` starts a
+  local ZITADEL and `deployments/zitadel/bootstrap.sh` creates the project,
+  roles, PKCE app and service user; see
+  [ADR-0017](docs/adr/0017-identity-provider.md) for the provider analysis
+  (ZITADEL vs Keycloak vs Ory, AGPL caveat) and a walkthrough.
+- **First-party (`AEDST_AUTH_FIRST_PARTY_ENABLED`, default `false`):** the
+  legacy `AuthService` for the four clients (argon2id, refresh rotation with
+  reuse detection, rate limits). There are no production users, so it can be
+  deleted at any time once the clients use the IdP's PKCE flow (ADR-0017). It is a
+  **time-boxed migration path**: outside
+  development it requires `AEDST_AUTH_FIRST_PARTY_SUNSET` (RFC 3339 date), a
+  warning with the days remaining is logged on every start, and once the date
+  has passed staging/production refuse to start. When disabled the register /
+  login / refresh RPCs are not mounted at all. Removal steps: "Sunset runbook"
+  in `docs/content/server/runbook.md`.
 
 ## Observability
 

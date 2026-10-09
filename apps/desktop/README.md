@@ -37,14 +37,55 @@ other.
 ## Layout
 
 ```
-Modules/Core/{Common,Network,Contract,Persistence,Navigation,Connectivity,Platform,CrashReporting,Update,Analytics,DesignSystem,Testing}
+Modules/Core/{Common,Logging,Network,Contract,Oidc,Persistence,Outbox,Navigation,Plugin,Capabilities,Connectivity,Platform,CrashReporting,Telemetry,Update,Updater,Analytics,Media,DesignSystem,Testing}
                                   -> Aedst::Core, Aedst::Network, Aedst::Contract, ... (never depend on a feature)
-Modules/Features/Auth
-                                  -> Aedst::Feature::Auth (depends on Core only; features never link each other)
+Modules/Features/{Admin,Auth,Media,Notifications,Search,Tasks}
+                                  -> Aedst::Feature::<Name> (depend on Core only; features never link each other)
 App/                              -> aedst-desktop (the only target linking every feature)
 Tests/                            -> label-scoped `check*` targets; tests live beside each module
 cmake/, packaging/                -> warnings, CPack, NSIS/MSIX/Flatpak/AppImage
 ```
+
+## Modules
+
+Core modules (never depend on a feature):
+
+| Target | Folder | Purpose |
+|---|---|---|
+| `Aedst::Core` | `Modules/Core/Common` | Qt-free foundation: `Outcome<T>` (`std::expected`), `Error`, `UseCase`, `Clock`, `AedstLogger` (redaction, JSON, correlation ids), `SecretString`/`secureWipe`, `invokeGuarded` |
+| `Aedst::Logging` | `Modules/Core/Logging` | Qt logging categories (`lcApp`, `lcNetwork`, ...); a leaf module so no one needs a dependency on Telemetry to log |
+| `Aedst::Contract` | `Modules/Core/Contract` | `methods.hpp` RPC descriptors (+ drift test); generated Protobuf messages (protoc at build time) |
+| `Aedst::Network` | `Modules/Core/Network` | `ConnectClient` (Connect protocol on Qt Network: unary + server streaming, retries, deadlines, TLS/SPKI pinning, response size limit), `AuthInterceptor`, `ApiError` |
+| `Aedst::Oidc` | `Modules/Core/Oidc` | OpenID Connect sign-in (Authorization Code + PKCE + nonce in the system browser), single-flight refresh, QtKeychain refresh-token store (ADR-0025) |
+| `Aedst::Persistence` | `Modules/Core/Persistence` | RAII SQLite, `DatabaseWorker` (the one database thread), `SecureStorage` + `MasterKeyProvider` (DPAPI / libsecret / file fallback), `Migrator` (frozen migrations), `TokenStore`, `KvStore` |
+| `Aedst::Outbox` | `Modules/Core/Outbox` | Offline write queue: SQLite outbox table, FIFO drainer, `OutboxService`; features contribute handlers through the plugin `ServiceRegistry` (ADR-0034) |
+| `Aedst::Navigation` | `Modules/Core/Navigation` | Route names (`routes::*`, also the `Routes` QML singleton), `NavGraph` (route -> view, link prefixes), `Router` (back stack), `DeepLinkGate` (a link that arrives before sign-in waits for it) |
+| `Aedst::Plugin` | `Modules/Core/Plugin` | `IFeaturePlugin`, `ServiceRegistry`, `PluginManager`, capability gating, trust policy (+ optional signed run-time loader); ADR-0033 |
+| `Aedst::Capabilities` | `Modules/Core/Capabilities` | `GetCapabilities` client, shown-iff-built-AND-server-enabled rules, last-known cache, version advice (ADR-0035) |
+| `Aedst::Connectivity` | `Modules/Core/Connectivity` | `QNetworkInformation` wrapper (Offline state for the UI, outbox, notification polling) |
+| `Aedst::Platform` | `Modules/Core/Platform` | single instance, deep-link allow-list parser, autostart, notifications (toast / D-Bus / tray), platform info |
+| `Aedst::CrashReporting` | `Modules/Core/CrashReporting` | local crash capture; the consent-gated uploader is library code that no production code wires (Sentry is the upload path) |
+| `Aedst::Telemetry` | `Modules/Core/Telemetry` | `SentryReporter`, PostHog tracker, `ErrorCenter`, Qt-log -> spdlog bridge, PII scrubber (ADR-0022, ADR-0030) |
+| `Aedst::Update` | `Modules/Core/Update` | Ed25519-signed manifest verification, semver, rollback protection, artifact hash check, startup health guard (ADR-0029) |
+| `Aedst::Updater` | `Modules/Core/Updater` | self-update orchestration: `UpdateService` (own worker thread), pipeline, installer port; Velopack adapter (ADR-0029) |
+| `Aedst::Analytics` | `Modules/Core/Analytics` | vendor-neutral `AnalyticsTracker` port + `NoOpAnalyticsTracker` |
+| `Aedst::Media` | `Modules/Core/Media` | upload controller, presigned uploader, image provider and caches, video frame grabber, compression, `MediaRemoteDataSource` |
+| `Aedst::QmlSupport` | `Modules/Core/QmlSupport` | `SingletonSlot<T>` for declarative QML singletons (`QML_ELEMENT` + `QML_SINGLETON`) |
+| `Aedst::DesignSystem` | `Modules/Core/DesignSystem` | `ThemeController` + `AedstDesignSystem` QML module (generated tokens, `Theme`, ~45 components, translation loader) |
+| `Aedst::Testing` | `Modules/Core/Testing` | test doubles (`FakeClock`, `FakeHttpServer` incl. an HTTPS mode, `StubTokenProvider`, behaviour fixtures); test targets only |
+
+Feature modules (depend on Core only, never on each other):
+
+| Target | Folder | Purpose |
+|---|---|---|
+| `Aedst::Feature::Auth` | `Modules/Features/Auth` | sign-in (password or browser/OIDC), session restore, `LoginViewModel`; the complete worked example |
+| `Aedst::Feature::Tasks` | `Modules/Features/Tasks` | tasks list/detail/create with attachments and offline writes; the reference module |
+| `Aedst::Feature::Search` | `Modules/Features/Search` | full-text search with suggestions, highlighted snippets |
+| `Aedst::Feature::Notifications` | `Modules/Features/Notifications` | inbox, preferences, live stream with polling fallback, desktop notifications |
+| `Aedst::Feature::Media` | `Modules/Features/Media` | "My files" library and the full-screen viewer (uses `Aedst::Media`) |
+| `Aedst::Feature::Admin` | `Modules/Features/Admin` | operator screen: overview, users, audit log, broadcast (visible only with the admin role) |
+
+The lists are checked against the tree by `scripts/check-docs-modules.sh`.
 
 ## Getting started
 
@@ -155,6 +196,7 @@ plog-converter -a GA:1,2 -t fullhtml build/pvs.log -o build/pvs-report
 - [ADR-0001 API contract client](docs/adr/0001-api-contract-client.md) - Connect over Qt Network + generated Protobuf, why not gRPC C++
 - [ADR-0002 dependency management](docs/adr/0002-dependency-management.md) - vcpkg, Qt pin, CI migration
 - [ADR-0003 secret storage](docs/adr/0003-secret-storage.md), [0004 transport policy](docs/adr/0004-transport-policy.md), [0005 database & threading](docs/adr/0005-local-database-and-threading.md), [0006 platform services & updates](docs/adr/0006-platform-services-and-updates.md)
+- [ADR-0022 to 0035](docs/adr/): telemetry/media/notifications, Windows and Linux only, OIDC, API client hardening, realtime notifications, local data thread, delivery/updates/signing, observability privacy, performance gate, licenses, feature plugins (0033), offline outbox and client gate (0034), capability negotiation (0035)
 - [Performance baseline](docs/performance.md) - build/runtime switches, measuring, what was deliberately not done
 
 ```bash

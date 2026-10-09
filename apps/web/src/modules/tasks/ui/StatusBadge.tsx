@@ -1,6 +1,6 @@
 import { useTranslations } from "next-intl";
 
-import { STATUS_BADGE_CLASS, STATUS_KEYS } from "@/modules/tasks/lib/labels";
+import { STATUS_BADGE_VARIANT, STATUS_KEYS } from "@/modules/tasks/lib/labels";
 import type { TaskStatus } from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
 import { Badge } from "@/shared/ui/badge";
 
@@ -12,7 +12,7 @@ export function StatusBadge({ status }: { status: TaskStatus }) {
     return null;
   }
   return (
-    <Badge className={STATUS_BADGE_CLASS[status]}>
+    <Badge variant={STATUS_BADGE_VARIANT[status]}>
       <span className="sr-only">
         {tA11y("status")}: {t(key)}
       </span>

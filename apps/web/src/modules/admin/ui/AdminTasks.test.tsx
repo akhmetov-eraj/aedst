@@ -4,8 +4,7 @@ import { describe, expect, it } from "vitest";
 
 import { AdminTasks } from "@/modules/admin/ui/AdminTasks";
 import { AdminService } from "@/shared/api/connect/generated/aedst/admin/v1/admin_pb";
-import { rpcHandler } from "@/test/mocks/connect";
-import { server } from "@/test/mocks/server";
+import { backend, rpc } from "@/test/mocks/transport";
 import { messages, renderWithProviders } from "@/test/render";
 
 const t = messages.admin.tasks;
@@ -14,8 +13,8 @@ const TASK_ID = "00000000-0000-4000-8000-000000000101";
 describe("AdminTasks", () => {
   it("lists every user's tasks and deletes one only with a reason", async () => {
     const deleted: { id: string; reason: string }[] = [];
-    server.use(
-      rpcHandler(AdminService.method.listTasks, (input) => ({
+    backend.use(
+      rpc(AdminService.method.listTasks, (input) => ({
         tasks: deleted.length
           ? []
           : [
@@ -28,7 +27,7 @@ describe("AdminTasks", () => {
             ],
         nextPageToken: input.pageToken ? "" : "next",
       })),
-      rpcHandler(AdminService.method.deleteTask, (input) => {
+      rpc(AdminService.method.deleteTask, (input) => {
         deleted.push({ id: input.id, reason: input.reason });
         return {};
       }),

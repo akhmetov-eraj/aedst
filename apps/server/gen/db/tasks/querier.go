@@ -16,12 +16,16 @@ type Querier interface {
 	// are reachable only through tasks/api's AdminService, which only the admin
 	// module uses, behind the admin role policy.
 	AdminListTasks(ctx context.Context, arg AdminListTasksParams) ([]TasksTask, error)
-	AdminTaskStats(ctx context.Context) (AdminTaskStatsRow, error)
+	// Platform-wide counts over at most row_cap tasks, so the operator dashboard cannot become a
+	// full scan of an unbounded table. Above the cap the figures are lower bounds.
+	AdminTaskStats(ctx context.Context, rowCap int32) (AdminTaskStatsRow, error)
 	// Guarded transition: only a task that is not yet done changes, so completing
 	// twice (a retry, a double click, two devices) is a no-op instead of a second
 	// state change and a second TaskCompleted event. No row back means "not found"
 	// or "already done" and the caller tells them apart.
 	CompleteTask(ctx context.Context, arg CompleteTaskParams) (TasksTask, error)
+	// Counts the matching tasks up to count_cap rows: counting a very large match set is
+	// O(rows) on every first page. A result equal to the cap means "at least that many".
 	CountTasks(ctx context.Context, arg CountTasksParams) (int64, error)
 	CountTasksByOwners(ctx context.Context, ownerIds []pgtype.UUID) ([]CountTasksByOwnersRow, error)
 	CreateTask(ctx context.Context, arg CreateTaskParams) (TasksTask, error)

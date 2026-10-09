@@ -8,7 +8,9 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
+import com.aedst.core.ui.R
 import com.aedst.core.ui.theme.AedstTheme
 
 /**
@@ -29,12 +31,12 @@ fun AedstDatePickerDialog(
         onDismissRequest = onDismissRequest,
         confirmButton = {
             TextButton(onClick = { onDateSelected(state.selectedDateMillis) }) {
-                Text("OK")
+                Text(stringResource(R.string.aedst_action_ok))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismissRequest) {
-                Text("Cancel")
+                Text(stringResource(R.string.aedst_action_cancel))
             }
         },
     ) {

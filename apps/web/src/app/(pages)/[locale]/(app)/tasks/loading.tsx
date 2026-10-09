@@ -1,7 +1,7 @@
 import {
   DashboardStatsFallback,
   TaskListFallback,
-} from "@/modules/tasks/ui/TasksSections";
+} from "@/modules/tasks/public";
 
 // Shown instantly while the tasks segment's server work starts — the
 // segment-level counterpart of the per-section <Suspense> fallbacks in

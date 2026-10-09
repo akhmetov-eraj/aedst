@@ -66,7 +66,7 @@ public:
     OidcSession& operator=(const OidcSession&) = delete;
 
     /// Interactive sign-in. Fails with ErrorCode::Cancelled when the user denies or cancelSignIn()
-    /// is called, ErrorCode::Storage when the keychain is unavailable, ErrorCode::Network when the
+    /// is called, ErrorCode::Storage when the keychain is unavailable, ErrorCode::Unavailable when the
     /// provider cannot be reached, ErrorCode::Unauthenticated for a rejected/invalid response.
     void signIn(core::Completion<OidcUser> done);
     /// Abandons a running browser step (the user pressed Cancel or closed the window).
@@ -74,7 +74,7 @@ public:
     [[nodiscard]] bool signInInProgress() const noexcept;
 
     /// Startup: loads the stored refresh token and exchanges it for an access token.
-    /// nullopt = nobody was signed in. A network failure returns ErrorCode::Network but KEEPS the
+    /// nullopt = nobody was signed in. A network failure returns ErrorCode::Unavailable but KEEPS the
     /// stored identity (isSignedIn() stays true; the next ensureFreshAccessToken() retries).
     /// A rejected refresh token clears the identity and returns ErrorCode::Unauthenticated.
     void restore(core::Completion<std::optional<OidcUser>> done);

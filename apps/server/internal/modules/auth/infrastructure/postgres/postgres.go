@@ -1,6 +1,6 @@
 // Package postgres implements the auth module's repositories against the
 // sqlc-generated queries in gen/db/auth. Nothing outside this module imports
-// this package directly (see docs/architecture.md) — other modules go through
+// this package directly (see docs/content/server/architecture.md) — other modules go through
 // modules/auth/api.
 package postgres
 

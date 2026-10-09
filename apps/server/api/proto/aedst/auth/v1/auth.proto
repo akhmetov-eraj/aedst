@@ -7,7 +7,7 @@ import "google/protobuf/timestamp.proto";
 
 option go_package = "github.com/aedst/server/gen/go/aedst/auth/v1;authv1";
 
-// AuthService is the auth module's public API boundary (see docs/modules.md
+// AuthService is the auth module's public API boundary (see docs/content/server/modules.md
 // and docs/decisions/0006-module-boundaries.md): it owns credentials,
 // sessions, and the core identity record, and is the only module that
 // issues or verifies tokens. Registration used to live in a separate

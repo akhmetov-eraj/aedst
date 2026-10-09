@@ -18,6 +18,7 @@ namespace {
 }
 
 /// Environment wins over QSettings; an empty environment value counts as unset.
+// aedst-allow: non-secret OIDC client configuration (issuer, client id), not a credential store; tokens use QtKeychain (ADR-0025)
 [[nodiscard]] QString lookup(const QSettings& settings, const QProcessEnvironment& environment,
                              const QString& envName, const QString& settingsKey) {
     const QString fromEnvironment = environment.value(envName).trimmed();
@@ -73,25 +74,26 @@ QString normalizedIssuer(const QUrl& issuer) {
 
 core::VoidOutcome validateOidcConfig(const OidcConfig& config) {
     if (!config.isConfigured()) {
-        return core::fail(core::Error::invalidArgument("OIDC: issuer and client id are required"));
+        return core::fail(core::Error::invalidInput("OIDC: issuer and client id are required"));
     }
     const QUrl& issuer = config.issuer;
     if (!issuer.userInfo().isEmpty() || issuer.hasQuery() || issuer.hasFragment() || issuer.host().isEmpty()) {
         return core::fail(
-            core::Error::invalidArgument("OIDC: issuer must be a plain URL without credentials, query or fragment"));
+            core::Error::invalidInput("OIDC: issuer must be a plain URL without credentials, query or fragment"));
     }
     const bool https = issuer.scheme() == QLatin1String("https");
     const bool loopbackHttp =
         issuer.scheme() == QLatin1String("http") && config.allowInsecureLoopbackIssuer && isLoopbackUrl(issuer);
     if (!https && !loopbackHttp) {
-        return core::fail(core::Error::invalidArgument("OIDC: issuer must use https"));
+        return core::fail(core::Error::invalidInput("OIDC: issuer must use https"));
     }
     if (config.signInTimeout.count() <= 0 || config.requestTimeout.count() <= 0 || config.refreshSkew.count() < 0) {
-        return core::fail(core::Error::invalidArgument("OIDC: timeouts must be positive"));
+        return core::fail(core::Error::invalidInput("OIDC: timeouts must be positive"));
     }
     return core::ok();
 }
 
+// aedst-allow: non-secret OIDC client configuration (issuer, client id), not a credential store; tokens use QtKeychain (ADR-0025)
 OidcConfig loadOidcConfig(const QSettings& settings, const QProcessEnvironment& environment) {
     OidcConfig config;
     config.issuer =

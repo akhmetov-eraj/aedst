@@ -2,6 +2,9 @@ import { test as base, expect, type Page } from "@playwright/test";
 
 const MOCK_API_URL = "http://127.0.0.1:8181";
 
+/** Origin the app under test is served from (playwright.config.ts WEB_PORT). */
+export const WEB_ORIGIN = `http://127.0.0.1:${process.env.E2E_WEB_PORT ?? 3100}`;
+
 export type SeededUser = { email: string; password: string; userId: string };
 
 async function mockPost<T>(path: string, body: object): Promise<T> {
@@ -31,20 +34,28 @@ export const mockApi = {
 };
 
 /**
- * Fills and submits the login form on the current page. It first waits for the
- * submit button to enable — the app keeps it disabled until React has hydrated
- * (see useHydrated) — because text typed into an uncontrolled field before
- * hydration can be reset by the form library taking over the input.
+ * Signs in on the mock identity provider: from the app's home page, follows
+ * "Sign in" (OIDC Authorization Code + PKCE redirect), fills the IdP's own
+ * login form and submits it. The browser comes back through /api/auth/callback.
  */
 export async function logIn(page: Page, user: SeededUser) {
-  const submit = page.getByRole("button", { name: "Log in" });
-  await expect(submit).toBeEnabled();
-  await page.getByLabel("Email").fill(user.email);
-  await page.getByLabel("Password").fill(user.password);
-  await submit.click();
+  await page.getByRole("link", { name: "Sign in", exact: true }).click();
+  await submitIdpForm(page, user.email, user.password, "Continue");
 }
 
-/** Signs in through the real login form (so it exercises the Server Action). */
+export async function submitIdpForm(
+  page: Page,
+  email: string,
+  password: string,
+  button: "Continue" | "Register",
+) {
+  await expect(page).toHaveURL(/127\.0\.0\.1:8181\/oidc\/authorize/);
+  await page.getByLabel("IdP email").fill(email);
+  await page.getByLabel("IdP password").fill(password);
+  await page.getByRole("button", { name: button }).click();
+}
+
+/** Signs in through the real redirect flow (so it exercises login + callback). */
 export async function signInThroughUi(page: Page, user: SeededUser) {
   await page.goto("/en");
   await logIn(page, user);

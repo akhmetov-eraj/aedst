@@ -28,6 +28,11 @@ add_library(AedstPlatform STATIC
 )
 add_library(Aedst::Platform ALIAS AedstPlatform)
 
+# Declarative QML singletons (QML_ELEMENT + QML_SINGLETON, Aedst::QmlSupport); the module URI is the import name QML uses.
+# Only App links AedstPlatformplugin, so QML test executables keep registering their fakes under this URI.
+target_link_libraries(AedstPlatform PUBLIC Aedst::QmlSupport)
+qt_add_qml_module(AedstPlatform URI Aedst.Platform VERSION 1.0 RESOURCE_PREFIX /qt/qml)
+
 target_include_directories(AedstPlatform PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 target_compile_features(AedstPlatform PUBLIC cxx_std_23)

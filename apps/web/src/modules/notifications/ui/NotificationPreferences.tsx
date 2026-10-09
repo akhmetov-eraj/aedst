@@ -18,7 +18,9 @@ import {
   type Preferences,
 } from "@/shared/api/connect/generated/aedst/notifications/v1/notifications_pb";
 import { Button } from "@/shared/ui/button";
-import { Skeleton } from "@/shared/ui/skeleton";
+import { Label } from "@/shared/ui/label";
+import { LoadingSkeleton } from "@/shared/ui/loading-skeleton";
+
 import { Switch } from "@/shared/ui/switch";
 
 const TOGGLES = [
@@ -89,7 +91,7 @@ export function NotificationPreferences() {
           {t("kindsTitle")}
         </h2>
         {preferences.isPending ? (
-          <Skeleton className="h-32 w-full" role="status" aria-busy="true" />
+          <LoadingSkeleton className="h-32 w-full" />
         ) : preferences.isError || !current ? (
           <div role="alert" className="flex flex-col items-start gap-2">
             <p className="text-sm">{t("loadError")}</p>
@@ -135,9 +137,9 @@ function PreferenceSwitch({
   const id = useId();
   return (
     <div className="flex items-center justify-between gap-4">
-      <label htmlFor={id} className="text-sm">
+      <Label htmlFor={id} className="font-normal">
         {label}
-      </label>
+      </Label>
       <Switch
         id={id}
         // Named explicitly: WebKit does not associate a <label for> with the

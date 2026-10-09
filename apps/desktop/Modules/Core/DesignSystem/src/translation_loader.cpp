@@ -4,6 +4,7 @@
 
 #include <QCoreApplication>
 #include <QGuiApplication>
+#include <QLibraryInfo>
 #include <QLocale>
 #include <QTranslator>
 
@@ -56,6 +57,8 @@ QString TranslationLoader::setLanguage(const QString& language) {
         }
     }
 
+    loadQtTranslations(resolved);
+
     language_ = resolved;
     const QLocale locale(resolved);
     QLocale::setDefault(locale);
@@ -69,6 +72,31 @@ QString TranslationLoader::setLanguage(const QString& language) {
 
 QString TranslationLoader::language() const {
     return language_;
+}
+
+void TranslationLoader::loadQtTranslations(const QString& language) {
+    // Qt's own strings (standard dialog buttons, text-edit context menu, QML Controls) ship as qtbase_<lang>.qm and
+    // qtdeclarative_<lang>.qm. They are found next to the executable (deployed `translations/`, what windeployqt and
+    // the Linux bundles produce) or in the Qt installation. Qt has no catalog for every language (for example Tajik):
+    // a missing one is simply skipped and those strings stay English.
+    const QStringList directories{QCoreApplication::applicationDirPath() + QStringLiteral("/translations"),
+                                  QLibraryInfo::path(QLibraryInfo::TranslationsPath)};
+    for (const QString& base : {QStringLiteral("qtbase"), QStringLiteral("qtdeclarative")}) {
+        auto* translator = new QTranslator(this);
+        bool loaded = false;
+        for (const QString& directory : directories) {
+            if (translator->load(QStringLiteral("%1_%2").arg(base, language), directory)) {
+                loaded = true;
+                break;
+            }
+        }
+        if (loaded) {
+            QCoreApplication::installTranslator(translator);
+            translators_.append(translator);
+        } else {
+            delete translator;
+        }
+    }
 }
 
 void TranslationLoader::removeTranslators() {

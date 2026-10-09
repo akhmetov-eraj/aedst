@@ -13,6 +13,10 @@ Rectangle {
     implicitWidth: 120
     implicitHeight: 16
 
+    // Purely decorative: the owning view announces "Loading"; a placeholder must not be read out line by line.
+    Accessible.role: Accessible.Graphic
+    Accessible.ignored: true
+
     Rectangle {
         id: sheen
         width: parent.width * 0.5
@@ -20,7 +24,7 @@ Rectangle {
         gradient: Gradient {
             orientation: Gradient.Horizontal
             GradientStop { position: 0.0; color: "transparent" }
-            GradientStop { position: 0.5; color: Qt.rgba(1, 1, 1, Theme.dark ? 0.06 : 0.5) }
+            GradientStop { position: 0.5; color: Theme.shimmer }
             GradientStop { position: 1.0; color: "transparent" }
         }
 

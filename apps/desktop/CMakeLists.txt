@@ -101,6 +101,7 @@ endif()
 # Core: everything depends on these; they never depend on a feature.
 add_subdirectory(Modules/Core/Common)
 add_subdirectory(Modules/Core/Logging)         # Aedst::Logging (Qt logging categories)
+add_subdirectory(Modules/Core/QmlSupport)       # Aedst::QmlSupport (SingletonSlot for declarative QML singletons)
 add_subdirectory(Modules/Core/Platform)        # Aedst::Platform (secure storage, notifications, autostart)
 add_subdirectory(Modules/Core/Network)
 add_subdirectory(Modules/Core/Oidc)            # Aedst::Oidc (OIDC + PKCE sign-in, QtKeychain refresh token)
@@ -110,7 +111,10 @@ add_subdirectory(Modules/Core/CrashReporting)  # Aedst::CrashReporting
 add_subdirectory(Modules/Core/Update)          # Aedst::Update
 add_subdirectory(Modules/Core/Updater)         # Aedst::Updater (self-update orchestration, Velopack adapter)
 add_subdirectory(Modules/Core/Persistence)
+add_subdirectory(Modules/Core/Outbox)          # Aedst::Outbox (offline write queue: SQLite outbox, FIFO drainer, service)
 add_subdirectory(Modules/Core/Navigation)
+add_subdirectory(Modules/Core/Plugin)          # Aedst::Plugin (feature plugin contract, gating, trust policy; ADR-0033)
+add_subdirectory(Modules/Core/Capabilities)    # Aedst::Capabilities (capability negotiation, ICapabilitySource; ADR-0035)
 add_subdirectory(Modules/Core/Analytics)
 add_subdirectory(Modules/Core/Telemetry)       # Aedst::Telemetry (Sentry, PostHog, Qt log bridge, ErrorCenter)
 add_subdirectory(Modules/Core/DesignSystem)

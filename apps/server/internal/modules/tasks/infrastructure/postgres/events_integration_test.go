@@ -12,22 +12,16 @@ import (
 	"github.com/aedst/server/internal/modules/tasks/application"
 	"github.com/aedst/server/internal/modules/tasks/domain"
 	"github.com/aedst/server/internal/platform/database"
+	"github.com/aedst/server/internal/platform/events/eventstest"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
 
 	"github.com/jackc/pgx/v5"
 )
 
-func eventsOf(t *testing.T, ctx context.Context, q interface {
-	Query(context.Context, string, ...any) (pgx.Rows, error)
-}, taskID ids.ID,
-) []string {
+func eventsOf(t *testing.T, ctx context.Context, q eventstest.Querier, taskID ids.ID) []string {
 	t.Helper()
-	rows, err := q.Query(ctx, `SELECT event_type FROM platform.outbox WHERE module = 'tasks' AND partition_key = $1 ORDER BY occurred_at, event_id`, taskID.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	types, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	types, err := eventstest.EventTypes(ctx, q, taskID.String())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,7 +45,7 @@ func TestRepository_PublishesCreateUpdateDeleteEvents(t *testing.T) {
 	if err != nil || updated.Version != 2 {
 		t.Fatalf("Update = %+v, %v", updated, err)
 	}
-	if err := repo.Delete(ctx, created.ID, user); err != nil {
+	if err := repo.Delete(ctx, created.ID, user, ""); err != nil {
 		t.Fatal(err)
 	}
 	got := eventsOf(t, ctx, pool, created.ID)
@@ -60,17 +54,18 @@ func TestRepository_PublishesCreateUpdateDeleteEvents(t *testing.T) {
 		t.Fatalf("events = %v, want %v", got, want)
 	}
 
-	var raw []byte
-	if err := pool.QueryRow(ctx, `SELECT payload FROM platform.outbox WHERE event_type = $1 AND partition_key = $2`, api.TaskDeletedEventType, created.ID.String()).Scan(&raw); err != nil {
-		t.Fatal(err)
+	deliveries, err := eventstest.Deliveries(ctx, pool, api.TaskDeletedEventType)
+	if err != nil || len(deliveries) != 1 {
+		t.Fatalf("TaskDeleted deliveries = %d, %v; want 1", len(deliveries), err)
 	}
+	raw := deliveries[0].Payload
 	var deleted api.TaskDeletedEvent
 	if err := json.Unmarshal(raw, &deleted); err != nil || deleted.Version != 3 || deleted.UserID != user.String() {
 		t.Errorf("TaskDeleted = %+v, %v; want version 3 (above the last snapshot)", deleted, err)
 	}
 
 	// Failed mutations publish nothing.
-	if err := repo.Delete(ctx, created.ID, user); sharederrors.KindOf(err) != sharederrors.KindNotFound {
+	if err := repo.Delete(ctx, created.ID, user, ""); sharederrors.KindOf(err) != sharederrors.KindNotFound {
 		t.Fatalf("second Delete = %v", err)
 	}
 	if n := len(eventsOf(t, ctx, pool, created.ID)); n != 3 {
@@ -108,8 +103,8 @@ func TestRepository_MarkDueSoon_IsGuarded(t *testing.T) {
 	if _, err := repo.Complete(ctx, created.ID, user, time.Now()); err != nil {
 		t.Fatal(err)
 	}
-	var n int
-	_ = pool.QueryRow(ctx, `SELECT count(*) FROM platform.outbox WHERE event_type = $1`, api.TaskDueSoonEventType).Scan(&n)
+	dueDeliveries, _ := eventstest.Deliveries(ctx, pool, api.TaskDueSoonEventType)
+	n := len(dueDeliveries)
 	if n != 1 {
 		t.Errorf("TaskDueSoon rows = %d, want 1", n)
 	}

@@ -34,12 +34,12 @@ type Tx interface {
 
 // PlatformStats reports the async pipeline's health.
 type PlatformStats interface {
-	OutboxLag(ctx context.Context) (time.Duration, error)
+	JobLag(ctx context.Context) (time.Duration, error)
 	PendingJobs(ctx context.Context) (int64, error)
 }
 
 // AuditSortToken / UserSortToken / TaskSortToken bind page tokens.
-const AuditSortToken = "admin:audit:created_at:desc"
+const AuditSortToken = "admin:audit:created_at:desc" //nolint:gosec // G101 false positive: a pagination sort-token name, not a credential
 
 // Deps are the composed modules. Directory and Media may be nil (first-party
 // auth disabled / storage not configured).
@@ -60,15 +60,15 @@ func NewService(d Deps) *Service { return &Service{d: d} }
 
 // Overview aggregates counts from every module.
 type Overview struct {
-	UsersTotal       int64
-	TasksTotal       int64
-	TasksDone        int64
-	TasksOverdue     int64
-	MediaTotal       int64
-	MediaBytes       int64
-	PushDevices      int64
-	OutboxLagSeconds int64
-	JobsPending      int64
+	UsersTotal    int64
+	TasksTotal    int64
+	TasksDone     int64
+	TasksOverdue  int64
+	MediaTotal    int64
+	MediaBytes    int64
+	PushDevices   int64
+	JobLagSeconds int64
+	JobsPending   int64
 }
 
 func (s *Service) GetOverview(ctx context.Context) (Overview, error) {
@@ -93,11 +93,11 @@ func (s *Service) GetOverview(ctx context.Context) (Overview, error) {
 	if o.PushDevices, err = s.d.Notifications.CountActiveDevices(ctx); err != nil {
 		return Overview{}, err
 	}
-	lag, err := s.d.Platform.OutboxLag(ctx)
+	lag, err := s.d.Platform.JobLag(ctx)
 	if err != nil {
 		return Overview{}, err
 	}
-	o.OutboxLagSeconds = int64(lag.Seconds())
+	o.JobLagSeconds = int64(lag.Seconds())
 	if o.JobsPending, err = s.d.Platform.PendingJobs(ctx); err != nil {
 		return Overview{}, err
 	}

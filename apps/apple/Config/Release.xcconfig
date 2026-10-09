@@ -5,6 +5,7 @@ ONLY_ACTIVE_ARCH = NO
 
 // Push: TestFlight / App Store / Developer ID builds use the production APNs gateway.
 APS_ENVIRONMENT = production
+APP_ATTEST_ENVIRONMENT = production
 AEDST_APNS_SANDBOX = NO
 VALIDATE_PRODUCT = YES
 

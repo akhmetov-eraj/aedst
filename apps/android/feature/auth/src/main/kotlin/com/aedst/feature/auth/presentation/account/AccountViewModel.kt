@@ -11,15 +11,31 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
+data class AccountState(
+    val userId: String? = null,
+    val isSigningOut: Boolean = false,
+    /** Product analytics is opt-in (unset counts as "no"). */
+    val isAnalyticsEnabled: Boolean = false,
+)
+
+sealed interface AccountIntent {
+    data class SetAnalyticsEnabled(val enabled: Boolean) : AccountIntent
+    data object SignOut : AccountIntent
+}
+
+/**
+ * The state is derived from the session and the consent store plus the local "signing out" flag. There is no effect:
+ * signing out clears the session, and `app/` resets every back stack and shows the login screen on its own.
+ */
 @HiltViewModel
-class AccountViewModel @Inject constructor(
+internal class AccountViewModel @Inject constructor(
     authRepository: AuthRepository,
     private val logoutUseCase: LogoutUseCase,
     private val analyticsTracker: AnalyticsTracker,
@@ -28,21 +44,22 @@ class AccountViewModel @Inject constructor(
 
     private val signingOut = MutableStateFlow(false)
 
-    val userId: StateFlow<String?> = authRepository.session
-        .map { it?.userId }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), null)
-    val isSigningOut: StateFlow<Boolean> = signingOut.asStateFlow()
+    val state: StateFlow<AccountState> = combine(
+        authRepository.session.map { it?.userId },
+        signingOut,
+        consentStore.consent.map { it == AnalyticsConsentState.GRANTED },
+    ) { userId, isSigningOut, isAnalyticsEnabled ->
+        AccountState(userId, isSigningOut, isAnalyticsEnabled)
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), AccountState())
 
-    /** Product analytics is opt-in (unset counts as "no"). */
-    val isAnalyticsEnabled: StateFlow<Boolean> = consentStore.consent
-        .map { it == AnalyticsConsentState.GRANTED }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS), false)
-
-    fun setAnalyticsEnabled(enabled: Boolean) {
-        viewModelScope.launch { consentStore.setConsent(enabled) }
+    fun onIntent(intent: AccountIntent) {
+        when (intent) {
+            is AccountIntent.SetAnalyticsEnabled -> viewModelScope.launch { consentStore.setConsent(intent.enabled) }
+            AccountIntent.SignOut -> signOut()
+        }
     }
 
-    fun signOut() {
+    private fun signOut() {
         if (signingOut.value) return
         signingOut.update { true }
         viewModelScope.launch {

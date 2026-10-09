@@ -42,7 +42,7 @@ public protocol SearchRepository: Sendable {
 /// "matched terms are wrapped in U+E000 / U+E001").
 ///
 /// Highlighted runs get `inlinePresentationIntent = .stronglyEmphasized`
-/// (rendered bold by SwiftUI `Text` on iOS 15+/macOS 12+). Unbalanced or
+/// (rendered bold by SwiftUI `Text`). Unbalanced or
 /// stray markers never leak into the output.
 public enum SnippetHighlighter {
     /// Opening marker.

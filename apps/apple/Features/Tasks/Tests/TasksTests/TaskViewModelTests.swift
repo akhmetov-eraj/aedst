@@ -8,20 +8,23 @@ actor FakeTaskRepository: TaskRepository {
     var pages: [String?: Page<TaskItem>] = [:]
     var stored: [String: TaskItem] = [:]
     private(set) var createdTitles: [String] = []
+    /// `Idempotency-Key` of every create call, in order (`nil` when the caller passed none).
+    private(set) var createKeys: [String?] = []
 
     func setPage(_ page: Page<TaskItem>, for token: String?) { pages[token] = page }
     func setTask(_ task: TaskItem) { stored[task.id] = task }
 
     func list(search: String, pageToken: String?) async -> Outcome<Page<TaskItem>> {
-        pages[pageToken].map { .success($0) } ?? .failure(.network(reason: "offline"))
+        pages[pageToken].map { .success($0) } ?? .failure(.unavailable(reason: "offline"))
     }
 
     func get(id: String) async -> Outcome<TaskItem> {
         stored[id].map { .success($0) } ?? .failure(.notFound)
     }
 
-    func create(_ task: NewTask) async -> Outcome<TaskItem> {
+    func create(_ task: NewTask, idempotencyKey: String?) async -> Outcome<TaskItem> {
         createdTitles.append(task.title)
+        createKeys.append(idempotencyKey)
         return .success(TaskItem(id: "new", title: task.title, priority: task.priority))
     }
 
@@ -39,7 +42,7 @@ actor FakeTaskRepository: TaskRepository {
         return .success(task)
     }
 
-    func delete(id: String) async -> Outcome<Void> {
+    func delete(id: String, idempotencyKey: String?) async -> Outcome<Void> {
         stored[id] = nil
         return .success(())
     }
@@ -66,15 +69,28 @@ struct TaskViewModelTests {
     func surfacesErrors() async {
         let model = TaskListViewModel(repository: FakeTaskRepository())
         await model.refresh()
-        #expect(model.error == .network(reason: "offline"))
+        #expect(model.error == .unavailable(reason: "offline"))
     }
 
     @Test("blank titles are rejected before reaching the server")
     func validatesTitle() async {
         let repository = FakeTaskRepository()
         let result = await CreateTaskUseCase(repository: repository)(NewTask(title: "   "))
-        #expect(result.error == .validation(fields: ["title"]))
+        #expect(result.error == .invalidInput(fields: ["title"]))
         #expect(await repository.createdTitles.isEmpty)
+    }
+
+    @Test("the create limits are title 1...200 and description 4000 code points, trimmed")
+    func createLimits() {
+        let tooLongTitle = NewTask(title: String(repeating: "t", count: 201))
+        #expect(CreateTaskUseCase.validated(tooLongTitle) == .failure(.title))
+        let emoji = String(repeating: "\u{1F600}", count: 200)
+        #expect(CreateTaskUseCase.normalized(NewTask(title: emoji))?.title == emoji)
+        let tooLongBody = NewTask(title: "ok", details: String(repeating: "d", count: 4001))
+        #expect(CreateTaskUseCase.validated(tooLongBody) == .failure(.description))
+        let padded = CreateTaskUseCase.normalized(NewTask(title: "  Write \n", details: " body "))
+        #expect(padded?.title == "Write")
+        #expect(padded?.details == "body")
     }
 
     @Test("toggleCompletion moves todo → done → todo and reports each change")

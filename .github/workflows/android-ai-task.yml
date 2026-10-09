@@ -28,8 +28,18 @@ permissions:
   pull-requests: write
   issues: write
 
+# One run per issue at a time; never cancel a run that may be mid-way through a PR.
+concurrency:
+  group: android-ai-task-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
 jobs:
   run-task:
+    # Owner setup: create the GitHub Environment `ai-task` (Settings -> Environments) and add
+    # required reviewers, so every run waits for a human approval before it gets the secret and
+    # the write-scoped token. Without the environment, this line only creates an unprotected one.
+    environment: ai-task
+    timeout-minutes: 60
     if: >
       contains(github.event.issue.labels.*.name, 'ai-task') &&
       contains(github.event.issue.labels.*.name, 'apps/android') &&
@@ -44,26 +54,26 @@ jobs:
       )
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
         with:
           distribution: temurin
           java-version: "21"
 
-      - uses: android-actions/setup-android@v3
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
 
-      - uses: anthropics/claude-code-action@v1
+      - uses: anthropics/claude-code-action@6fed3ca145920b639991cb756090506e1bcaf515 # v1
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           prompt: |
             Work this Issue (apps/android) following the pipeline in
             apps/android/AGENTS.md: read
-            apps/android/.claude/skills/write-spec first and turn this
+            .claude/skills/write-spec/SKILL.md first and turn this
             Issue's description into a spec at
             apps/android/specs/<feature>.md, posted as a comment on
             this Issue — then STOP and wait for a human to approve it
-            before scaffolding (./tools/scaffold) or writing any
+            before scaffolding or writing any
             implementation code. Do not open a PR in this run if the spec
             isn't already approved on a prior run of this workflow (check
             the Issue's comment history).

@@ -18,7 +18,7 @@ import javax.inject.Singleton
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class NotificationsModule {
+internal abstract class NotificationsModule {
 
     @Binds
     abstract fun bindNotificationsRepository(impl: ConnectNotificationsRepository): NotificationsRepository
@@ -30,6 +30,10 @@ abstract class NotificationsModule {
     @Binds
     @IntoSet
     abstract fun bindPushSignOutHook(impl: PushSignOutHook): SignOutHook
+
+    @Binds
+    @IntoSet
+    abstract fun bindUnreadCountSignOutHook(impl: UnreadCountSignOutHook): SignOutHook
 
     companion object {
         @Provides

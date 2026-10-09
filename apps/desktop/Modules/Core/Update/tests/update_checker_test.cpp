@@ -25,7 +25,7 @@ public:
         lastUrl = std::string{url};
         ++calls;
         if (failing) {
-            return core::fail(core::Error::network("offline"));
+            return core::fail(core::Error::unavailable("offline"));
         }
         return body;
     }
@@ -193,7 +193,7 @@ TEST_F(UpdateCheckerTest, RejectsAnOlderManifestAsRollback) {
     serve(manifestJson("1.4.0"));
     const auto result = check();
     ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, core::ErrorCode::InvalidArgument);
+    EXPECT_EQ(result.error().code, core::ErrorCode::InvalidInput);
 }
 
 TEST_F(UpdateCheckerTest, AllowsDowngradeOnlyWhenFlagged) {
@@ -282,7 +282,7 @@ TEST_F(UpdateCheckerTest, PropagatesFetchFailures) {
     fetcher_.failing = true;
     const auto result = check();
     ASSERT_FALSE(result.has_value());
-    EXPECT_EQ(result.error().code, core::ErrorCode::Network);
+    EXPECT_EQ(result.error().code, core::ErrorCode::Unavailable);
 }
 
 TEST_F(UpdateCheckerTest, RejectsOversizeResponses) {

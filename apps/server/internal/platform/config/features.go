@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/hex"
 	"net/url"
 	"slices"
 	"strings"
@@ -31,10 +32,23 @@ type ServerConfig struct {
 
 // JobsConfig selects which River queues this process works.
 type JobsConfig struct {
-	// Queues maps queue -> max concurrent workers, e.g. "default=10,media=2".
+	// Queues maps queue -> max concurrent workers, e.g. "default=50,media=2".
 	// A dedicated media worker deployment runs "media=4" and API replicas
-	// "default=10"; an empty value makes the process insert-only.
-	Queues map[string]int `env:"AEDST_JOBS_QUEUES" envSeparator:"," envKeyValSeparator:"=" envDefault:"default=10,media=2"`
+	// "default=50"; an empty value makes the process insert-only.
+	Queues map[string]int `env:"AEDST_JOBS_QUEUES" envSeparator:"," envKeyValSeparator:"=" envDefault:"default=50,media=2"`
+	// PollOnly runs River without LISTEN/NOTIFY (river.Config.PollOnly): jobs
+	// are picked up by polling (slightly higher latency, more idle queries).
+	// Required for the jobs pool to sit behind a transaction pooler when no
+	// AEDST_DATABASE_DIRECT_DSN is available. Prefer the direct DSN.
+	PollOnly bool `env:"AEDST_JOBS_POLL_ONLY" envDefault:"false"`
+	// Completed/Cancelled/DiscardedRetentionHours are how long River keeps
+	// finished jobs (River's cleaner deletes them afterwards). Event
+	// deliveries are River jobs, so this is the retention of the event log:
+	// completed ones are only kept for dedupe/inspection, discarded ones are
+	// the dead-letter list and live longest.
+	CompletedRetentionHours int `env:"AEDST_JOBS_COMPLETED_RETENTION_HOURS" envDefault:"24"`
+	CancelledRetentionHours int `env:"AEDST_JOBS_CANCELLED_RETENTION_HOURS" envDefault:"24"`
+	DiscardedRetentionHours int `env:"AEDST_JOBS_DISCARDED_RETENTION_HOURS" envDefault:"168"`
 }
 
 // KnownQueues are the River queues the server defines.
@@ -103,6 +117,52 @@ type MediaConfig struct {
 	PendingUploadTTLHours int `env:"AEDST_MEDIA_PENDING_UPLOAD_TTL_HOURS" envDefault:"24"`
 }
 
+// ImgproxyConfig enables signed imgproxy delivery URLs for image renditions
+// (ADR-0015). Disabled by default: clients then use the original URL. The
+// key and salt are the same hex values imgproxy runs with (IMGPROXY_KEY /
+// IMGPROXY_SALT); the bucket imgproxy reads is AEDST_STORAGE_BUCKET.
+type ImgproxyConfig struct {
+	Enabled bool   `env:"AEDST_IMGPROXY_ENABLED" envDefault:"false"`
+	URL     string `env:"AEDST_IMGPROXY_URL" envDefault:""`
+	Key     string `env:"AEDST_IMGPROXY_KEY" envDefault:""`
+	Salt    string `env:"AEDST_IMGPROXY_SALT" envDefault:""`
+	// URLTTLSeconds is how long a signed URL stays valid (rounded to a window
+	// so CDNs can cache); 0 = never expires.
+	URLTTLSeconds int `env:"AEDST_IMGPROXY_URL_TTL_SECONDS" envDefault:"3600"`
+}
+
+// IntegrityConfig configures Google Play Integrity verification (STANDARD API,
+// modules/integrity). Disabled by default: IntegrityService answers
+// FAILED_PRECONDITION and nothing is contacted.
+type IntegrityConfig struct {
+	Enabled bool `env:"AEDST_INTEGRITY_ENABLED" envDefault:"false"`
+	// AllowedPackages are the accepted applicationIds (release, debug, ...).
+	AllowedPackages []string `env:"AEDST_INTEGRITY_ALLOWED_PACKAGES" envSeparator:"," envDefault:""`
+	// CredentialsJSON / CredentialsFile: a service-account key for the Cloud
+	// project linked in Play Console. Both empty = Application Default Credentials.
+	CredentialsJSON string `env:"AEDST_INTEGRITY_CREDENTIALS_JSON" envDefault:""`
+	CredentialsFile string `env:"AEDST_INTEGRITY_CREDENTIALS_FILE" envDefault:""`
+	// MaxTokenAgeSeconds is the freshness window; MaxFutureSkewSeconds how far
+	// ahead of the server clock a token timestamp may be.
+	MaxTokenAgeSeconds   int `env:"AEDST_INTEGRITY_MAX_TOKEN_AGE_SECONDS" envDefault:"300"`
+	MaxFutureSkewSeconds int `env:"AEDST_INTEGRITY_MAX_FUTURE_SKEW_SECONDS" envDefault:"30"`
+	// MinDeviceLevel: basic | device | strong.
+	MinDeviceLevel string `env:"AEDST_INTEGRITY_MIN_DEVICE_LEVEL" envDefault:"device"`
+	// RequirePlayRecognized demands appRecognitionVerdict PLAY_RECOGNIZED
+	// (set false for sideloaded or internal builds).
+	RequirePlayRecognized bool `env:"AEDST_INTEGRITY_REQUIRE_PLAY_RECOGNIZED" envDefault:"true"`
+	// RequireLicensed demands appLicensingVerdict LICENSED (paid apps).
+	RequireLicensed bool `env:"AEDST_INTEGRITY_REQUIRE_LICENSED" envDefault:"false"`
+	// AllowTestingResponses accepts Play Console tester responses. Rejected in
+	// production and staging.
+	AllowTestingResponses bool `env:"AEDST_INTEGRITY_ALLOW_TESTING_RESPONSES" envDefault:"false"`
+	// RateLimitPerMinute is the per-user verification budget (Google's decode
+	// quota is shared by every user). 0 disables.
+	RateLimitPerMinute int `env:"AEDST_INTEGRITY_RATE_LIMIT_PER_MINUTE" envDefault:"10"`
+	// TimeoutSeconds bounds one call to Google.
+	TimeoutSeconds int `env:"AEDST_INTEGRITY_TIMEOUT_SECONDS" envDefault:"10"`
+}
+
 // TasksConfig tunes the tasks module.
 type TasksConfig struct {
 	// DueSoonLeadMinutes is how long before a task's due date TASK_DUE_SOON fires.
@@ -156,9 +216,44 @@ func (c Config) validateFeatures(bad func(string, ...any)) {
 	if c.Push.APNsEnabled() && c.Push.APNsTeamID == "" {
 		bad("AEDST_PUSH_APNS_TEAM_ID is required with AEDST_PUSH_APNS_KEY_ID")
 	}
+	if im := c.Imgproxy; im.Enabled {
+		if c.Storage.Bucket == "" {
+			bad("AEDST_IMGPROXY_ENABLED requires AEDST_STORAGE_BUCKET")
+		}
+		if u, err := url.Parse(im.URL); err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
+			bad("AEDST_IMGPROXY_URL must be an absolute http(s) URL")
+		} else if c.Env.IsDeployed() && u.Scheme != "https" {
+			bad("AEDST_IMGPROXY_URL must use https in %s", c.Env)
+		}
+		if _, err := hex.DecodeString(im.Key); err != nil || im.Key == "" {
+			bad("AEDST_IMGPROXY_KEY must be non-empty hex")
+		}
+		if _, err := hex.DecodeString(im.Salt); err != nil || im.Salt == "" {
+			bad("AEDST_IMGPROXY_SALT must be non-empty hex")
+		}
+		if im.URLTTLSeconds < 0 {
+			bad("AEDST_IMGPROXY_URL_TTL_SECONDS must not be negative")
+		}
+	}
 	m := c.Media
 	if m.MaxImageBytes < 0 || m.MaxVideoBytes < 0 || m.MaxAudioBytes < 0 || m.MaxDocumentBytes < 0 || m.MaxImagePixels < 0 || m.ProcessTimeoutSeconds < 0 || m.PendingUploadTTLHours < 0 {
 		bad("AEDST_MEDIA_* limits must not be negative")
+	}
+	if in := c.Integrity; in.Enabled {
+		if len(in.AllowedPackages) == 0 {
+			bad("AEDST_INTEGRITY_ENABLED requires AEDST_INTEGRITY_ALLOWED_PACKAGES")
+		}
+		if in.MaxTokenAgeSeconds <= 0 || in.MaxFutureSkewSeconds < 0 || in.RateLimitPerMinute < 0 || in.TimeoutSeconds <= 0 {
+			bad("AEDST_INTEGRITY_*_SECONDS must be positive (skew and rate limit may be 0) and the rate limit must not be negative")
+		}
+		switch strings.ToLower(in.MinDeviceLevel) {
+		case "basic", "device", "strong":
+		default:
+			bad("AEDST_INTEGRITY_MIN_DEVICE_LEVEL %q must be basic, device or strong", in.MinDeviceLevel)
+		}
+		if c.Env.IsDeployed() && in.AllowTestingResponses {
+			bad("AEDST_INTEGRITY_ALLOW_TESTING_RESPONSES must be false in %s", c.Env)
+		}
 	}
 	if c.Tasks.DueSoonLeadMinutes < 0 {
 		bad("AEDST_TASKS_DUE_SOON_LEAD_MINUTES must not be negative")

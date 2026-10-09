@@ -8,9 +8,8 @@ import * as z from "zod/mini";
 // (data-security.md / server-and-client-components.md), that package is for
 // modules with genuinely browser-only logic (code touching `window`, etc.),
 // not for env access — `NEXT_PUBLIC_*` vars are safe and meant to be read
-// from the server too (e.g. `config/monitoring/better-uptime.ts`'s heartbeat
-// is called from a server-side cron route). Guarding this file would make
-// that import throw at build time for no security benefit, since these
+// from the server too. Guarding this file would make
+// such an import throw at build time for no security benefit, since these
 // values were never secret to begin with. The asymmetric guard is
 // intentional: only `./server.ts` (real secrets) gets `server-only`.
 
@@ -24,6 +23,15 @@ const clientEnvSchema = z.object({
   // (see src/app/config/seo.ts). Must be the real public origin in every
   // deployed environment; the localhost default is dev-only.
   NEXT_PUBLIC_SITE_URL: z._default(z.url(), "http://localhost:3000"),
+
+  // Search-console ownership tokens, emitted as <meta> verification tags
+  // (see buildVerification in src/app/config/seo.ts). Unset = no tag.
+  NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION: z.optional(
+    z.string().check(z.minLength(1)),
+  ),
+  NEXT_PUBLIC_BING_SITE_VERIFICATION: z.optional(
+    z.string().check(z.minLength(1)),
+  ),
 
   NEXT_PUBLIC_SENTRY_DSN: z.optional(z.url()),
   // Defaults to NODE_ENV when unset (see app/config/sentry/shared.ts).
@@ -44,11 +52,21 @@ const clientEnvSchema = z.object({
   NEXT_PUBLIC_POSTHOG_KEY: z.optional(z.string().check(z.minLength(1))),
   NEXT_PUBLIC_POSTHOG_HOST: z._default(z.url(), "https://eu.i.posthog.com"),
 
-  NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL: z.optional(z.url()),
+  // Privacy policy linked from the consent prompt. Unset = no link: the
+  // owner has to publish the policy before this is set (never invent one).
+  NEXT_PUBLIC_PRIVACY_POLICY_URL: z.optional(z.url()),
 });
+
+/** `NODE_ENV` is inlined by Next.js at build time, so this is safe in the browser. */
+export const isProduction = process.env.NODE_ENV === "production";
+export const isDevelopment = process.env.NODE_ENV === "development";
 
 export const clientEnv = clientEnvSchema.parse({
   NEXT_PUBLIC_SITE_URL: process.env.NEXT_PUBLIC_SITE_URL,
+  NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION:
+    process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || undefined,
+  NEXT_PUBLIC_BING_SITE_VERIFICATION:
+    process.env.NEXT_PUBLIC_BING_SITE_VERIFICATION || undefined,
   NEXT_PUBLIC_SENTRY_DSN: process.env.NEXT_PUBLIC_SENTRY_DSN || undefined,
   NEXT_PUBLIC_SENTRY_ENVIRONMENT:
     process.env.NEXT_PUBLIC_SENTRY_ENVIRONMENT || undefined,
@@ -60,6 +78,6 @@ export const clientEnv = clientEnvSchema.parse({
     process.env.NEXT_PUBLIC_SENTRY_REPLAY_ON_ERROR_SAMPLE_RATE || undefined,
   NEXT_PUBLIC_POSTHOG_KEY: process.env.NEXT_PUBLIC_POSTHOG_KEY || undefined,
   NEXT_PUBLIC_POSTHOG_HOST: process.env.NEXT_PUBLIC_POSTHOG_HOST || undefined,
-  NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL:
-    process.env.NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL || undefined,
+  NEXT_PUBLIC_PRIVACY_POLICY_URL:
+    process.env.NEXT_PUBLIC_PRIVACY_POLICY_URL || undefined,
 });

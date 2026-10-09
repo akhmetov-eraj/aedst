@@ -10,15 +10,21 @@ import androidx.room.RoomDatabase
  * "no cross-schema SQL" on the server side); cross-feature reads go through
  * that feature's repository/`api`-equivalent instead.
  *
- * Schema changes: bump [version], add an `AutoMigration`/`Migration`, and commit the new
- * `schemas/<version>.json`. Destructive fallback is intentionally not configured — losing queued outbox items would
+ * Schema changes: bump [VERSION], add an `AutoMigration`/`Migration`, and commit the new
+ * `schemas/com.aedst.core.database.AppDatabase/<version>.json` the build generates (`scripts/check-room-schemas.sh`
+ * fails CI without it; `AppDatabaseSchemaTest` opens the exported schema as the real database). Destructive fallback is intentionally not configured — losing queued outbox items would
  * silently drop user actions. The database is **not encrypted**: store only non-sensitive, re-fetchable data here.
  */
 @Database(
     entities = [OutboxEntity::class],
-    version = 1,
+    version = AppDatabase.VERSION,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun outboxDao(): OutboxDao
+
+    companion object {
+        /** The `@Database` version; `scripts/check-room-schemas.sh` reads this constant. */
+        const val VERSION = 1
+    }
 }

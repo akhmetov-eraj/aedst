@@ -54,7 +54,7 @@ jobs:
       # License gate: no GPL-only Qt module without a documented waiver (compliance/policy.json, docs/compliance.md).
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "22"
+          node-version: "24"
       - name: Qt module licenses
         run: node scripts/compliance/compliance.mjs qt
 
@@ -87,8 +87,44 @@ jobs:
       - name: C++ subset (features all compilers support)
         run: bash ./scripts/check-cxx-subset.sh
 
-      - name: Feature target boundaries
+      - name: Feature target and layer boundaries
         run: bash ./scripts/check-feature-boundaries.sh
+
+      # Mandatory-library-per-concern gates (docs/content/library-first/desktop.md, "Enforced rules"). Pure
+      # bash/awk/node, no build tree. Escape hatch: `// aedst-allow: <reason>`.
+      - name: Forbidden APIs (TLS, threads, QNAM, logging, qmlRegister, dependency pins)
+        run: bash ./scripts/check-forbidden-apis.sh
+
+      - name: QML design-system components (no raw controls in features/app)
+        run: bash ./scripts/check-qml-components.sh
+
+      - name: QML accessibility (role and name on interactive controls)
+        run: bash ./scripts/check-qml-accessibility.sh
+
+      - name: Frozen SQLite migrations (hashes)
+        run: bash ./scripts/check-migration-hashes.sh
+
+      - name: Every CMake-named source file is tracked by git
+        run: bash ./scripts/check-tracked-sources.sh
+
+      - name: Module lists in the docs match Modules/
+        run: bash ./scripts/check-docs-modules.sh
+
+      # Source strings vs catalogs without Qt (shrink-only baseline scripts/i18n-baseline.json), then the
+      # authoritative lupdate -no-obsolete comparison in a temporary copy (needs the Qt tools installed above).
+      - name: i18n source strings vs catalogs
+        run: node ./scripts/check-i18n-extract.mjs
+
+      - name: i18n lupdate comparison
+        run: bash ./scripts/check-i18n-lupdate.sh
+        env:
+          QT_ROOT_DIR: ${{ env.QT_ROOT_DIR }}
+
+      # Every gate above must still fail on its fixture (scripts/selftest/fixtures) and pass on the real tree.
+      - name: Gate self-tests (negative fixtures)
+        run: bash ./scripts/selftest/run-selftests.sh
+        env:
+          QT_ROOT_DIR: ${{ env.QT_ROOT_DIR }}
 
       # The message types are generated from the protos at build time; the
       # hand-written procedure table (Contract/methods.hpp) must list exactly
@@ -118,7 +154,7 @@ jobs:
   # ---------------------------------------------------------------------------
   test:
     needs: [lint]
-    name: ${{ matrix.kind }} (${{ matrix.preset }})
+    name: ${{ matrix.kind }} (${{ matrix.preset }}${{ matrix.variant && format(', {0}', matrix.variant) || '' }})
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -126,6 +162,9 @@ jobs:
         include:
           - { preset: msvc-debug, os: windows-latest, kind: test }
           - { preset: gcc-debug, os: ubuntu-latest, kind: test }
+          # The opt-in code paths (velopack_installer.cpp, plugin_loader.cpp) are OFF by default, so they would
+          # compile in no PR. This single entry builds and tests them; the Velopack SDK is fetched by CMake.
+          - { preset: gcc-debug, os: ubuntu-latest, kind: test, variant: optin, cmake_args: "-DAEDST_ENABLE_VELOPACK=ON -DAEDST_ENABLE_RUNTIME_PLUGINS=ON" }
           - { preset: clang-debug, os: ubuntu-latest, kind: test }
           - { preset: gcc-asan, os: ubuntu-latest, kind: sanitize }
           - { preset: clang-asan, os: ubuntu-latest, kind: sanitize }
@@ -183,7 +222,7 @@ jobs:
 
       # Warnings are errors in CI (AEDST_WARNINGS_AS_ERRORS); local presets keep them as warnings.
       - name: Configure (vcpkg manifest install runs here)
-        run: cmake --preset ${{ matrix.preset }} -DAEDST_WARNINGS_AS_ERRORS=ON
+        run: cmake --preset ${{ matrix.preset }} -DAEDST_WARNINGS_AS_ERRORS=ON ${{ matrix.cmake_args }}
 
       - name: Build
         run: cmake --build --preset ${{ matrix.preset }}
@@ -200,6 +239,26 @@ jobs:
           name: clang-tidy-log
           path: apps/desktop/clang-tidy.log
           if-no-files-found: warn
+
+      # The clang-debug database never compiles the Windows-only translation units (DPAPI, toast, dbghelp), so they would
+      # never be analysed. Second pass over the MSVC database, restricted to those files, with its own baseline.
+      # UNVERIFIED until the first run: clang-tidy runs in clang-cl mode on cl.exe commands, and the LLVM on windows-latest
+      # may not ship run-clang-tidy.py at this path (adjust RUN_CLANG_TIDY / AEDST_TIDY_EXTRA_ARGS from the evidence).
+      - name: clang-tidy (MSVC database, Windows-only code)
+        if: matrix.preset == 'msvc-debug'
+        run: bash ./scripts/run-clang-tidy.sh build/msvc-debug
+        env:
+          AEDST_TIDY_ONLY_WINDOWS: "1"
+          AEDST_TIDY_BASELINE: scripts/clang-tidy-baseline-msvc.txt
+          AEDST_TIDY_LOG: clang-tidy-msvc.log
+          RUN_CLANG_TIDY: C:/Program Files/LLVM/bin/run-clang-tidy.py
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        if: always() && matrix.preset == 'msvc-debug'
+        with:
+          name: clang-tidy-msvc-log
+          path: apps/desktop/clang-tidy-msvc.log
+          if-no-files-found: ignore
 
       # With the build tree the generated QML modules (design system, app) resolve.
       - name: qmllint (with build tree)
@@ -231,13 +290,13 @@ jobs:
 
   # ---------------------------------------------------------------------------
   # Performance gate: cold start, memory, scroll smoothness and the Qt Test micro-benchmarks against perf/budgets.json
-  # and perf/baseline.json (scripts/perf/run-perf.mjs, docs/performance.md). Runs on main, on manual dispatch, and on
-  # pull requests that carry the `perf` label (it builds a Release tree with tests, so it is not free).
+  # and perf/baseline.json (scripts/perf/run-perf.mjs, docs/performance.md). Runs on main, on manual dispatch and on EVERY
+  # pull request: a PR gets the micro-benchmarks (`--only micro`, regression vs perf/baseline.json); the full gate (startup,
+  # memory, scroll) runs on main, on dispatch and on PRs that carry the `perf` label (it builds a Release tree with tests).
   # The budgets are PROVISIONAL until the first run has produced numbers; see perf/budgets.json.
   # ---------------------------------------------------------------------------
   perf:
     needs: [test]
-    if: github.event_name != 'pull_request' || contains(github.event.pull_request.labels.*.name, 'perf')
     name: perf (${{ matrix.os }})
     timeout-minutes: 90
     strategy:
@@ -284,7 +343,7 @@ jobs:
 
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Configure
         run: cmake --preset bench
@@ -295,11 +354,14 @@ jobs:
       # Frame times need a window system: xvfb with Mesa's software GL on Linux (absolute numbers are indicative there; the
       # regression comparison is against a baseline taken on the same runner type), the desktop session on Windows.
       - name: Performance gate
+        env:
+          # Unlabelled pull requests: micro-benchmarks only. Everything else: the full gate.
+          PERF_ONLY: ${{ github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'perf') && 'micro' || 'startup,scroll,micro' }}
         run: |
           if [ "$RUNNER_OS" = "Linux" ]; then
-            xvfb-run -a -s "-screen 0 1280x800x24" node scripts/perf/run-perf.mjs --build-dir build/bench --report perf-report.json
+            xvfb-run -a -s "-screen 0 1280x800x24" node scripts/perf/run-perf.mjs --build-dir build/bench --only "$PERF_ONLY" --report perf-report.json
           else
-            node scripts/perf/run-perf.mjs --build-dir build/bench --report perf-report.json
+            node scripts/perf/run-perf.mjs --build-dir build/bench --only "$PERF_ONLY" --report perf-report.json
           fi
 
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -409,7 +471,7 @@ jobs:
       # denied or unlisted license fails the build. They are installed into the package by cmake/AedstPackaging.cmake.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
-          node-version: "22"
+          node-version: "24"
       - name: Third-party notices and SBOM
         run: >-
           node scripts/compliance/compliance.mjs notices

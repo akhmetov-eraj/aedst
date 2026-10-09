@@ -1,12 +1,12 @@
 import AedstCore
 import Foundation
-import Perception
+import Observation
 
 /// The unread count shown on the home screen's inbox entry and mirrored on
 /// the app icon (the platform call is injected: `UIApplication` badge on iOS,
 /// the Dock tile on macOS).
 @MainActor
-@Perceptible
+@Observable
 public final class UnreadBadgeModel {
     public private(set) var unread = 0
 

@@ -1,6 +1,6 @@
 // Package transport implements the auth module's ConnectRPC handlers. It
 // depends only on modules/auth/api — never on application/domain/
-// infrastructure directly (see docs/modules.md).
+// infrastructure directly (see docs/content/server/modules.md).
 package transport
 
 import (

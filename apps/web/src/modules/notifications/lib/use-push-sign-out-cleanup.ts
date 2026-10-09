@@ -10,6 +10,8 @@ import {
 } from "@/modules/notifications/lib/web-push";
 import { NotificationsService } from "@/shared/api/connect/client";
 import { registerBeforeSignOut } from "@/shared/lib/auth/sign-out-hooks";
+import { reportError } from "@/shared/lib/errors/report-error";
+import { clearAppBadge } from "@/shared/lib/pwa/app-badge";
 
 /**
  * Signing out unregisters this browser's push device (while the session can
@@ -26,10 +28,13 @@ export function usePushSignOutCleanup() {
   useEffect(
     () =>
       registerBeforeSignOut(async () => {
+        await clearAppBadge();
         const deviceId = rememberedDeviceId();
         rememberDeviceId(null);
         if (deviceId) {
-          await unregister({ deviceId }).catch(() => {});
+          await unregister({ deviceId }).catch((error) =>
+            reportError(error, { source: "push", feature: "notifications" }),
+          );
         }
         await (await getActiveSubscription())?.unsubscribe();
       }),

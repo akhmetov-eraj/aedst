@@ -45,6 +45,22 @@ struct KeychainTokenStoreTests {
         #expect(await store.currentAccessToken() == "access-new")
     }
 
+    @Test("a refresh whose Keychain write fails still keeps the rotated tokens in memory")
+    func refreshKeepsNewTokensWhenWriteFails() async throws {
+        let backing = InMemorySecureStore()
+        let fresh = pair("new")
+        let store = makeStore(store: backing) { _ in .refreshed(fresh) }
+        try await store.save(pair("old"), userID: "u1")
+
+        backing.setFailWrites(true)
+        let result = await store.refreshAccessToken()
+
+        #expect(result == .refreshed(fresh))
+        // The next request must send the new pair, not the rotated-out refresh token.
+        #expect(await store.currentAccessToken() == "access-new")
+        #expect(await store.currentRefreshToken() == "refresh-new")
+    }
+
     @Test("a later refresh after the first finished starts a new one")
     func sequentialRefreshesAreIndependent() async throws {
         let calls = Counter()
@@ -83,9 +99,12 @@ struct KeychainTokenStoreTests {
         let result = await store.refreshAccessToken()
         var iterator = store.events.makeAsyncIterator()
 
+        // Awaited outside #expect: a `var` iterator mutated inside the macro's closure is avoidable.
+        let event = await iterator.next()
+
         #expect(result == .rejected)
         #expect(await store.currentSession() == nil)
-        #expect(await iterator.next() == .expired)
+        #expect(event == .expired)
     }
 
     @Test("a transient failure keeps the session")
@@ -166,6 +185,66 @@ struct KeychainTokenStoreTests {
 
         #expect(await store.currentSession() == nil)
         #expect(backing.isEmpty)
+    }
+
+    @Test("a refresh that finishes after sign-out does not resurrect the session")
+    func staleRefreshAfterClear() async throws {
+        let started = Counter()
+        let gate = Gate()
+        let late = pair("late")
+        let store = makeStore { _ in
+            await started.increment()
+            await gate.wait()
+            return .refreshed(late)
+        }
+        try await store.save(pair("old"), userID: "u1")
+
+        let refresh = Task { await store.refreshAccessToken() }
+        while await started.value == 0 { await Task.yield() }
+        await store.clearTokens()
+        await gate.open()
+        _ = await refresh.value
+
+        #expect(await store.currentSession() == nil)
+        #expect(await store.currentAccessToken() == nil)
+    }
+
+    @Test("a refresh that finishes after a new sign-in does not overwrite the new session")
+    func staleRefreshAfterSignIn() async throws {
+        let started = Counter()
+        let gate = Gate()
+        let late = pair("late")
+        let store = makeStore { _ in
+            await started.increment()
+            await gate.wait()
+            return .refreshed(late)
+        }
+        try await store.save(pair("old"), userID: "u1")
+
+        let refresh = Task { await store.refreshAccessToken() }
+        while await started.value == 0 { await Task.yield() }
+        try await store.save(pair("fresh"), userID: "u2")
+        await gate.open()
+        _ = await refresh.value
+
+        #expect(await store.currentAccessToken() == "access-fresh")
+        #expect(await store.currentSession()?.userID == "u2")
+    }
+}
+
+private actor Gate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+
+    func open() {
+        isOpen = true
+        waiters.forEach { $0.resume() }
+        waiters.removeAll()
     }
 }
 

@@ -1,8 +1,11 @@
 package com.aedst.core.media.data
 
 import com.aedst.core.common.AppInitializer
+import com.aedst.core.common.SignOutHook
 import com.aedst.core.media.ui.MediaImageLoaderInitializer
+import com.aedst.core.media.ui.MediaSignOutHook
 import com.aedst.core.media.upload.UploadNotificationChannelInitializer
+import com.aedst.core.media.upload.UploadStagingSweeper
 import com.aedst.media.v1.MediaServiceClient
 import com.aedst.media.v1.MediaServiceClientInterface
 import com.connectrpc.ProtocolClientInterface
@@ -31,6 +34,14 @@ abstract class MediaModule {
     @Binds
     @IntoSet
     abstract fun bindUploadChannelInitializer(impl: UploadNotificationChannelInitializer): AppInitializer
+
+    @Binds
+    @IntoSet
+    abstract fun bindUploadStagingSweeper(impl: UploadStagingSweeper): AppInitializer
+
+    @Binds
+    @IntoSet
+    abstract fun bindMediaSignOutHook(impl: MediaSignOutHook): SignOutHook
 
     companion object {
         @Provides

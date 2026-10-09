@@ -6,6 +6,7 @@
 #include <QGuiApplication>
 #include <QIcon>
 #include <QPainter>
+#include <QPalette>
 #include <QPixmap>
 #include <QSystemTrayIcon>
 
@@ -34,10 +35,10 @@ constexpr int kMessageTimeoutMs = 8000;
     pixmap.fill(Qt::transparent);
     QPainter painter(&pixmap);
     painter.setRenderHint(QPainter::Antialiasing);
-    painter.setBrush(QColor(0x18, 0x18, 0x1B));
+    painter.setBrush(QGuiApplication::palette().color(QPalette::WindowText));
     painter.setPen(Qt::NoPen);
     painter.drawRoundedRect(QRectF(2, 2, 28, 28), 6, 6);
-    painter.setPen(Qt::white);
+    painter.setPen(QGuiApplication::palette().color(QPalette::Window));
     QFont font = painter.font();
     font.setBold(true);
     font.setPixelSize(18);

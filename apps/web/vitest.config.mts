@@ -1,15 +1,17 @@
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
-import tsconfigPaths from "vite-tsconfig-paths";
+import { playwright } from "@vitest/browser-playwright";
 import { defineConfig } from "vitest/config";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  plugins: [tsconfigPaths(), react()],
+  plugins: [react()],
 
   resolve: {
+    // Vite-native tsconfig `paths` (replaces the vite-tsconfig-paths plugin).
+    tsconfigPaths: true,
     alias: {
       "@": path.resolve(root, "src"),
       "@app": path.resolve(root, "src/app"),
@@ -17,33 +19,89 @@ export default defineConfig({
     },
   },
 
+  // The contract replay tests read docs/contract/behavior/*.json from the
+  // repo root (the single source for all platforms); the browser-mode dev
+  // server only serves files under its root unless told otherwise.
+  server: { fs: { allow: [path.resolve(root, "../..")] } },
+
   test: {
-    environment: "jsdom",
-
-    setupFiles: ["./vitest.setup.ts"],
-
-    include: ["**/*.{test,spec}.{ts,tsx}"],
-
-    exclude: ["node_modules", ".next", "e2e", "playwright"],
-
     globals: false,
 
-    // Component tests do real Connect round trips (through MSW) and real
-    // user-event typing; 5 s is too tight on a loaded runner with coverage.
+    // Component tests do real Connect round trips (through the in-memory
+    // router transport) and real user-event typing; 5 s is too tight on a
+    // loaded runner with coverage.
     testTimeout: 15_000,
-
-    // next-intl imports `next/server` without a file extension, which Node's ESM
-    // loader rejects; inlining lets Vite resolve it (needed by proxy.test.ts).
-    server: { deps: { inline: [/next-intl/] } },
 
     restoreMocks: true,
     clearMocks: true,
     mockReset: true,
 
+    // include/exclude are per project (vite merges arrays by concatenation, so
+    // a root-level include would leak into every project).
+    // Two projects, split by what a test needs from its environment:
+    //  - unit: pure logic and server-side code (route handlers, proxy, Server
+    //    Actions, the OIDC flow, server transport) in plain Node. No DOM. The
+    //    global fetch is a stub that only answers declared apps/server routes
+    //    (vitest.setup.node.ts); IdP calls take an injected fetch.
+    //  - browser: every component/hook/store test (*.test.tsx and
+    //    *.browser.test.ts) in real Chromium via Vitest Browser Mode, with the
+    //    in-memory Connect router transport (src/test/mocks/transport.ts).
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "unit",
+          environment: "node",
+          include: ["src/**/*.test.ts"],
+          exclude: [
+            "node_modules",
+            ".next",
+            "e2e",
+            "playwright",
+            "src/**/*.browser.test.ts",
+          ],
+          setupFiles: ["./vitest.setup.node.ts"],
+          // next-intl imports `next/server` without a file extension, which
+          // Node's ESM loader rejects; inlining lets Vite resolve it (needed
+          // by proxy.test.ts).
+          server: { deps: { inline: [/next-intl/] } },
+        },
+      },
+      {
+        extends: true,
+        // Found late by Vite on a cold cache ("optimized dependencies changed.
+        // reloading"), which reloads the page mid-run and fails random files.
+        optimizeDeps: {
+          include: ["next-intl/server", "@tanstack/react-virtual"],
+        },
+        test: {
+          name: "browser",
+          include: ["src/**/*.test.tsx", "src/**/*.browser.test.ts"],
+          exclude: ["node_modules", ".next", "e2e", "playwright"],
+          setupFiles: ["./vitest.setup.browser-env.ts", "./vitest.setup.ts"],
+          browser: {
+            enabled: true,
+            headless: true,
+            // Deterministic locale/time zone: components format dates and pick the
+            // default language from the browser, and the CI runner differs from
+            // a developer machine.
+            provider: playwright({
+              contextOptions: { locale: "en-US", timezoneId: "UTC" },
+            }),
+            instances: [{ browser: "chromium" }],
+          },
+        },
+      },
+    ],
+
     env: {
       API_BASE_URL: "http://localhost:8080",
       NEXT_PUBLIC_SITE_URL: "http://localhost:3000",
       AUTH_COOKIE_NAME: "aedst_session",
+      // Read by getOidcConfig(); the same values as src/test/mocks/oidc.ts.
+      OIDC_ISSUER: "http://localhost:8085",
+      OIDC_CLIENT_ID: "aedst-web-test",
+      OIDC_STATE_SECRET: "test-state-secret-test-state-secret-0123",
     },
 
     coverage: {

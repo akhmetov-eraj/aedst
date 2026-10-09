@@ -1,0 +1,3 @@
+constexpr std::array<std::string_view, 1> kShippedMigrationHashes{
+    "0000000000000000000000000000000000000000000000000000000000000000", // 1 create_a (hash of the ORIGINAL text)
+};

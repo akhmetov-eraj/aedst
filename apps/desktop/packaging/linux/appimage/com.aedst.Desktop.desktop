@@ -2,8 +2,9 @@
 Type=Application
 Name=AEDST
 Comment=AEDST desktop client
-Exec=aedst-desktop
+Exec=aedst-desktop %u
 Icon=com.aedst.Desktop
 Terminal=false
 Categories=Network;Office;
+MimeType=x-scheme-handler/aedst;
 X-AppImage-Version=0.1.0

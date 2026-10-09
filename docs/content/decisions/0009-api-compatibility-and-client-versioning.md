@@ -1,11 +1,23 @@
+---
+title: "ADR-0009: API Compatibility and Client Versioning"
+description: "Accepted."
+---
+
 # ADR-0009: API Compatibility and Client Versioning
 
 ## Status
-Accepted (contract rules and client header: to be implemented; per-app build
-scaling: recommendations only, see the last section)
+Accepted.
+
+| Part | State |
+|---|---|
+| Proto contract rules, `buf breaking` gate | Implemented: `task breaking` / CI job (`buf breaking --against main`, mode `FILE`) |
+| Server: `X-Aedst-Client` parsing, minimum-version gate (`AEDST_MIN_CLIENT_VERSIONS`), `CLIENT_UPGRADE_REQUIRED` error detail | Implemented and unit-tested (`internal/platform/httpserver/clientversion.go`, `clientversion_test.go`); exercised end to end by the integration test `TestServer_CapabilitiesAreNegotiatedBeforeSignIn` |
+| Server: recommended versions (`AEDST_RECOMMENDED_CLIENT_VERSIONS`), request metric by client, capability negotiation (`aedst.capabilities.v1.CapabilitiesService/GetCapabilities`) | Implemented and tested, see "Capability negotiation" and "Metrics" below |
+| Clients send the header and show a forced-upgrade screen | Android: implemented and JVM-tested; Apple and Desktop: implemented in source, never compiled. Web: the `/api/rpc` BFF sets the header (`apps/web/src/shared/api/connect/client-id.ts`; web code was not verified by the server workstream). Desktop sends `desktop/<semver>` and shows the upgrade view. All four clients call `GetCapabilities` |
+| Per-app build scaling | Recommendations only, see the last section |
 
 ## Context
-Five client platforms (Web, Android, Apple, Desktop) call one API
+Four client platforms (Web, Android, Apple, Desktop) call one API
 ([ADR-0002](/decisions/0002-connectrpc)). Mobile and desktop binaries stay in the
 wild for months after a release, so the server cannot assume all clients are
 current, and cannot remove or change anything a shipped client still relies on.
@@ -47,6 +59,59 @@ trusted for authorisation.
   are never gated.
 - The value is plain configuration (Helm `config.minClientVersions`), so raising the
   minimum is a config rollout, not a code release.
+
+### Recommended version (soft)
+`AEDST_RECOMMENDED_CLIENT_VERSIONS` (same format, Helm `config.recommendedClientVersions`)
+names the release clients should move to. Nothing is rejected: the value is
+reported by `GetCapabilities` and a client below it shows a non-blocking update
+prompt. Config validation rejects a recommended version below the platform's
+minimum.
+
+### Capability negotiation
+`aedst.capabilities.v1.CapabilitiesService/GetCapabilities` is a **public**,
+read-only RPC (module `capabilities`, stateless) that clients call at start-up and
+on resume, before sign-in. It returns:
+
+- `server_version`: `-ldflags -X .../platform/buildinfo.Version=…` for releases,
+  else the VCS revision, else `dev`;
+- `clients`: per platform `minimum` and `recommended`;
+- `update_status` for the caller's own `X-Aedst-Client` (`CURRENT`, `RECOMMENDED`,
+  or `UNSPECIFIED` when it did not identify itself or no window exists; a release
+  below the minimum never gets this far, the gate rejects it first);
+- `features`: a map name -> `{enabled, params, required_client_version}`. Three
+  kinds of name:
+  - **Coarse module ids** without a dot: one per registered server module
+    (`tasks`, `media`, `search`, `admin`, `notifications`, `auth`, ...), enabled
+    unless the operator switches them off in `AEDST_FEATURES`.
+  - **Dotted sub-capabilities derived from what this deployment has configured**
+    (`media.uploads`, `media.image_delivery`, `push.webpush|fcm|apns`,
+    `auth.first_party`, `auth.oidc`, `attest.play_integrity`, `attest.app_attest`),
+    so a client can hide upload UI when storage is off.
+  - **Operator flags and overrides** from `AEDST_FEATURES` (Helm `config.features`),
+    a JSON object such as
+    `{"new_search":{"enabled":true,"required_client_version":"1.5.0","params":{"rollout_percent":"25"}}}`.
+    An entry named like a module replaces that module's default entry (turn a whole
+    module's UI off, or gate it by client version). Dots are forbidden in these
+    names, so they cannot collide with derived ones. Read at start-up; a change is a
+    config rollout.
+
+  **Client rule.** A feature the server lists is authoritative: `enabled = false`
+  always wins, even for a feature the client has built. `required_client_version`
+  (semver, empty = none) hides the feature on clients older than it. A feature the
+  server does not list falls back to the client's default: a built-in feature is on,
+  a flagged (optional, experimental) feature is off. Clients ignore names they do not know.
+
+The answer does not depend on the user, so clients may cache it for a few minutes.
+It is rate-limited per IP like the other public RPCs.
+
+### Metrics
+`aedst_client_requests_total{platform,major,status}` counts every RPC (before
+authentication). `status` is `current`, `below_recommended`, `below_minimum`
+(rejected) or `unidentified`. The labels are bounded on purpose, because the header
+is attacker-controlled: `platform` is one of the four or `none`, `major` is a number
+below 1000 or `other`/`none`. Exact versions appear in the rejection log line, never
+as a label; if finer per-version telemetry is needed, collect it from the clients
+or the access logs rather than widening this label set.
 
 ### Support window
 - **Mobile and desktop**: the last 2 minor releases, or 6 months, whichever is

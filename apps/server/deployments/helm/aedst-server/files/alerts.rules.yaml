@@ -5,8 +5,8 @@
 # Metric names come from the server's own OpenTelemetry instrumentation
 # (verified against /metrics): otelhttp `http_server_request_duration_seconds`,
 # otelconnect `rpc_server_call_duration_seconds`, and the aedst_* gauges and
-# counters in internal/platform/{database,outbox,retention}. Every alert
-# links to its section of docs/content/runbook.md.
+# counters in internal/platform/{database,events,jobs,retention}. Every alert
+# links to its section of docs/content/server/runbook.md.
 #
 # Severity: `page` = a human is needed now, `ticket` = fix in working hours.
 groups:
@@ -42,7 +42,7 @@ groups:
         labels: {severity: ticket}
         annotations:
           summary: p95 request latency is above 500 ms
-          description: "p95 is {{ $value | humanizeDuration }} (SLO: 500 ms on the read path, docs/content/scaling.md)."
+          description: "p95 is {{ $value | humanizeDuration }} (SLO: 500 ms on the read path, docs/content/server/scaling.md)."
           runbook_url: https://docs.aedst.dev/runbook#aedsthighlatencyp95
 
       - alert: AedstShedding429
@@ -77,50 +77,73 @@ groups:
           description: Time spent waiting for a free connection exceeds 0.1 s per second — the pool is the bottleneck.
           runbook_url: https://docs.aedst.dev/runbook#aedstdbpoolwaiting
 
+  # Integration events are River jobs (ADR-0014): lag and backlog come from the
+  # river_job gauges (platform/jobs), per-consumer outcomes from the
+  # aedst_events_* counters (platform/events).
   - name: aedst-server.events
     rules:
-      - alert: AedstOutboxLagging
-        expr: max by (module) (aedst_outbox_oldest_pending_age_seconds) > 30
+      - alert: AedstJobsLagging
+        expr: max(aedst_river_oldest_available_age_seconds) > 30
         for: 5m
         labels: {severity: page}
         annotations:
-          summary: "Events of module {{ $labels.module }} are delivered more than 30 s late"
-          description: The oldest undelivered event is {{ $value | humanizeDuration }} old — the relay is stuck or a subscriber keeps failing.
-          runbook_url: https://docs.aedst.dev/runbook#aedstoutboxlagging
+          summary: "River jobs and event deliveries wait more than 30 s to start"
+          description: The oldest job that is ready to run has waited {{ $value | humanizeDuration }} — no worker is fetching (queues exhausted, no replica works the queue, jobs pool saturated) or consumers are slow.
+          runbook_url: https://docs.aedst.dev/runbook#aedstjobslagging
 
-      - alert: AedstOutboxBacklogGrowing
+      - alert: AedstJobsBacklogGrowing
         expr: |
-          max by (module) (aedst_outbox_pending) > 1000
+          max(aedst_river_jobs{state=~"available|retryable"}) > 1000
             and
-          deriv(aedst_outbox_pending[15m]) > 0
+          deriv(sum(aedst_river_jobs{state=~"available|retryable"})[15m:1m]) > 0
         for: 15m
         labels: {severity: ticket}
         annotations:
-          summary: "The outbox backlog of module {{ $labels.module }} keeps growing"
-          description: More than 1000 events are pending and the number is rising — producers outpace delivery.
-          runbook_url: https://docs.aedst.dev/runbook#aedstoutboxbackloggrowing
+          summary: "The River backlog keeps growing"
+          description: More than 1000 jobs are available or retrying and the number is rising — producers outpace the workers.
+          runbook_url: https://docs.aedst.dev/runbook#aedstjobsbackloggrowing
 
-      - alert: AedstOutboxDeliveryFailing
-        expr: sum by (module) (rate(aedst_outbox_failed_total[10m])) > 0.1
+      - alert: AedstEventDeliveryFailing
+        expr: sum by (consumer) (rate(aedst_events_failed_total[10m])) > 0.1
         for: 10m
         labels: {severity: ticket}
         annotations:
-          summary: "Event deliveries of module {{ $labels.module }} keep failing"
-          description: A subscriber is failing and events are being retried with backoff.
-          runbook_url: https://docs.aedst.dev/runbook#aedstoutboxdeliveryfailing
+          summary: "Deliveries to consumer {{ $labels.consumer }} keep failing"
+          description: The consumer's handler is returning errors and River is retrying the deliveries with backoff.
+          runbook_url: https://docs.aedst.dev/runbook#aedsteventdeliveryfailing
 
-      - alert: AedstOutboxEventPoisoned
-        expr: sum by (module) (increase(aedst_outbox_poisoned_total[15m])) > 0
+      - alert: AedstEventDiscarded
+        expr: sum by (consumer) (increase(aedst_events_discarded_total[15m])) > 0
         labels: {severity: page}
         annotations:
-          summary: "An event of module {{ $labels.module }} was given up on"
-          description: An event exhausted its delivery attempts and was marked poisoned; consumers are missing it until it is replayed.
-          runbook_url: https://docs.aedst.dev/runbook#aedstoutboxeventpoisoned
+          summary: "An event for consumer {{ $labels.consumer }} was given up on"
+          description: A delivery exhausted its attempts (or was malformed) and River discarded it; the consumer is missing that event until it is replayed.
+          runbook_url: https://docs.aedst.dev/runbook#aedsteventdiscarded
+
+  - name: aedst-server.dependencies
+    rules:
+      - alert: AedstRateLimiterFailingOpen
+        expr: sum(rate(aedst_ratelimit_fail_open_total[5m])) > 0
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: Rate limits are not being enforced
+          description: Valkey errors for 10 minutes — every rate-limit decision is skipped (allowed) and the failed-authentication throttle is off. Requests are served normally.
+          runbook_url: https://docs.aedst.dev/runbook#aedstratelimiterfailingopen
+
+      - alert: AedstValkeyDegraded
+        expr: max by (check) (aedst_readiness_degraded) == 1
+        for: 10m
+        labels: {severity: ticket}
+        annotations:
+          summary: "Optional dependency {{ $labels.check }} has been failing for 10 minutes"
+          description: The instance serves in degraded mode (/readyz reports degraded, stays in rotation). For valkey that means no rate limiting; for database_read, reads fall back to the primary.
+          runbook_url: https://docs.aedst.dev/runbook#aedstvalkeydegraded
 
   - name: aedst-server.runtime
     rules:
       - alert: AedstGoroutinesHigh
-        expr: max by (pod) (go_goroutines) > 10000
+        expr: max by (pod) (go_goroutine_count) > 10000
         for: 15m
         labels: {severity: ticket}
         annotations:

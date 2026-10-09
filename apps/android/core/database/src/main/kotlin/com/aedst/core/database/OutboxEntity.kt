@@ -14,7 +14,7 @@ enum class OutboxState {
 
 /**
  * One queued client→server operation awaiting delivery — the on-device counterpart of the server's transactional
- * outbox (docs/content/events.md): write locally first, deliver later when the network allows, at-least-once.
+ * outbox (docs/content/server/events.md): write locally first, deliver later when the network allows, at-least-once.
  *
  * Because delivery is at-least-once, [id] doubles as the `Idempotency-Key` sent with the request, so a retry after a
  * lost response is de-duplicated by the server (see ADR on idempotency).

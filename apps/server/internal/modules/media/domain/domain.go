@@ -35,10 +35,15 @@ const (
 type VariantKind string
 
 const (
-	VariantThumbnail VariantKind = "thumbnail"
-	VariantPreview   VariantKind = "preview"
-	VariantOptimized VariantKind = "optimized"
-	VariantPoster    VariantKind = "poster"
+	VariantPoster VariantKind = "poster"
+
+	// Derived (imgproxy) delivery renditions: never stored, never in the
+	// variants table; Links builds their signed URLs on read (ADR-0015).
+	VariantThumb64        VariantKind = "thumb_64"
+	VariantAvatar256      VariantKind = "avatar_256"
+	VariantCard400        VariantKind = "card_400"
+	VariantFeed800x600    VariantKind = "feed_800x600"
+	VariantStory1080x1350 VariantKind = "story_1080x1350"
 )
 
 // MaxFilenameLength mirrors media.proto.

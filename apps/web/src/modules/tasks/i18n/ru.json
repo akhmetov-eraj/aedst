@@ -30,7 +30,8 @@
     "priorityFilterLabel": "Фильтр по приоритету",
     "sortLabel": "Сортировка задач",
     "paginationLabel": "Постраничная навигация",
-    "resultsLabel": "Задачи"
+    "resultsLabel": "Задачи",
+    "resultCount": "{count, plural, one {# задача} few {# задачи} many {# задач} other {# задачи}}"
   },
   "status": {
     "todo": "К выполнению",
@@ -78,10 +79,18 @@
     "deleteCancelAction": "Отмена",
     "notFoundTitle": "Задача не найдена",
     "notFoundDescription": "Возможно, она удалена или принадлежит другому пользователю.",
-    "loadErrorTitle": "Не удалось загрузить задачу"
+    "loadErrorTitle": "Не удалось загрузить задачу",
+    "pageTitle": "Задача"
   },
   "a11y": {
     "priority": "Приоритет",
     "status": "Статус"
+  },
+  "sync": {
+    "pendingBadge": "Ожидает синхронизации",
+    "failedBadge": "Не синхронизировано",
+    "discard": "Отменить",
+    "queuedTitle": "Ожидают синхронизации",
+    "queuedHint": "Сохранено на устройстве. Будет отправлено автоматически."
   }
 }

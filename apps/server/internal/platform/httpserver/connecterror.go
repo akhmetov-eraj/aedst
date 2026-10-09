@@ -22,8 +22,8 @@ func (internalError) Error() string   { return "internal error" }
 func (e internalError) Unwrap() error { return e.cause }
 
 // ToConnectError maps a module's domain error kinds onto ConnectRPC status
-// codes without leaking internal error details (see project brief section
-// 26 "Error Architecture"). Every module's transport layer uses this instead
+// codes without leaking internal error details (see docs/content/server/architecture.md,
+// "Error architecture"). Every module's transport layer uses this instead
 // of hand-rolling its own mapping.
 //
 // Clients receive only the domain message (never the operation name or a
@@ -60,9 +60,34 @@ func ToConnectError(err error) error {
 		return connect.NewError(connect.CodePermissionDenied, errors.New(msg))
 	case sharederrors.KindFailedPrecondition:
 		return connect.NewError(connect.CodeFailedPrecondition, errors.New(msg))
+	case sharederrors.KindUnavailable:
+		return withRetryAfter(connect.NewError(connect.CodeUnavailable, causedError{msg: msg, cause: err}))
+	case sharederrors.KindTimeout:
+		return connect.NewError(connect.CodeDeadlineExceeded, causedError{msg: msg, cause: err})
+	case sharederrors.KindUnknown:
+		fallthrough
 	default:
 		return connect.NewError(connect.CodeInternal, internalError{cause: err})
 	}
+}
+
+// causedError is a classified failure (unavailable, timeout): the client sees
+// msg, ErrorLogInterceptor sees the real cause through Unwrap.
+type causedError struct {
+	msg   string
+	cause error
+}
+
+func (e causedError) Error() string { return e.msg }
+func (e causedError) Unwrap() error { return e.cause }
+
+// retryAfterSeconds is the Retry-After hint sent with UNAVAILABLE: long enough for
+// a pod restart or a failover to settle, short enough for an interactive client.
+const retryAfterSeconds = "5"
+
+func withRetryAfter(e *connect.Error) *connect.Error {
+	e.Meta().Set("Retry-After", retryAfterSeconds)
+	return e
 }
 
 // clientMessage is the safe-to-show text of a classified domain error.
@@ -114,6 +139,10 @@ func ErrorLogInterceptor(logger *slog.Logger) connect.UnaryInterceptorFunc {
 
 // causeOf digs the server-side cause out of an error produced by ToConnectError.
 func causeOf(err error) error {
+	var ce causedError
+	if errors.As(err, &ce) {
+		return ce.cause
+	}
 	var ie internalError
 	if errors.As(err, &ie) {
 		return ie.cause

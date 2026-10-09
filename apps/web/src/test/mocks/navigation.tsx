@@ -2,7 +2,7 @@ import type { ComponentProps } from "react";
 import { vi } from "vitest";
 
 /**
- * Stand-in for `@/app/config/i18n/navigation` (next-intl's navigation, which
+ * Stand-in for `@/shared/i18n/navigation` (next-intl's navigation, which
  * needs a mounted App Router). Registered globally in vitest.setup.ts; tests
  * assert on `routerMock` instead of mocking the module themselves.
  */

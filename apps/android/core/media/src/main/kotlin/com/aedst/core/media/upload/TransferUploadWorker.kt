@@ -11,11 +11,14 @@ import androidx.work.ForegroundInfo
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.aedst.core.common.AedstError
+import com.aedst.core.common.DispatcherProvider
 import com.aedst.core.media.R
 import com.aedst.core.network.toAedstError
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.withContext
 import java.io.File
 import java.time.Clock
 
@@ -25,7 +28,7 @@ import java.time.Clock
  *
  * Resumability: S3-style presigned PUTs are not byte-resumable, so a retry re-sends the file — but only this step:
  * the compressed file and the `CreateUpload` result from step 1 are reused. An expired URL fails the chain with
- * `Validation` (the user re-attaches; the server garbage-collects the pending media row).
+ * `InvalidInput` (the user re-attaches; the server garbage-collects the pending media row).
  */
 @HiltWorker
 class TransferUploadWorker @AssistedInject constructor(
@@ -33,17 +36,19 @@ class TransferUploadWorker @AssistedInject constructor(
     @Assisted params: WorkerParameters,
     private val uploader: PresignedUploader,
     private val clock: Clock,
+    private val staging: UploadStaging,
+    private val dispatchers: DispatcherProvider,
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
         val file = inputData.getString(UploadWorkData.KEY_FILE_PATH)?.let(::File)
         val url = inputData.getString(UploadWorkData.KEY_UPLOAD_URL)
         if (file == null || !file.exists() || url.isNullOrEmpty()) {
-            return UploadWorkData.resultFor(AedstError.Validation("Staged upload missing"), runAttemptCount)
+            return failed(AedstError.InvalidInput("Staged upload missing"))
         }
         val expiresAt = inputData.getLong(UploadWorkData.KEY_UPLOAD_EXPIRES_AT, 0L)
         if (expiresAt in 1..clock.millis()) {
-            return UploadWorkData.resultFor(AedstError.Validation("Upload URL expired"), runAttemptCount)
+            return failed(AedstError.InvalidInput("Upload URL expired"))
         }
 
         tryPromoteToForeground()
@@ -51,10 +56,12 @@ class TransferUploadWorker @AssistedInject constructor(
             var lastReported = -1
             uploader.upload(
                 file = file,
-                url = url,
-                method = inputData.getString(UploadWorkData.KEY_UPLOAD_METHOD) ?: "PUT",
-                headers = UploadWorkData.decodeHeaders(inputData.getString(UploadWorkData.KEY_UPLOAD_HEADERS)),
-                fallbackContentType = inputData.getString(UploadWorkData.KEY_CONTENT_TYPE) ?: DEFAULT_CONTENT_TYPE,
+                target = PresignedTarget(
+                    url = url,
+                    method = inputData.getString(UploadWorkData.KEY_UPLOAD_METHOD) ?: "PUT",
+                    headers = UploadWorkData.decodeHeaders(inputData.getString(UploadWorkData.KEY_UPLOAD_HEADERS)),
+                    fallbackContentType = inputData.getString(UploadWorkData.KEY_CONTENT_TYPE) ?: DEFAULT_CONTENT_TYPE,
+                ),
             ) { sent, total ->
                 val percent = if (total > 0) (sent * PERCENT / total).toInt() else 0
                 if (percent != lastReported) {
@@ -67,8 +74,22 @@ class TransferUploadWorker @AssistedInject constructor(
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (@Suppress("TooGenericExceptionCaught") throwable: Throwable) {
-            UploadWorkData.resultFor(throwable.toAedstError(), runAttemptCount)
+            failed(throwable.toAedstError())
+        } finally {
+            // Only an app-initiated cancel (the user, sign-out) ends the upload; a constraint stop is retried later.
+            if (wasCancelledByApp) discard()
         }
+    }
+
+    /** A retryable error keeps the staged copy for the next attempt; a terminal one removes it. */
+    private suspend fun failed(error: AedstError): Result {
+        if (!UploadWorkData.willRetry(error, runAttemptCount)) discard()
+        return UploadWorkData.resultFor(error, runAttemptCount)
+    }
+
+    private suspend fun discard() {
+        val uploadId = inputData.getString(UploadWorkData.KEY_UPLOAD_ID) ?: return
+        withContext(NonCancellable + dispatchers.io) { staging.delete(uploadId) }
     }
 
     override suspend fun getForegroundInfo(): ForegroundInfo = foregroundInfo()

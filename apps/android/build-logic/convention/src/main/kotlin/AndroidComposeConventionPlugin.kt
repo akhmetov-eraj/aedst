@@ -11,6 +11,11 @@ class AndroidComposeConventionPlugin : Plugin<Project> {
         with(target) {
             pluginManager.apply("org.jetbrains.kotlin.plugin.compose")
 
+            extensions.configure<ComposeCompilerGradlePluginExtension> {
+                // java.time.Instant and android.net.Uri are immutable but come from non-Compose libraries.
+                stabilityConfigurationFiles.add(rootProject.layout.projectDirectory.file("compose_compiler_config.conf"))
+            }
+
             // Opt-in stability/skippability reports: `./gradlew assembleRelease -Paedst.composeReports`, then read
             // build/compose_reports/*-classes.txt and *-composables.txt to find unstable params causing recomposition.
             if (providers.gradleProperty("aedst.composeReports").isPresent) {
@@ -40,11 +45,11 @@ class AndroidComposeConventionPlugin : Plugin<Project> {
                 add("androidTestImplementation", versionCatalog.findLibrary("compose-ui-test-junit4").get())
                 add("debugImplementation", versionCatalog.findLibrary("compose-ui-test-manifest").get())
 
-                // JVM UI tests (Robolectric) + instrumented UI tests with Accessibility Test Framework checks.
+                // JVM UI tests (Robolectric + createComposeRule, JUnit 4: see libs.versions.toml) + instrumented UI
+                // tests with Accessibility Test Framework checks.
                 add("testImplementation", versionCatalog.findLibrary("compose-ui-test-junit4").get())
                 add("testImplementation", versionCatalog.findLibrary("robolectric").get())
                 add("testImplementation", versionCatalog.findLibrary("androidx-test-core").get())
-                add("testImplementation", versionCatalog.findLibrary("junit4").get())
                 add("androidTestImplementation", versionCatalog.findLibrary("compose-ui-test-accessibility").get())
                 add("androidTestImplementation", versionCatalog.findLibrary("androidx-test-junit").get())
                 add("androidTestImplementation", versionCatalog.findLibrary("androidx-test-runner").get())

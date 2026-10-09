@@ -4,10 +4,12 @@ import { cookies } from "next/headers";
 
 import {
   decodeSessionClaims,
+  decodeSessionIdentity,
   decodeSessionRoles,
   isAccessTokenExpired,
+  type SessionIdentity,
 } from "@/shared/lib/auth/session-claims";
-import { ACCESS_COOKIE } from "@/shared/lib/auth/session-cookies";
+import { ACCESS_COOKIE, ID_COOKIE } from "@/shared/lib/auth/session-cookies";
 
 /**
  * The caller's access token from the httpOnly cookie, or `undefined` when
@@ -36,4 +38,10 @@ export async function getSessionUserId(): Promise<string | undefined> {
 export async function getSessionRoles(): Promise<string[]> {
   const token = await getAccessToken();
   return token ? decodeSessionRoles(token) : [];
+}
+
+/** Display identity from the ID token cookie (unverified; UI only). */
+export async function getSessionIdentity(): Promise<SessionIdentity | null> {
+  const idToken = (await cookies()).get(ID_COOKIE)?.value;
+  return idToken ? decodeSessionIdentity(idToken) : null;
 }

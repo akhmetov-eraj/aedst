@@ -5,8 +5,8 @@ let package = Package(
     name: "AedstAppShared",
     defaultLocalization: "en",
     platforms: [
-        .iOS(.v15),
-        .macOS(.v12),
+        .iOS(.v18),
+        .macOS(.v15),
     ],
     products: [
         .library(name: "AedstAppShared", targets: ["AedstAppShared"]),
@@ -27,8 +27,6 @@ let package = Package(
         .package(path: "../../Features/Notifications"),
         .package(path: "../../Features/Media"),
         .package(path: "../../Features/Admin"),
-        // Same range as every feature (see Core/AedstNavigation/Package.swift).
-        .package(url: "https://github.com/pointfreeco/swift-perception", "2.0.11"..<"2.0.12"),
     ],
     targets: [
         .target(
@@ -42,20 +40,24 @@ let package = Package(
                 "AedstAnalytics",
                 "AedstMedia",
                 "AedstTelemetry",
+                // Foundation-only doubles; the DEBUG-only UI-test launch mode reuses InMemorySecureStore.
+                "AedstTesting",
                 "Auth",
                 "Tasks",
                 "Search",
                 "Notifications",
                 "Media",
                 "Admin",
-                .product(name: "Perception", package: "swift-perception"),
             ],
             resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
             name: "AedstAppSharedTests",
-            dependencies: ["AedstAppShared", "AedstCore", "AedstPersistence", "AedstNetwork", "Auth", "AedstTesting"],
+            dependencies: [
+                "AedstAppShared", "AedstCore", "AedstPersistence", "AedstNetwork", "AedstAnalytics",
+                "Auth", "Tasks", "Admin", "AedstTesting",
+            ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]

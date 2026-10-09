@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
+<!-- Generated from the sources (lupdate -no-obsolete equivalent); do not reorder by hand. Refresh with the update_<module>_translations target. -->
 <TS version="2.1" language="ar">
+<context>
+    <name>AedstAlert</name>
+    <message>
+        <source>Dismiss</source>
+        <translation>تجاهل</translation>
+    </message>
+</context>
 <context>
     <name>AedstAlertDialog</name>
     <message>
@@ -20,42 +28,7 @@
     </message>
 </context>
 <context>
-    <name>AedstCircularProgress</name>
-    <message>
-        <source>Loading</source>
-        <translation>جارٍ التحميل</translation>
-    </message>
-</context>
-<context>
     <name>AedstCalendar</name>
-    <message>
-        <source>Mo</source>
-        <translation>إث</translation>
-    </message>
-    <message>
-        <source>Tu</source>
-        <translation>ثل</translation>
-    </message>
-    <message>
-        <source>We</source>
-        <translation>أر</translation>
-    </message>
-    <message>
-        <source>Th</source>
-        <translation>خم</translation>
-    </message>
-    <message>
-        <source>Fr</source>
-        <translation>جم</translation>
-    </message>
-    <message>
-        <source>Sa</source>
-        <translation>سب</translation>
-    </message>
-    <message>
-        <source>Su</source>
-        <translation>أح</translation>
-    </message>
     <message>
         <source>Previous month</source>
         <translation>الشهر السابق</translation>
@@ -84,6 +57,24 @@
     </message>
 </context>
 <context>
+    <name>AedstCircularProgress</name>
+    <message>
+        <source>Loading</source>
+        <translation>جارٍ التحميل</translation>
+    </message>
+</context>
+<context>
+    <name>AedstCollapsible</name>
+    <message>
+        <source>Expanded</source>
+        <translation>موسّع</translation>
+    </message>
+    <message>
+        <source>Collapsed</source>
+        <translation>مطوي</translation>
+    </message>
+</context>
+<context>
     <name>AedstDialog</name>
     <message>
         <source>Close</source>
@@ -95,6 +86,28 @@
     <message>
         <source>Close</source>
         <translation>إغلاق</translation>
+    </message>
+</context>
+<context>
+    <name>AedstMenuBar</name>
+    <message>
+        <source>Menu</source>
+        <translation>القائمة</translation>
+    </message>
+</context>
+<context>
+    <name>AedstOfflineBanner</name>
+    <message>
+        <source>You're offline</source>
+        <translation>أنت غير متصل بالإنترنت</translation>
+    </message>
+    <message>
+        <source>Check your connection. Some features are unavailable until you're back online.</source>
+        <translation>تحقق من اتصالك. بعض الميزات غير متاحة حتى تعود متصلًا.</translation>
+    </message>
+    <message>
+        <source>Retry</source>
+        <translation>إعادة المحاولة</translation>
     </message>
 </context>
 <context>
@@ -111,12 +124,12 @@
         <translation>الصفحة السابقة</translation>
     </message>
     <message>
-        <source>Next page</source>
-        <translation>الصفحة التالية</translation>
-    </message>
-    <message>
         <source>More pages</source>
         <translation>المزيد من الصفحات</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>الصفحة التالية</translation>
     </message>
 </context>
 <context>
@@ -138,38 +151,6 @@
     <message>
         <source>Type a command or search…</source>
         <translation>اكتب أمرًا أو ابحث…</translation>
-    </message>
-</context>
-<context>
-    <name>AedstTabBar</name>
-    <message>
-        <source>Tabs</source>
-        <translation>علامات التبويب</translation>
-    </message>
-</context>
-<context>
-    <name>AedstMenuBar</name>
-    <message>
-        <source>Menu</source>
-        <translation>القائمة</translation>
-    </message>
-</context>
-<context>
-    <name>AedstToast</name>
-    <message>
-        <source>Dismiss</source>
-        <translation>تجاهل</translation>
-    </message>
-</context>
-<context>
-    <name>AedstCollapsible</name>
-    <message>
-        <source>Expanded</source>
-        <translation>موسّع</translation>
-    </message>
-    <message>
-        <source>Collapsed</source>
-        <translation>مطوي</translation>
     </message>
 </context>
 <context>
@@ -200,18 +181,17 @@
     </message>
 </context>
 <context>
-    <name>AedstOfflineBanner</name>
+    <name>AedstTabBar</name>
     <message>
-        <source>You're offline</source>
-        <translation>أنت غير متصل بالإنترنت</translation>
+        <source>Tabs</source>
+        <translation>علامات التبويب</translation>
     </message>
+</context>
+<context>
+    <name>AedstToast</name>
     <message>
-        <source>Check your connection. Some features are unavailable until you're back online.</source>
-        <translation>تحقق من اتصالك. بعض الميزات غير متاحة حتى تعود متصلًا.</translation>
-    </message>
-    <message>
-        <source>Retry</source>
-        <translation>إعادة المحاولة</translation>
+        <source>Dismiss</source>
+        <translation>تجاهل</translation>
     </message>
 </context>
 </TS>

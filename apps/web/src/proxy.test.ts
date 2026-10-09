@@ -1,16 +1,21 @@
 // @vitest-environment node
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AuthService } from "@/shared/api/connect/generated/aedst/auth/v1/auth_pb";
+import { refreshSession } from "@/shared/lib/auth/refresh-session";
+import { getServerCapabilities } from "@/shared/lib/capabilities/server";
 import { fakeJwt } from "@/test/jwt";
-import {
-  rpcErrorHandler,
-  rpcHandler,
-  TEST_API_ORIGIN,
-} from "@/test/mocks/connect";
-import { server } from "@/test/mocks/server";
 import proxy from "./proxy";
+
+// The refresh grant itself is covered by refresh-session.test.ts; here only
+// what the proxy does with each outcome matters.
+vi.mock("@/shared/lib/auth/refresh-session", () => ({
+  refreshSession: vi.fn(),
+}));
+
+vi.mock("@/shared/lib/capabilities/server", () => ({
+  getServerCapabilities: vi.fn(async () => null),
+}));
 
 const ACCESS = "aedst_session";
 const REFRESH = "aedst_session_refresh";
@@ -25,11 +30,12 @@ function request(path: string, cookies: Record<string, string> = {}) {
 }
 
 const rotated = () => ({
+  status: "ok" as const,
   tokens: {
     accessToken: fakeJwt({ sub: "rotated", expiresInSeconds: 900 }),
     refreshToken: "rotated-refresh",
-    accessTokenExpiresInSeconds: 900n,
-    refreshTokenExpiresInSeconds: 86_400n,
+    accessMaxAgeSeconds: 900,
+    refreshMaxAgeSeconds: 86_400,
   },
 });
 
@@ -67,6 +73,31 @@ describe("proxy: content security policy", () => {
     expect(
       first.headers.get("x-middleware-request-content-security-policy"),
     ).toBe(csp);
+  });
+});
+
+describe("proxy: single Content-Security-Policy source", () => {
+  it.each([
+    ["/en", /script-src[^;]*'nonce-/],
+    ["/api/rpc/aedst.tasks.v1.TaskService/List", /^default-src 'none'/],
+    ["/serwist/sw.js", /^default-src 'self'; script-src 'self'$/],
+  ])("emits exactly one enforced CSP header for %s", async (path, expected) => {
+    const response = await proxy(request(path));
+
+    const policies = [...response.headers.entries()].filter(
+      ([name]) => name === "content-security-policy",
+    );
+    expect(policies).toHaveLength(1);
+    expect(policies[0]?.[1]).toMatch(expected);
+  });
+
+  it("does not run session refresh or locale routing for /api and /serwist", async () => {
+    const response = await proxy(
+      request("/api/rpc/x", { [REFRESH]: freshRefreshToken() }),
+    );
+
+    expect(refreshSession).not.toHaveBeenCalled();
+    expect(response.headers.get("location")).toBeNull();
   });
 });
 
@@ -113,9 +144,7 @@ describe("proxy: route protection", () => {
 describe("proxy: session refresh", () => {
   it("renews an expired access token, sets the cookies and hands the fresh token to the render", async () => {
     const refreshToken = freshRefreshToken();
-    server.use(
-      rpcHandler(AuthService.method.refreshToken, rotated, TEST_API_ORIGIN),
-    );
+    vi.mocked(refreshSession).mockResolvedValue(rotated());
 
     const response = await proxy(
       request("/en/tasks", {
@@ -140,9 +169,7 @@ describe("proxy: session refresh", () => {
   });
 
   it("renews when only the refresh cookie is left", async () => {
-    server.use(
-      rpcHandler(AuthService.method.refreshToken, rotated, TEST_API_ORIGIN),
-    );
+    vi.mocked(refreshSession).mockResolvedValue(rotated());
 
     const response = await proxy(
       request("/en/tasks", { [REFRESH]: freshRefreshToken() }),
@@ -153,14 +180,7 @@ describe("proxy: session refresh", () => {
   });
 
   it("ends the session when the refresh token is rejected", async () => {
-    server.use(
-      rpcErrorHandler(
-        AuthService.method.refreshToken,
-        "unauthenticated",
-        "revoked",
-        TEST_API_ORIGIN,
-      ),
-    );
+    vi.mocked(refreshSession).mockResolvedValue({ status: "rejected" });
 
     const response = await proxy(
       request("/en/tasks", { [REFRESH]: freshRefreshToken() }),
@@ -169,21 +189,27 @@ describe("proxy: session refresh", () => {
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toContain("/en?next=");
     const cleared = sessionCookies(response);
-    expect(cleared.length).toBe(2);
+    expect(cleared.length).toBe(3);
     for (const cookie of cleared) {
       expect(cookie).toMatch(/Max-Age=0/i);
     }
   });
 
-  it("does not sign anyone out because the API is down", async () => {
-    server.use(
-      rpcErrorHandler(
-        AuthService.method.refreshToken,
-        "internal",
-        "boom",
-        TEST_API_ORIGIN,
-      ),
+  it("redirects to sign-in but leaves the cookies alone when the token was probably rotated by another replica", async () => {
+    vi.mocked(refreshSession).mockResolvedValue({ status: "stale" });
+
+    const response = await proxy(
+      request("/en/tasks", { [REFRESH]: freshRefreshToken() }),
     );
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toContain("/en?next=");
+    // Clearing here could overwrite the winner's fresh cookies in the browser.
+    expect(sessionCookies(response)).toEqual([]);
+  });
+
+  it("does not sign anyone out because the API is down", async () => {
+    vi.mocked(refreshSession).mockResolvedValue({ status: "unavailable" });
 
     const response = await proxy(
       request("/en/tasks", { [REFRESH]: freshRefreshToken() }),
@@ -191,5 +217,44 @@ describe("proxy: session refresh", () => {
 
     expect(response.headers.get("location")).toBeNull();
     expect(sessionCookies(response)).toEqual([]);
+  });
+});
+
+describe("capability negotiation", () => {
+  it("sends a signed-in visitor away from a page the server switched off", async () => {
+    vi.mocked(getServerCapabilities).mockResolvedValue({
+      features: { search: { enabled: false } },
+      updateStatus: "current",
+      minimum: "",
+      recommended: "",
+      fetchedAt: 0,
+    });
+
+    const response = await proxy(
+      request("/en/search", {
+        [ACCESS]: fakeJwt({ sub: "u", expiresInSeconds: 600 }),
+      }),
+    );
+
+    expect(new URL(response.headers.get("location") ?? "").pathname).toBe(
+      "/en/forbidden",
+    );
+  });
+});
+
+describe("proxy: trailing-slash normalisation", () => {
+  it("308-redirects a page URL with a trailing slash, keeping the query", async () => {
+    const response = await proxy(request("/en/?next=%2Ftasks"));
+
+    expect(response.status).toBe(308);
+    expect(response.headers.get("location")).toBe(
+      "http://localhost:3000/en?next=%2Ftasks",
+    );
+  });
+
+  it("does not redirect the canonical form", async () => {
+    const response = await proxy(request("/en"));
+
+    expect(response.status).not.toBe(308);
   });
 });

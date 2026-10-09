@@ -25,7 +25,8 @@ std::string decodeBase64Url(std::string_view segment) {
 }
 
 core::Outcome<OidcUser> validateIdToken(std::string_view jwt, const OidcConfig& config,
-                                        std::chrono::system_clock::time_point now, std::chrono::seconds leeway) {
+                                        std::chrono::system_clock::time_point now, std::chrono::seconds leeway,
+                                        std::string_view expectedNonce) {
     if (jwt.empty() || jwt.size() > kMaxTokenBytes) {
         return core::fail(invalidToken("missing or oversized"));
     }
@@ -80,6 +81,11 @@ core::Outcome<OidcUser> validateIdToken(std::string_view jwt, const OidcConfig& 
         if (issuedAt > now + leeway) {
             return core::fail(invalidToken("issued in the future"));
         }
+    }
+
+    if (!expectedNonce.empty() &&
+        claims.value(QStringLiteral("nonce")).toString().toStdString() != std::string(expectedNonce)) {
+        return core::fail(invalidToken("nonce mismatch")); // a replayed or substituted ID token
     }
 
     OidcUser user;

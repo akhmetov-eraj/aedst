@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   buildContentSecurityPolicy,
+  buildReportingEndpoints,
   buildTrustedTypesReportOnlyPolicy,
   generateNonce,
   parseOrigins,
@@ -110,9 +111,10 @@ describe("violation reporting", () => {
     const uri = "https://o1.ingest.sentry.io/api/1/security/?sentry_key=k";
     expect(
       buildContentSecurityPolicy({ nonce: "n", isDev: false, reportUri: uri }),
-    ).toContain(`report-uri ${uri}`);
+    ).toContain(`report-uri ${uri}; report-to csp-endpoint`);
     expect(buildTrustedTypesReportOnlyPolicy(uri)).toBe(
-      `require-trusted-types-for 'script'; report-uri ${uri}`,
+      `require-trusted-types-for 'script'; report-uri ${uri}; report-to csp-endpoint`,
     );
+    expect(buildReportingEndpoints(uri)).toBe(`csp-endpoint="${uri}"`);
   });
 });

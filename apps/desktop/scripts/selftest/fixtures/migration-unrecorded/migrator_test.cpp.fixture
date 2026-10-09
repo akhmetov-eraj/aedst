@@ -1,0 +1,3 @@
+constexpr std::array<std::string_view, 1> kShippedMigrationHashes{
+    "HASH_OF_MIGRATION_A", // 1 create_a
+};

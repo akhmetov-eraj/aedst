@@ -11,10 +11,15 @@ import Sentry
 /// | Crashes, handled errors, breadcrumbs, URLSession tracing | Sentry | not required (operational; same as web) |
 /// | Product analytics events | PostHog | **opt-in** (`AnalyticsConsent.granted`) |
 /// | Feature flags | PostHog | evaluated for the anonymous/identified user; defaults when off |
+/// | Session replay | PostHog (iOS only) | **opt-in** (same consent as events) **and** `AEDST_POSTHOG_SESSION_REPLAY`; default off, masked |
 ///
 /// Privacy: Sentry gets the opaque user id only (`sendDefaultPii = false`, no
-/// screenshots, no view hierarchy, no session replay). PostHog never runs its
-/// push/screen swizzling and never captures crashes (Sentry owns those).
+/// screenshots, no view hierarchy; Sentry session replay is never used —
+/// PostHog is the single replay tool). PostHog replay is off unless the build
+/// setting enables it, masks all text, text inputs, images and sandboxed system views,
+/// never captures network telemetry, and stops as soon as consent is
+/// withdrawn. PostHog never runs its push/screen swizzling and never captures
+/// crashes (Sentry owns those).
 /// Stateless: every call goes to the SDK singletons, so this is a value type.
 public struct TelemetryAnalyticsClient: AnalyticsClient, FeatureFlagProvider {
     private let configuration: TelemetryConfiguration
@@ -38,8 +43,11 @@ public struct TelemetryAnalyticsClient: AnalyticsClient, FeatureFlagProvider {
                 options.dist = configuration.dist
                 options.environment = configuration.environment
                 options.sendDefaultPii = false
+                #if os(iOS)
+                // UIKit-only options (Sentry 9.30.1 Options.swift guards them with os(iOS) / tvOS / visionOS).
                 options.attachScreenshot = false
                 options.attachViewHierarchy = false
+                #endif
                 options.maxBreadcrumbs = 100
                 options.enableAutoBreadcrumbTracking = true
                 options.enableNetworkBreadcrumbs = true
@@ -65,6 +73,20 @@ public struct TelemetryAnalyticsClient: AnalyticsClient, FeatureFlagProvider {
             config.capturePushNotificationSubscriptions = false
             config.capturePushNotificationOpened = false
             #endif
+            #if os(iOS)
+            if let replay = ReplayConfiguration.make(configuration: configuration, isIOS: true) {
+                // Replay is a PostHog-only, iOS-only, opt-in feature. It rides on the
+                // same `optOut` flag as events: no consent, no recording.
+                config.sessionReplay = true
+                // Screenshot mode: the wireframe mode cannot render SwiftUI faithfully.
+                // Masking below still applies to the captured screenshots.
+                config.sessionReplayConfig.screenshotMode = replay.screenshotMode
+                config.sessionReplayConfig.maskAllTextInputs = replay.maskAllTextInputs
+                config.sessionReplayConfig.maskAllImages = replay.maskAllImages
+                config.sessionReplayConfig.maskAllSandboxedViews = replay.maskAllSandboxedViews
+                config.sessionReplayConfig.captureNetworkTelemetry = replay.captureNetworkTelemetry
+            }
+            #endif
             PostHogSDK.shared.setup(config)
         }
     }
@@ -75,6 +97,10 @@ public struct TelemetryAnalyticsClient: AnalyticsClient, FeatureFlagProvider {
         if consent == .granted {
             PostHogSDK.shared.optIn()
         } else {
+            #if os(iOS)
+            // Explicit stop; `optOut()` also uninstalls the replay integration.
+            PostHogSDK.shared.stopSessionRecording()
+            #endif
             PostHogSDK.shared.optOut()
             PostHogSDK.shared.reset()
         }

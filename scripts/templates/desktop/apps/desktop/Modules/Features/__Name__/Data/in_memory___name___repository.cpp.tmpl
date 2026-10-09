@@ -1,0 +1,12 @@
+#include "Data/in_memory_{{name}}_repository.hpp"
+
+#include <utility>
+#include <vector>
+
+namespace aedst::feature::{{name}} {
+
+void InMemory{{Name}}Repository::list(core::Completion<std::vector<{{Name}}Entry>> done) {
+    done(std::vector<{{Name}}Entry>{});
+}
+
+} // namespace aedst::feature::{{name}}

@@ -1,8 +1,10 @@
 #pragma once
 
 #include "aedst/connectivity/reachability_source.hpp"
+#include "aedst/qmlsupport/singleton_slot.hpp"
 
 #include <QObject>
+#include <QtQml/qqmlregistration.h>
 
 #include <memory>
 
@@ -16,10 +18,15 @@ namespace aedst::connectivity {
 /// is treated as online, so a missing OS backend never blocks the user.
 class ConnectivityMonitor final : public QObject {
     Q_OBJECT
+    QML_NAMED_ELEMENT(Connectivity)
+    QML_SINGLETON
     Q_PROPERTY(State state READ state NOTIFY stateChanged)
     Q_PROPERTY(bool isOffline READ isOffline NOTIFY isOfflineChanged)
 
 public:
+    static ConnectivityMonitor* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<ConnectivityMonitor>::create(engine, script);
+    }
     enum class State { Unknown, Online, Offline };
     Q_ENUM(State)
 

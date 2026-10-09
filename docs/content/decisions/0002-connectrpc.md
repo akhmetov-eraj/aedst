@@ -1,10 +1,15 @@
+---
+title: "ADR-0002: ConnectRPC + Protobuf as the API contract"
+description: "Accepted"
+---
+
 # ADR-0002: ConnectRPC + Protobuf as the API contract
 
 ## Status
 Accepted
 
 ## Context
-Five client platforms (Web, Android, iOS, Desktop) need a shared, versioned API
+Four client platforms (Web, Android, Apple, Desktop) need a shared, versioned API
 contract that doesn't drift between clients, and the same contract must work
 unchanged when a module moves from an in-process call to a network call during
 service extraction.

@@ -1,15 +1,13 @@
 import SwiftUI
 
 /// Height stops a sheet may rest at. Mirrors the two `PresentationDetent`s the
-/// design system uses; `PresentationDetent` itself is iOS 16 / macOS 13, so it
-/// cannot appear in this package's public API at the iOS 15 / macOS 12 floor.
+/// design system uses, keeping `PresentationDetent` out of call sites.
 public enum AedstSheetDetent: Hashable, Sendable {
     /// Half-height stop.
     case medium
     /// Full-height stop.
     case large
 
-    @available(iOS 16, macOS 13, tvOS 16, watchOS 9, *)
     fileprivate var presentationDetent: PresentationDetent {
         switch self {
         case .medium: .medium
@@ -18,25 +16,15 @@ public enum AedstSheetDetent: Hashable, Sendable {
     }
 }
 
-/// Applies detents / drag indicator / background where the OS supports them
-/// (iOS 16 / 16.4); on older OS versions the sheet falls back to the system default.
+/// Applies detents, drag indicator and background to the sheet content.
 private struct AedstSheetPresentationModifier: ViewModifier {
     let detents: Set<AedstSheetDetent>
 
-    @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(iOS 16.4, macOS 13.3, tvOS 16.4, watchOS 9.4, *) {
-            content
-                .presentationDetents(Set(detents.map(\.presentationDetent)))
-                .presentationDragIndicator(.visible)
-                .presentationBackground(AedstColor.background)
-        } else if #available(iOS 16, macOS 13, tvOS 16, watchOS 9, *) {
-            content
-                .presentationDetents(Set(detents.map(\.presentationDetent)))
-                .presentationDragIndicator(.visible)
-        } else {
-            content
-        }
+        content
+            .presentationDetents(Set(detents.map(\.presentationDetent)))
+            .presentationDragIndicator(.visible)
+            .presentationBackground(AedstColor.background)
     }
 }
 
@@ -66,6 +54,30 @@ public struct AedstSheetModifier<SheetContent: View>: ViewModifier {
     }
 }
 
+/// Item-driven variant of `AedstSheetModifier`: the sheet shows while `item` is non-nil.
+public struct AedstItemSheetModifier<Item: Identifiable, SheetContent: View>: ViewModifier {
+    @Binding private var item: Item?
+    private let detents: Set<AedstSheetDetent>
+    private let sheetContent: (Item) -> SheetContent
+
+    public init(
+        item: Binding<Item?>,
+        detents: Set<AedstSheetDetent> = [.medium, .large],
+        @ViewBuilder content: @escaping (Item) -> SheetContent
+    ) {
+        self._item = item
+        self.detents = detents
+        self.sheetContent = content
+    }
+
+    public func body(content: Content) -> some View {
+        content.sheet(item: $item) { item in
+            sheetContent(item)
+                .modifier(AedstSheetPresentationModifier(detents: detents))
+        }
+    }
+}
+
 extension View {
     public func aedstSheet<Content: View>(
         isPresented: Binding<Bool>,
@@ -74,6 +86,15 @@ extension View {
     ) -> some View {
         modifier(AedstSheetModifier(isPresented: isPresented, detents: detents, content: content))
     }
+
+    /// Sheet bound to an optional item (shown while non-nil), with the design system's detents and background.
+    public func aedstSheet<Item: Identifiable, Content: View>(
+        item: Binding<Item?>,
+        detents: Set<AedstSheetDetent> = [.medium, .large],
+        @ViewBuilder content: @escaping (Item) -> Content
+    ) -> some View {
+        modifier(AedstItemSheetModifier(item: item, detents: detents, content: content))
+    }
 }
 
 #Preview("AedstSheet") {
@@ -81,7 +102,7 @@ extension View {
     Color.clear
         .aedstSheet(isPresented: $isPresented) {
             VStack(spacing: AedstSpacing.lg) {
-                Text("Filters").font(AedstTypography.title)
+                Text("Filters").font(AedstTypography.title) // i18n-ok: preview
                 AedstButton("Apply") {}
             }
             .padding()

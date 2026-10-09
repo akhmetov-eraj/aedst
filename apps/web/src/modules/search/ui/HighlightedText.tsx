@@ -9,7 +9,7 @@ export function HighlightedText({ text }: { text: string }) {
           <mark
             // biome-ignore lint/suspicious/noArrayIndexKey: segments are positional and never reorder
             key={index}
-            className="rounded-sm bg-yellow-200 px-0.5 text-foreground dark:bg-yellow-800"
+            className="rounded-sm bg-warning/30 px-0.5 text-foreground"
           >
             {segment.text}
           </mark>

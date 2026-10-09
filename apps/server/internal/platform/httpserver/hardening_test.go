@@ -203,7 +203,7 @@ func TestRouter_LoadSheddingRejectsExcessButNeverProbes(t *testing.T) {
 	release := make(chan struct{})
 	entered := make(chan struct{}, 4)
 	router := httpserver.NewRouter(httpserver.Options{Logger: discardLogger(), MaxInFlight: 2})
-	router.Get("/slow", func(w http.ResponseWriter, _ *http.Request) {
+	router.HandleFunc("GET /slow", func(w http.ResponseWriter, _ *http.Request) {
 		entered <- struct{}{}
 		<-release
 	})
@@ -272,7 +272,7 @@ func TestReadiness_OptionalDependencyDegradesInsteadOfFailing(t *testing.T) {
 			}
 			return errors.New("down")
 		}},
-	)
+	).WithCacheTTL(0)
 	router := httpserver.NewRouter(httpserver.Options{Logger: discardLogger(), Readiness: readiness})
 	get := func() (int, map[string]any) {
 		rec := httptest.NewRecorder()

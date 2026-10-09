@@ -1,36 +1,16 @@
 "use client";
 
-import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { useQuery } from "@connectrpc/connect-query";
-import { useLocale, useTranslations } from "next-intl";
+import dynamic from "next/dynamic";
+import { useTranslations } from "next-intl";
 import { useQueryStates } from "nuqs";
 import { useEffect, useId, useState } from "react";
-
-import type { Locale } from "@/app/config/i18n/locales";
-import { Link } from "@/app/config/i18n/navigation";
-import {
-  ALL_PRIORITIES,
-  ALL_STATUSES,
-  PRIORITY_KEYS,
-  STATUS_KEYS,
-} from "@/modules/tasks/lib/labels";
-import {
-  buildListTasksInput,
-  SORT_OPTIONS,
-} from "@/modules/tasks/lib/list-tasks-input";
-import {
-  PRIORITY_FILTERS,
-  STATUS_FILTERS,
-  taskSearchParsers,
-} from "@/modules/tasks/lib/task-search-params";
-import { PriorityBadge } from "@/modules/tasks/ui/PriorityBadge";
-import { StatusBadge } from "@/modules/tasks/ui/StatusBadge";
+import { buildListTasksInput } from "@/modules/tasks/lib/list-tasks-input";
+import { taskSearchParsers } from "@/modules/tasks/lib/task-search-params";
+import { TaskListPagination } from "@/modules/tasks/ui/TaskListPagination";
+import { TaskListRow } from "@/modules/tasks/ui/TaskListRow";
 import { TasksService } from "@/shared/api/connect/client";
-import {
-  type TaskPriority,
-  TaskStatus,
-} from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
-import { formatDate } from "@/shared/date/format-date";
+import { Link } from "@/shared/i18n/navigation";
 import { useDebouncedValue } from "@/shared/lib/hooks/use-debounced-value";
 import { Button, buttonVariants } from "@/shared/ui/button";
 import {
@@ -41,35 +21,32 @@ import {
   EmptyTitle,
 } from "@/shared/ui/empty";
 import { Input } from "@/shared/ui/input";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/shared/ui/select";
+import { Label } from "@/shared/ui/label";
+import { LoadingSkeleton } from "@/shared/ui/loading-skeleton";
 import { Skeleton } from "@/shared/ui/skeleton";
 
 const SEARCH_DEBOUNCE_MS = 300;
 
-const STATUS_FILTER_BY_ENUM = {
-  [TaskStatus.TODO]: "todo",
-  [TaskStatus.IN_PROGRESS]: "in-progress",
-  [TaskStatus.DONE]: "done",
-} as const;
-
-const PRIORITY_FILTER_BY_ENUM = {
-  1: "low",
-  2: "medium",
-  3: "high",
-  4: "urgent",
-} as const;
+// The three selects pull in the base-ui Select/popup stack (~40 KB gzip), so
+// they load as their own chunk right after hydration. The placeholder has the
+// triggers' exact size (h-8, w-40/w-40/w-48), so nothing shifts when they arrive.
+const TaskListFilters = dynamic(
+  () =>
+    import("@/modules/tasks/ui/TaskListFilters").then((m) => m.TaskListFilters),
+  {
+    ssr: false,
+    loading: () => (
+      <>
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="h-8 w-40" />
+        <Skeleton className="h-8 w-48" />
+      </>
+    ),
+  },
+);
 
 export function TaskList() {
   const t = useTranslations("tasks.list");
-  const tStatus = useTranslations("tasks.status");
-  const tPriority = useTranslations("tasks.priority");
-  const locale = useLocale() as Locale;
   const searchId = useId();
 
   // All view state lives in the URL (see task-search-params.ts).
@@ -101,23 +78,13 @@ export function TaskList() {
     params.q !== "" || params.status !== "all" || params.priority !== "all";
   const hasPreviousPage = params.cursors.length > 0;
 
-  function statusLabel(value: TaskStatus) {
-    const key = STATUS_KEYS[value];
-    return key ? tStatus(key) : "";
-  }
-
-  function priorityLabel(value: TaskPriority) {
-    const key = PRIORITY_KEYS[value];
-    return key ? tPriority(key) : "";
-  }
-
   return (
     <section aria-label={t("resultsLabel")} className="flex flex-col gap-4">
-      {/* biome-ignore lint/a11y/useSemanticElements: role="search" on a div works in every browser and in jsdom; the <search> element does not (Safari < 17, jsdom) */}
+      {/* biome-ignore lint/a11y/useSemanticElements: role="search" on a div works in every browser; the <search> element does not (Safari < 17) */}
       <div role="search" className="flex flex-wrap items-center gap-2">
-        <label htmlFor={searchId} className="sr-only">
+        <Label htmlFor={searchId} className="sr-only">
           {t("searchLabel")}
-        </label>
+        </Label>
         <Input
           id={searchId}
           type="search"
@@ -127,98 +94,16 @@ export function TaskList() {
           className="max-w-xs"
         />
 
-        <Select
-          items={[
-            { value: "all", label: t("allStatuses") },
-            ...ALL_STATUSES.map((value) => ({
-              value: STATUS_FILTER_BY_ENUM[value],
-              label: statusLabel(value),
-            })),
-          ]}
-          value={params.status}
-          onValueChange={(value) => {
-            if (
-              STATUS_FILTERS.includes(value as (typeof STATUS_FILTERS)[number])
-            ) {
-              void setParams({
-                status: value as (typeof STATUS_FILTERS)[number],
-                cursors: [],
-              });
-            }
-          }}
-        >
-          <SelectTrigger className="w-40" aria-label={t("statusFilterLabel")}>
-            <SelectValue placeholder={t("allStatuses")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("allStatuses")}</SelectItem>
-            {ALL_STATUSES.map((value) => (
-              <SelectItem key={value} value={STATUS_FILTER_BY_ENUM[value]}>
-                {statusLabel(value)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          items={[
-            { value: "all", label: t("allPriorities") },
-            ...ALL_PRIORITIES.map((value) => ({
-              value: PRIORITY_FILTER_BY_ENUM[value],
-              label: priorityLabel(value),
-            })),
-          ]}
-          value={params.priority}
-          onValueChange={(value) => {
-            if (
-              PRIORITY_FILTERS.includes(
-                value as (typeof PRIORITY_FILTERS)[number],
-              )
-            ) {
-              void setParams({
-                priority: value as (typeof PRIORITY_FILTERS)[number],
-                cursors: [],
-              });
-            }
-          }}
-        >
-          <SelectTrigger className="w-40" aria-label={t("priorityFilterLabel")}>
-            <SelectValue placeholder={t("allPriorities")} />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">{t("allPriorities")}</SelectItem>
-            {ALL_PRIORITIES.map((value) => (
-              <SelectItem key={value} value={PRIORITY_FILTER_BY_ENUM[value]}>
-                {priorityLabel(value)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        <Select
-          items={SORT_OPTIONS.map((option) => ({
-            value: option.value,
-            label: t(option.labelKey),
-          }))}
-          value={params.sort}
-          onValueChange={(value) => {
-            const option = SORT_OPTIONS.find((o) => o.value === value);
-            if (option) {
-              void setParams({ sort: option.value, cursors: [] });
-            }
-          }}
-        >
-          <SelectTrigger className="w-48" aria-label={t("sortLabel")}>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SORT_OPTIONS.map((option) => (
-              <SelectItem key={option.value} value={option.value}>
-                {t(option.labelKey)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <TaskListFilters
+          status={params.status}
+          priority={params.priority}
+          sort={params.sort}
+          onStatusChange={(status) => void setParams({ status, cursors: [] })}
+          onPriorityChange={(priority) =>
+            void setParams({ priority, cursors: [] })
+          }
+          onSortChange={(sort) => void setParams({ sort, cursors: [] })}
+        />
 
         <Link
           href="/tasks/new"
@@ -228,12 +113,17 @@ export function TaskList() {
         </Link>
       </div>
 
+      {/* Announces filter/search/page changes to screen readers. */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {data ? t("resultCount", { count: data.tasks.length }) : ""}
+      </p>
+
       {isLoading ? (
-        <div className="flex flex-col gap-2" aria-busy="true">
+        <LoadingSkeleton className="flex flex-col gap-2">
           {[0, 1, 2].map((i) => (
             <Skeleton key={i} className="h-16 w-full" />
           ))}
-        </div>
+        </LoadingSkeleton>
       ) : isError ? (
         <Empty role="alert">
           <EmptyHeader>
@@ -266,60 +156,25 @@ export function TaskList() {
       ) : (
         <ul className="flex flex-col gap-2">
           {data?.tasks.map((task) => (
-            <li key={task.id}>
-              <Link
-                href={`/tasks/${task.id}`}
-                className="flex items-center justify-between gap-3 rounded-lg border p-3 hover:bg-accent"
-              >
-                <div className="flex min-w-0 flex-col gap-1">
-                  <span className="truncate font-medium">{task.title}</span>
-                  {task.dueDate && (
-                    <span className="text-muted-foreground text-xs">
-                      {t("due", {
-                        date: formatDate(timestampDate(task.dueDate), locale),
-                      })}
-                    </span>
-                  )}
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  <PriorityBadge priority={task.priority} />
-                  <StatusBadge status={task.status} />
-                </div>
-              </Link>
-            </li>
+            <TaskListRow key={task.id} task={task} />
           ))}
         </ul>
       )}
 
       {data && (data.tasks.length > 0 || hasPreviousPage) && (
-        <nav
-          aria-label={t("paginationLabel")}
-          className="flex items-center justify-end gap-2"
-        >
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!hasPreviousPage}
-            onClick={() =>
-              void setParams({ cursors: params.cursors.slice(0, -1) })
-            }
-          >
-            {t("previousPage")}
-          </Button>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={!data.nextPageToken}
-            onClick={() =>
-              void setParams(
-                { cursors: [...params.cursors, data.nextPageToken] },
-                { history: "push" },
-              )
-            }
-          >
-            {t("nextPage")}
-          </Button>
-        </nav>
+        <TaskListPagination
+          hasPreviousPage={hasPreviousPage}
+          nextPageToken={data.nextPageToken}
+          onPrevious={() =>
+            void setParams({ cursors: params.cursors.slice(0, -1) })
+          }
+          onNext={() =>
+            void setParams(
+              { cursors: [...params.cursors, data.nextPageToken] },
+              { history: "push" },
+            )
+          }
+        />
       )}
     </section>
   );

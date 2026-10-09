@@ -1,25 +1,18 @@
 {
   "login": {
     "title": "Kirish",
-    "emailLabel": "Email",
-    "passwordLabel": "Parol",
-    "invalidEmail": "To'g'ri email manzilini kiriting.",
-    "invalidPassword": "Parolni kiriting.",
+    "description": "Kirish uchun identifikatsiya provayderiga o'ting.",
     "submit": "Kirish",
     "switchPrompt": "Hisobingiz yo'qmi?",
     "switchAction": "Yaratish",
-    "error": "Kirish muvaffaqiyatsiz: {message}"
-  },
-  "register": {
-    "title": "Hisob yaratish",
-    "emailLabel": "Email",
-    "passwordLabel": "Parol",
-    "invalidEmail": "To'g'ri email manzilini kiriting.",
-    "passwordTooShort": "Kamida 8 ta belgi ishlating.",
-    "submit": "Hisob yaratish",
-    "switchPrompt": "Hisobingiz bormi?",
-    "switchAction": "Kirish",
-    "error": "Ro'yxatdan o'tish muvaffaqiyatsiz: {message}"
+    "errors": {
+      "denied": "Kirish bekor qilindi yoki rad etildi.",
+      "expired": "Kirish juda uzoq davom etdi. Qayta urinib ko'ring.",
+      "invalid": "Kirishni tasdiqlab bo'lmadi. Qayta urinib ko'ring.",
+      "opaque_token": "Provayder ilova ishlata olmaydigan token berdi (JWT access token kerak). Administratorga murojaat qiling.",
+      "unavailable": "Identifikatsiya provayderiga ulanib bo'lmadi. Birozdan so'ng qayta urinib ko'ring.",
+      "config": "Kirish sozlanmagan. Administratorga murojaat qiling."
+    }
   },
   "signOut": "Chiqish",
   "signedInAs": "{email} sifatida kirdingiz"

@@ -95,7 +95,7 @@ SELECT
     count(*)                                                                             AS total,
     count(*) FILTER (WHERE status = 'done')                                              AS done,
     count(*) FILTER (WHERE status != 'done' AND due_date IS NOT NULL AND due_date < now()) AS overdue
-FROM tasks.tasks
+FROM (SELECT status, due_date FROM tasks.tasks LIMIT $1::int) AS capped
 `
 
 type AdminTaskStatsRow struct {
@@ -104,8 +104,10 @@ type AdminTaskStatsRow struct {
 	Overdue int64 `json:"overdue"`
 }
 
-func (q *Queries) AdminTaskStats(ctx context.Context) (AdminTaskStatsRow, error) {
-	row := q.db.QueryRow(ctx, adminTaskStats)
+// Platform-wide counts over at most row_cap tasks, so the operator dashboard cannot become a
+// full scan of an unbounded table. Above the cap the figures are lower bounds.
+func (q *Queries) AdminTaskStats(ctx context.Context, rowCap int32) (AdminTaskStatsRow, error) {
+	row := q.db.QueryRow(ctx, adminTaskStats, rowCap)
 	var i AdminTaskStatsRow
 	err := row.Scan(&i.Total, &i.Done, &i.Overdue)
 	return i, err
@@ -149,11 +151,15 @@ func (q *Queries) CompleteTask(ctx context.Context, arg CompleteTaskParams) (Tas
 
 const countTasks = `-- name: CountTasks :one
 SELECT count(*)
-FROM tasks.tasks
-WHERE user_id = $1
-  AND (cardinality($2::text[]::tasks.status[]) = 0 OR status = ANY ($2::text[]::tasks.status[]))
-  AND (cardinality($3::text[]::tasks.priority[]) = 0 OR priority = ANY ($3::text[]::tasks.priority[]))
-  AND ($4::text = '' OR title ILIKE '%' || $4 || '%' OR description ILIKE '%' || $4 || '%')
+FROM (
+    SELECT 1
+    FROM tasks.tasks
+    WHERE user_id = $1
+      AND (cardinality($2::text[]::tasks.status[]) = 0 OR status = ANY ($2::text[]::tasks.status[]))
+      AND (cardinality($3::text[]::tasks.priority[]) = 0 OR priority = ANY ($3::text[]::tasks.priority[]))
+      AND ($4::text = '' OR title ILIKE '%' || $4 || '%' OR description ILIKE '%' || $4 || '%')
+    LIMIT $5::int
+) AS capped
 `
 
 type CountTasksParams struct {
@@ -161,14 +167,18 @@ type CountTasksParams struct {
 	Statuses   []string    `json:"statuses"`
 	Priorities []string    `json:"priorities"`
 	Search     string      `json:"search"`
+	CountCap   int32       `json:"count_cap"`
 }
 
+// Counts the matching tasks up to count_cap rows: counting a very large match set is
+// O(rows) on every first page. A result equal to the cap means "at least that many".
 func (q *Queries) CountTasks(ctx context.Context, arg CountTasksParams) (int64, error) {
 	row := q.db.QueryRow(ctx, countTasks,
 		arg.UserID,
 		arg.Statuses,
 		arg.Priorities,
 		arg.Search,
+		arg.CountCap,
 	)
 	var count int64
 	err := row.Scan(&count)

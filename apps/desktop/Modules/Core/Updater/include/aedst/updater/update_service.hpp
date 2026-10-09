@@ -9,6 +9,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QThreadPool>
 #include <QTimer>
 
 #include <chrono>
@@ -30,7 +31,7 @@ namespace aedst::updater {
 ///  - Safe mode: when the previous starts of this version never became healthy (StartupHealthGuard), updates are checked
 ///    but never applied automatically and `crashLoop` is true - the owner reports it and a signed rollback fixes it.
 ///
-/// The blocking work (manifest fetch, feed query, download, hashing) runs on a QThreadPool thread; the state and signals
+/// The blocking work (manifest fetch, feed query, download, hashing) runs on the service's own one-thread QThreadPool; the state and signals
 /// are touched on the GUI thread only. One run at a time. Checks run `firstCheckDelay` after start() and then every
 /// `interval` (with jitter), never in safe-mode-forbidden situations and never while a run is active.
 class UpdateService final : public QObject {
@@ -102,6 +103,7 @@ private:
     UpdateInstaller& installer_;
     Timing timing_;
 
+    QThreadPool pool_;
     QTimer timer_;
     State state_{State::Idle};
     int progress_{0};

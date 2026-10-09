@@ -28,13 +28,13 @@ public struct AedstSeparator: View {
 
 #Preview("AedstSeparator") {
     VStack {
-        Text("Above")
+        Text("Above") // i18n-ok: preview
         AedstSeparator()
-        Text("Below")
+        Text("Below") // i18n-ok: preview
         HStack {
-            Text("Left")
+            Text("Left") // i18n-ok: preview
             AedstSeparator(.vertical).frame(height: 20)
-            Text("Right")
+            Text("Right") // i18n-ok: preview
         }
     }
     .padding()

@@ -30,7 +30,7 @@ public struct AedstVideoPlayer: View {
         .onAppear {
             if player == nil { player = AVPlayer(url: url) }
         }
-        .onChange(of: url) { newURL in
+        .onChange(of: url) { _, newURL in
             player?.pause()
             player = AVPlayer(url: newURL)
         }

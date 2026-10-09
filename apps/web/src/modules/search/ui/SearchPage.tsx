@@ -6,9 +6,6 @@ import { skipToken } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { useQueryStates } from "nuqs";
 import { useEffect, useId } from "react";
-
-import type { Locale } from "@/app/config/i18n/locales";
-import { Link } from "@/app/config/i18n/navigation";
 import {
   KIND_FILTERS,
   type KindFilter,
@@ -20,7 +17,9 @@ import { HighlightedText } from "@/modules/search/ui/HighlightedText";
 import { SearchService } from "@/shared/api/connect/client";
 import { DocumentKind } from "@/shared/api/connect/generated/aedst/search/v1/search_pb";
 import { formatDateTime } from "@/shared/date/format-date";
+import { Link } from "@/shared/i18n/navigation";
 import { track } from "@/shared/lib/analytics/analytics";
+import { safeInAppPath } from "@/shared/lib/auth/safe-redirect";
 import { useDebouncedValue } from "@/shared/lib/hooks/use-debounced-value";
 import { Badge } from "@/shared/ui/badge";
 import { Button } from "@/shared/ui/button";
@@ -32,6 +31,7 @@ import {
   EmptyTitle,
 } from "@/shared/ui/empty";
 import { Input } from "@/shared/ui/input";
+import { Label } from "@/shared/ui/label";
 import { Skeleton } from "@/shared/ui/skeleton";
 import { Tabs, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 
@@ -45,7 +45,7 @@ const DEBOUNCE_MS = 300;
  */
 export function SearchPage() {
   const t = useTranslations("search");
-  const locale = useLocale() as Locale;
+  const locale = useLocale();
   const inputId = useId();
   const [{ q, kind }, setParams] = useQueryStates(searchParsers, {
     history: "replace",
@@ -79,9 +79,9 @@ export function SearchPage() {
       <h1 className="font-semibold text-2xl">{t("title")}</h1>
 
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <label htmlFor={inputId} className="sr-only">
+        <Label htmlFor={inputId} className="sr-only">
           {t("label")}
-        </label>
+        </Label>
         <Input
           id={inputId}
           type="search"
@@ -143,7 +143,7 @@ export function SearchPage() {
               {hits.map((hit, position) => (
                 <li key={`${hit.kind}:${hit.id}`}>
                   <Link
-                    href={hit.link || "/search"}
+                    href={safeInAppPath(hit.link) ?? "/search"}
                     onClick={() =>
                       track("search_result_opened", {
                         kind: DocumentKind[hit.kind] ?? "UNKNOWN",

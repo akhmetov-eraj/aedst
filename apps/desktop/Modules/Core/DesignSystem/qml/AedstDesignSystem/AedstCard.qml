@@ -27,7 +27,7 @@ Rectangle {
     layer.enabled: root.elevated
     layer.effect: MultiEffect {
         shadowEnabled: true
-        shadowColor: Qt.rgba(0, 0, 0, 0.18)
+        shadowColor: Theme.shadow
         shadowBlur: 0.4
         shadowVerticalOffset: 2
         shadowHorizontalOffset: 0

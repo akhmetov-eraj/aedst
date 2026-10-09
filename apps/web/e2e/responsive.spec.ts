@@ -16,7 +16,7 @@ async function expectNoHorizontalOverflow(page: Page) {
 test.describe("layout at the project's viewport", () => {
   test("sign-in form fits without horizontal scrolling", async ({ page }) => {
     await page.goto("/en");
-    await expect(page.getByRole("button", { name: "Log in" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
 
@@ -25,7 +25,9 @@ test.describe("layout at the project's viewport", () => {
     signedIn,
   }) => {
     expect(signedIn.email).toBeTruthy();
-    await expect(page.getByText("Seed task 25")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Seed task 25/ }),
+    ).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
 
@@ -93,7 +95,9 @@ test.describe("very narrow screens", () => {
     await expectNoHorizontalOverflow(page);
 
     await logIn(page, user);
-    await expect(page.getByText("Seed task 25")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Seed task 25/ }),
+    ).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
 
@@ -102,7 +106,9 @@ test.describe("very narrow screens", () => {
     signedIn,
   }) => {
     expect(signedIn.email).toBeTruthy();
-    await expect(page.getByText("Seed task 25")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Seed task 25/ }),
+    ).toBeVisible();
 
     const box = await page
       .getByRole("link", { name: /Seed task 25/ })
@@ -118,7 +124,9 @@ test.describe("zoom and text size", () => {
   }) => {
     expect(signedIn.email).toBeTruthy();
     await page.setViewportSize({ width: 640, height: 720 });
-    await expect(page.getByText("Seed task 25")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Seed task 25/ }),
+    ).toBeVisible();
     await expectNoHorizontalOverflow(page);
   });
 });

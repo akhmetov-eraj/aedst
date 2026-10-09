@@ -1,4 +1,5 @@
 /** apps/server wraps matched terms in these Private Use Area characters. */
+
 const HIGHLIGHT_START = "";
 const HIGHLIGHT_END = "";
 

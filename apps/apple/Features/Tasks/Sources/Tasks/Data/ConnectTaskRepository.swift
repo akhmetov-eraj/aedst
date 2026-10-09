@@ -22,7 +22,7 @@ public struct ConnectTaskRepository: TaskRepository {
     public func list(search: String, pageToken: String?) async -> Outcome<Page<TaskItem>> {
         var request = Aedst_Tasks_V1_ListTasksRequest()
         request.search = search
-        request.pageSize = 30
+        request.pageSize = 20
         request.pageToken = pageToken ?? ""
         request.sortBy = .createdAt
         request.sortDirection = .desc
@@ -41,7 +41,7 @@ public struct ConnectTaskRepository: TaskRepository {
         return Self.task(from: response.result.map(\.task), present: response.message?.hasTask ?? false)
     }
 
-    public func create(_ task: NewTask) async -> Outcome<TaskItem> {
+    public func create(_ task: NewTask, idempotencyKey: String?) async -> Outcome<TaskItem> {
         var request = Aedst_Tasks_V1_CreateTaskRequest()
         request.title = task.title
         request.description_p = task.details
@@ -50,7 +50,8 @@ public struct ConnectTaskRepository: TaskRepository {
             request.dueDate = Google_Protobuf_Timestamp(date: dueDate)
         }
         let client = self.client
-        let response = await executor.executeUnary { await client.createTask(request: request, headers: [:]) }
+        let headers = IdempotencyKey.headers(for: idempotencyKey)
+        let response = await executor.executeUnary { await client.createTask(request: request, headers: headers) }
         return Self.task(from: response.result.map(\.task), present: response.message?.hasTask ?? false)
     }
 
@@ -70,11 +71,12 @@ public struct ConnectTaskRepository: TaskRepository {
         return Self.task(from: response.result.map(\.task), present: response.message?.hasTask ?? false)
     }
 
-    public func delete(id: String) async -> Outcome<Void> {
+    public func delete(id: String, idempotencyKey: String?) async -> Outcome<Void> {
         var request = Aedst_Tasks_V1_DeleteTaskRequest()
         request.id = id
         let client = self.client
-        let response = await executor.executeUnary { await client.deleteTask(request: request, headers: [:]) }
+        let headers = IdempotencyKey.headers(for: idempotencyKey)
+        let response = await executor.executeUnary { await client.deleteTask(request: request, headers: headers) }
         return response.result.map { _ in () }.mapError { NetworkErrorMapping.map($0) }
     }
 

@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/nextjs";
-
 import { sentrySharedOptions } from "@/app/config/sentry/shared";
+import { edgeEnv } from "@/shared/env/edge";
 
 /**
  * Server-side, the outgoing calls that matter are this app's calls to
@@ -10,7 +10,7 @@ import { sentrySharedOptions } from "@/app/config/sentry/shared";
  * trace as the Next.js request that caused them.
  */
 export function apiTracePropagationTargets(
-  apiBaseUrl = process.env.API_BASE_URL || "http://localhost:8080",
+  apiBaseUrl = edgeEnv.API_BASE_URL,
 ): (string | RegExp)[] {
   try {
     return [new URL(apiBaseUrl).origin];

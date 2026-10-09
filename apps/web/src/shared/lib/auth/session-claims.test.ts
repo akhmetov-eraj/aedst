@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   decodeSessionClaims,
+  decodeSessionIdentity,
   decodeSessionRoles,
   isAccessTokenExpired,
 } from "@/shared/lib/auth/session-claims";
@@ -103,9 +104,68 @@ describe("decodeSessionRoles", () => {
     ]);
   });
 
+  it("reads ZITADEL's urn:zitadel:iam:org:project:roles object, keyed by role", () => {
+    const token = jwt({
+      "urn:zitadel:iam:org:project:roles": {
+        user: { "org-1": "acme.localhost" },
+        admin: { "org-1": "acme.localhost", "org-2": "other.localhost" },
+      },
+    });
+    expect(
+      decodeSessionRoles(token, "urn:zitadel:iam:org:project:roles"),
+    ).toEqual(["admin", "user"]);
+  });
+
+  it("keeps only roles granted in the configured organisation, failing closed", () => {
+    const token = jwt({
+      "urn:zitadel:iam:org:project:roles": {
+        user: { "org-1": "acme.localhost" },
+        admin: { "org-2": "other.localhost" },
+        broken: "no-org-info",
+        empty: {},
+      },
+    });
+    const claim = "urn:zitadel:iam:org:project:roles";
+    expect(decodeSessionRoles(token, claim, "org-1")).toEqual(["user"]);
+    expect(decodeSessionRoles(token, claim, "org-2")).toEqual(["admin"]);
+    expect(decodeSessionRoles(token, claim, "org-3")).toEqual([]);
+  });
+
+  it("applies the organisation filter only to object claims", () => {
+    expect(
+      decodeSessionRoles(jwt({ roles: ["admin"] }), "roles", "org-1"),
+    ).toEqual(["admin"]);
+    expect(decodeSessionRoles(jwt({ roles: "a b" }), "roles", "org-1")).toEqual(
+      ["a", "b"],
+    );
+  });
+
   it("returns no roles for garbage or a missing claim", () => {
     expect(decodeSessionRoles("garbage")).toEqual([]);
     expect(decodeSessionRoles(jwt({ sub: "u" }))).toEqual([]);
     expect(decodeSessionRoles(jwt({ roles: 5 }))).toEqual([]);
+  });
+});
+
+describe("decodeSessionIdentity", () => {
+  it("reads email, name and preferred_username from the ID token", () => {
+    expect(
+      decodeSessionIdentity(
+        jwt({
+          email: "ada@example.com",
+          name: "Ada",
+          preferred_username: "ada",
+        }),
+      ),
+    ).toEqual({ email: "ada@example.com", name: "Ada", username: "ada" });
+  });
+
+  it("ignores missing, empty and mistyped claims and garbage", () => {
+    expect(decodeSessionIdentity(jwt({ email: "", name: 3 }))).toEqual({
+      email: undefined,
+      name: undefined,
+      username: undefined,
+    });
+    expect(decodeSessionIdentity("garbage")).toEqual({});
   });
 });

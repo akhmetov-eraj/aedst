@@ -25,6 +25,7 @@ NotificationsViewModel::NotificationsViewModel(std::shared_ptr<NotificationRepos
       analytics_(std::move(analytics)), desktopNotifier_(desktopNotifier), router_(router),
       detector_(std::chrono::system_clock::now()) {
     pollTimer_.setSingleShot(true);
+    pollTimer_.setTimerType(Qt::VeryCoarseTimer); // 30 s and longer: one-second accuracy is plenty
     connect(&pollTimer_, &QTimer::timeout, this, &NotificationsViewModel::pollNow);
     if (desktopNotifier_ != nullptr) {
         // Marshalled to the GUI thread by the service; the link is validated by Router::openLink.
@@ -134,7 +135,7 @@ void NotificationsViewModel::setForeground(bool foreground) {
 }
 
 void NotificationsViewModel::pollNow() {
-    if (!running_ || pollInFlight_) {
+    if (!running_ || pollInFlight_ || !online_) {
         return;
     }
     pollTimer_.stop();
@@ -160,7 +161,7 @@ void NotificationsViewModel::pollNow() {
 }
 
 void NotificationsViewModel::scheduleNextPoll(bool failed) {
-    if (!running_) {
+    if (!running_ || !online_) {
         return;
     }
     if (realtime_ && realtime_->isStreaming()) {
@@ -320,62 +321,6 @@ void NotificationsViewModel::open(int row) {
     if (router_ != nullptr && !link.isEmpty()) {
         router_->openLink(link);
     }
-}
-
-void NotificationsViewModel::openPreferences() {
-    if (router_ != nullptr) {
-        router_->push(notificationPreferencesRoute());
-    }
-}
-
-void NotificationsViewModel::loadPreferences() {
-    const quint64 session = session_;
-    QPointer<NotificationsViewModel> guard(this);
-    repository_->preferences([guard, session](core::Outcome<NotificationPreferences> result) {
-        if (!guard || session != guard->session_) {
-            return;
-        }
-        if (!result) {
-            if (guard->errors_) {
-                guard->errors_->report(result.error(), "notifications.preferences", core::ErrorVisibility::Silent);
-            }
-            return;
-        }
-        guard->preferences_ = *result;
-        guard->preferencesLoaded_ = true;
-        emit guard->preferencesChanged();
-    });
-}
-
-void NotificationsViewModel::savePreferences(bool desktopNotifications, bool taskCompleted, bool taskDueSoon,
-                                             bool mediaReady) {
-    if (isSavingPreferences_) {
-        return;
-    }
-    const NotificationPreferences next{.pushEnabled = desktopNotifications,
-                                       .taskCompleted = taskCompleted,
-                                       .taskDueSoon = taskDueSoon,
-                                       .mediaReady = mediaReady};
-    isSavingPreferences_ = true;
-    emit isSavingPreferencesChanged();
-    QPointer<NotificationsViewModel> guard(this);
-    repository_->updatePreferences(next, [guard](core::Outcome<NotificationPreferences> result) {
-        if (!guard) {
-            return;
-        }
-        guard->isSavingPreferences_ = false;
-        emit guard->isSavingPreferencesChanged();
-        if (!result) {
-            if (guard->errors_) {
-                guard->errors_->report(result.error(), "notifications.preferences.save");
-            }
-            emit guard->preferencesChanged(); // snap the switches back to the stored values
-            return;
-        }
-        guard->preferences_ = *result;
-        guard->preferencesLoaded_ = true;
-        emit guard->preferencesChanged();
-    });
 }
 
 void NotificationsViewModel::setUnreadCount(int count) {

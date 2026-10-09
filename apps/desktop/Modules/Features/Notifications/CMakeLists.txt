@@ -37,10 +37,17 @@ add_library(AedstFeatureNotifications STATIC
     Presentation/notification_list_model.cpp
     Presentation/notifications_view_model.hpp
     Presentation/notifications_view_model.cpp
+    Presentation/notifications_view_model_online.cpp
+    Presentation/notifications_view_model_preferences.cpp
     Navigation/notifications_destinations.hpp
     Navigation/notifications_destinations.cpp
 )
 add_library(Aedst::Feature::Notifications ALIAS AedstFeatureNotifications)
+
+# Declarative QML singletons (QML_ELEMENT + QML_SINGLETON, Aedst::QmlSupport); the module URI is the import name QML uses.
+# Only App links AedstFeatureNotificationsplugin, so QML test executables keep registering their fakes under this URI.
+target_link_libraries(AedstFeatureNotifications PUBLIC Aedst::QmlSupport)
+qt_add_qml_module(AedstFeatureNotifications URI Aedst.Feature.Notifications VERSION 1.0 RESOURCE_PREFIX /qt/qml)
 
 # The stream adapter needs the generated WatchNotifications messages: it is built once the server proto declares the RPC
 # (docs/proposals/notifications-watch-rpc.md); until then the feature polls.
@@ -58,6 +65,7 @@ target_link_libraries(AedstFeatureNotifications
         Aedst::Network
         Aedst::Contract
         Aedst::Navigation
+        Aedst::Plugin
         Qt6::Core
     PRIVATE
         Aedst::Analytics

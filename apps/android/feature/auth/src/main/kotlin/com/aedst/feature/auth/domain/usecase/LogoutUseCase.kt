@@ -5,7 +5,7 @@ import com.aedst.core.common.NoParamsUseCase
 import com.aedst.feature.auth.domain.repository.AuthRepository
 import javax.inject.Inject
 
-class LogoutUseCase @Inject constructor(
+internal class LogoutUseCase @Inject constructor(
     private val authRepository: AuthRepository,
     dispatcherProvider: DispatcherProvider,
 ) : NoParamsUseCase<Unit>(dispatcherProvider) {

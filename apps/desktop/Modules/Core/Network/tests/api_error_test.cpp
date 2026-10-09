@@ -86,11 +86,11 @@ TEST(ApiErrorTest, OnlyTransientFailuresAreRetryable) {
 
 TEST(ApiErrorTest, ConvertsToCoreErrorCodes) {
     EXPECT_EQ((ApiError{.kind = ApiErrorKind::Transport, .message = "offline"}).toCoreError(),
-              core::Error::network("offline"));
+              core::Error::offline("offline"));
     EXPECT_EQ((ApiError{.kind = ApiErrorKind::PermissionDenied, .httpStatus = 403, .message = "no"})
                   .toCoreError()
                   .code,
-              core::ErrorCode::PermissionDenied);
+              core::ErrorCode::Forbidden);
     EXPECT_EQ((ApiError{.kind = ApiErrorKind::Decoding, .httpStatus = 200, .message = "bad"}).toCoreError().code,
               core::ErrorCode::Unknown);
 }

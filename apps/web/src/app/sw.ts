@@ -1,4 +1,6 @@
 /// <reference lib="webworker" />
+import { createClient } from "@connectrpc/connect";
+import { createConnectTransport } from "@connectrpc/connect-web";
 import {
   CacheFirst,
   ExpirationPlugin,
@@ -10,11 +12,21 @@ import {
   StaleWhileRevalidate,
 } from "serwist";
 
-import { defaultLocale, locales } from "@/app/config/i18n/locales";
+import { NotificationsService } from "@/shared/api/connect/generated/aedst/notifications/v1/notifications_pb";
+import { defaultLocale, locales } from "@/shared/i18n/locales";
+import { setAppBadge } from "@/shared/lib/pwa/app-badge";
+import { buildRegisterPushDeviceRequest } from "@/shared/lib/pwa/push-device";
 import {
   parsePushPayload,
   resolveNotificationUrl,
 } from "@/shared/lib/pwa/push-payload";
+
+// Same-origin BFF (/api/rpc): fetch sends the session cookie, tokens never
+// reach the worker. Connect sets the protocol-version and content-type headers.
+const notifications = createClient(
+  NotificationsService,
+  createConnectTransport({ baseUrl: "/api/rpc" }),
+);
 
 /**
  * The service worker (bundled by Serwist at build time, served from
@@ -35,6 +47,7 @@ import {
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
+    // biome-ignore lint/style/useNamingConvention: global injected by Serwist
     __SW_MANIFEST: (PrecacheEntry | string)[] | undefined;
   }
 }
@@ -142,14 +155,18 @@ self.addEventListener("push", (event) => {
     return;
   }
   event.waitUntil(
-    self.registration.showNotification(payload.title, {
-      body: payload.body,
-      tag: payload.tag,
-      icon: "/icons/icon-192.png",
-      badge: "/icons/badge-96.png",
-      lang: payload.lang,
-      data: { url: payload.link, id: payload.id, kind: payload.kind },
-    }),
+    Promise.all([
+      // Plain badge dot; the open bell replaces it with the exact count.
+      setAppBadge(),
+      self.registration.showNotification(payload.title, {
+        body: payload.body,
+        tag: payload.tag,
+        icon: "/icons/icon-192.png",
+        badge: "/icons/badge-96.png",
+        lang: payload.lang,
+        data: { url: payload.link, id: payload.id, kind: payload.kind },
+      }),
+    ]),
   );
 });
 
@@ -176,8 +193,12 @@ self.addEventListener("notificationclick", (event) => {
           type: "NOTIFICATION_CLICKED",
           kind: data?.kind,
         });
-        await existing.navigate(target);
-        return;
+        try {
+          await existing.navigate(target);
+          return;
+        } catch {
+          // navigate() rejects for a client this worker does not control; open a window instead.
+        }
       }
       await self.clients.openWindow(target);
     })(),
@@ -198,30 +219,35 @@ self.addEventListener("pushsubscriptionchange", (event) => {
   }
   change.waitUntil(
     (async () => {
-      const subscription = await self.registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: key,
-      });
-      const json = subscription.toJSON();
-      await fetch(
-        "/api/rpc/aedst.notifications.v1.NotificationsService/RegisterPushDevice",
-        {
-          method: "POST",
-          credentials: "same-origin",
-          headers: {
-            "content-type": "application/json",
-            "connect-protocol-version": "1",
-          },
-          body: JSON.stringify({
-            platform: "PUSH_PLATFORM_WEB_PUSH",
-            webPush: {
-              endpoint: json.endpoint,
-              p256dh: json.keys?.p256dh,
-              auth: json.keys?.auth,
-            },
-          }),
-        },
-      );
+      try {
+        const subscription = await self.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: key,
+        });
+        const request = buildRegisterPushDeviceRequest(subscription.toJSON());
+        if (request) {
+          await notifications.registerPushDevice(request);
+        }
+      } catch (error) {
+        // Expired session or offline: the app re-registers on its next start,
+        // but the failure must not vanish inside waitUntil.
+        await relayErrorToPages("notifications", error);
+      }
     })(),
   );
 });
+
+/**
+ * The worker has no Sentry client: hand the error to any open page, whose
+ * notification bell reports it (source "service-worker").
+ */
+async function relayErrorToPages(feature: string, error: unknown) {
+  const windows = await self.clients.matchAll({ type: "window" });
+  for (const client of windows) {
+    client.postMessage({
+      type: "SW_ERROR",
+      feature,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+}

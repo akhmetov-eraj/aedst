@@ -1,20 +1,19 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 import { Suspense } from "react";
-
-import { buildLanguageAlternates } from "@/app/config/seo";
-import { loadTaskSearchParams } from "@/modules/tasks/lib/task-search-params";
 import {
   DashboardStatsFallback,
   DashboardStatsSection,
+  loadTaskSearchParams,
   TaskListFallback,
   TaskListSection,
-} from "@/modules/tasks/ui/TasksSections";
+} from "@/modules/tasks/public";
+import { requireLocale } from "@/shared/i18n/require-locale";
 
 export async function generateMetadata({
   params,
 }: PageProps<"/[locale]/tasks">): Promise<Metadata> {
-  const { locale } = await params;
+  const locale = requireLocale((await params).locale);
   const t = await getTranslations({ locale, namespace: "tasks.dashboard" });
 
   return {
@@ -23,7 +22,8 @@ export async function generateMetadata({
     // `[locale]` itself), so the "same segment" exception doesn't apply
     // here (see (pages)/[locale]/page.tsx's generateMetadata comment).
     title: t("title"),
-    alternates: { languages: buildLanguageAlternates("tasks") },
+    // Signed-in page: noindex (set by the (app) layout), so no canonical or
+    // hreflang alternates are published.
   };
 }
 
@@ -31,7 +31,7 @@ export default async function TasksPage({
   params,
   searchParams,
 }: PageProps<"/[locale]/tasks">) {
-  const { locale } = await params;
+  const locale = requireLocale((await params).locale);
   const [t, taskParams] = await Promise.all([
     getTranslations({ locale, namespace: "tasks.dashboard" }),
     loadTaskSearchParams(searchParams),

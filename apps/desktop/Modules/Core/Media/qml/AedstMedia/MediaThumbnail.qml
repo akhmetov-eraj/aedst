@@ -60,14 +60,14 @@ Item {
         visible: root.kind === "video" && String(root.thumbnailSource).length > 0
         anchors.centerIn: parent
         width: 36; height: 36; radius: 18
-        color: "#99000000"
-        Text { anchors.centerIn: parent; text: "▶"; color: "white"; Accessible.ignored: true }
+        color: Theme.mediaScrimStrong
+        Text { anchors.centerIn: parent; text: "▶"; color: Theme.mediaForeground; Accessible.ignored: true }
     }
 
     Rectangle {
         anchors.fill: parent
         radius: Theme.radiusMd
-        color: "#80000000"
+        color: Theme.mediaScrim
         visible: !root.ready
 
         ColumnLayout {
@@ -82,7 +82,7 @@ Item {
             Text {
                 Layout.alignment: Qt.AlignHCenter
                 text: root.status === "failed" ? qsTr("Failed") : qsTr("Processing")
-                color: "white"
+                color: Theme.mediaForeground
                 font: Theme.captionFont
             }
         }
@@ -95,10 +95,10 @@ Item {
         anchors.margins: Theme.spacingXs
         text: root.fileName
         elide: Text.ElideMiddle
-        color: "white"
+        color: Theme.mediaForeground
         font: Theme.captionFont
         style: Text.Outline
-        styleColor: "#80000000"
+        styleColor: Theme.mediaScrim
         Accessible.ignored: true
     }
 

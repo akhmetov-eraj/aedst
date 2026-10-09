@@ -1,7 +1,7 @@
 // Package api is the auth module's public boundary. Only cmd/server's
 // transport wiring may import this package; nothing else in modules/auth
-// may be imported from outside the module (see docs/architecture.md and
-// docs/decisions/0006-module-boundaries.md).
+// may be imported from outside the module (see docs/content/server/architecture.md and
+// docs/content/decisions/0006-module-boundaries.md).
 package api
 
 import (

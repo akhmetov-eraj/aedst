@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
+<!-- Generated from the sources (lupdate -no-obsolete equivalent); do not reorder by hand. Refresh with the update_<module>_translations target. -->
 <TS version="2.1" language="ru">
+<context>
+    <name>AedstAlert</name>
+    <message>
+        <source>Dismiss</source>
+        <translation>Скрыть</translation>
+    </message>
+</context>
 <context>
     <name>AedstAlertDialog</name>
     <message>
@@ -20,42 +28,7 @@
     </message>
 </context>
 <context>
-    <name>AedstCircularProgress</name>
-    <message>
-        <source>Loading</source>
-        <translation>Загрузка</translation>
-    </message>
-</context>
-<context>
     <name>AedstCalendar</name>
-    <message>
-        <source>Mo</source>
-        <translation>Пн</translation>
-    </message>
-    <message>
-        <source>Tu</source>
-        <translation>Вт</translation>
-    </message>
-    <message>
-        <source>We</source>
-        <translation>Ср</translation>
-    </message>
-    <message>
-        <source>Th</source>
-        <translation>Чт</translation>
-    </message>
-    <message>
-        <source>Fr</source>
-        <translation>Пт</translation>
-    </message>
-    <message>
-        <source>Sa</source>
-        <translation>Сб</translation>
-    </message>
-    <message>
-        <source>Su</source>
-        <translation>Вс</translation>
-    </message>
     <message>
         <source>Previous month</source>
         <translation>Предыдущий месяц</translation>
@@ -84,6 +57,24 @@
     </message>
 </context>
 <context>
+    <name>AedstCircularProgress</name>
+    <message>
+        <source>Loading</source>
+        <translation>Загрузка</translation>
+    </message>
+</context>
+<context>
+    <name>AedstCollapsible</name>
+    <message>
+        <source>Expanded</source>
+        <translation>Развёрнуто</translation>
+    </message>
+    <message>
+        <source>Collapsed</source>
+        <translation>Свёрнуто</translation>
+    </message>
+</context>
+<context>
     <name>AedstDialog</name>
     <message>
         <source>Close</source>
@@ -95,6 +86,28 @@
     <message>
         <source>Close</source>
         <translation>Закрыть</translation>
+    </message>
+</context>
+<context>
+    <name>AedstMenuBar</name>
+    <message>
+        <source>Menu</source>
+        <translation>Меню</translation>
+    </message>
+</context>
+<context>
+    <name>AedstOfflineBanner</name>
+    <message>
+        <source>You're offline</source>
+        <translation>Нет подключения к сети</translation>
+    </message>
+    <message>
+        <source>Check your connection. Some features are unavailable until you're back online.</source>
+        <translation>Проверьте подключение. Некоторые функции недоступны, пока вы не в сети.</translation>
+    </message>
+    <message>
+        <source>Retry</source>
+        <translation>Повторить</translation>
     </message>
 </context>
 <context>
@@ -111,12 +124,12 @@
         <translation>Предыдущая страница</translation>
     </message>
     <message>
-        <source>Next page</source>
-        <translation>Следующая страница</translation>
-    </message>
-    <message>
         <source>More pages</source>
         <translation>Другие страницы</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>Следующая страница</translation>
     </message>
 </context>
 <context>
@@ -138,38 +151,6 @@
     <message>
         <source>Type a command or search…</source>
         <translation>Введите команду или поиск…</translation>
-    </message>
-</context>
-<context>
-    <name>AedstTabBar</name>
-    <message>
-        <source>Tabs</source>
-        <translation>Вкладки</translation>
-    </message>
-</context>
-<context>
-    <name>AedstMenuBar</name>
-    <message>
-        <source>Menu</source>
-        <translation>Меню</translation>
-    </message>
-</context>
-<context>
-    <name>AedstToast</name>
-    <message>
-        <source>Dismiss</source>
-        <translation>Скрыть</translation>
-    </message>
-</context>
-<context>
-    <name>AedstCollapsible</name>
-    <message>
-        <source>Expanded</source>
-        <translation>Развёрнуто</translation>
-    </message>
-    <message>
-        <source>Collapsed</source>
-        <translation>Свёрнуто</translation>
     </message>
 </context>
 <context>
@@ -200,18 +181,17 @@
     </message>
 </context>
 <context>
-    <name>AedstOfflineBanner</name>
+    <name>AedstTabBar</name>
     <message>
-        <source>You're offline</source>
-        <translation>Нет подключения к сети</translation>
+        <source>Tabs</source>
+        <translation>Вкладки</translation>
     </message>
+</context>
+<context>
+    <name>AedstToast</name>
     <message>
-        <source>Check your connection. Some features are unavailable until you're back online.</source>
-        <translation>Проверьте подключение. Некоторые функции недоступны, пока вы не в сети.</translation>
-    </message>
-    <message>
-        <source>Retry</source>
-        <translation>Повторить</translation>
+        <source>Dismiss</source>
+        <translation>Скрыть</translation>
     </message>
 </context>
 </TS>

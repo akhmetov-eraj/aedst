@@ -574,7 +574,7 @@
     {
       "id": 12,
       "type": "row",
-      "title": "Events (outbox)",
+      "title": "Events (River jobs)",
       "collapsed": false,
       "gridPos": {
         "h": 1,
@@ -587,8 +587,8 @@
     {
       "id": 13,
       "type": "timeseries",
-      "title": "Oldest undelivered event age",
-      "description": "Healthy < 2 s; alert AedstOutboxLagging above 30 s.",
+      "title": "Oldest ready job age",
+      "description": "Healthy < 2 s; alert AedstJobsLagging above 30 s.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -640,16 +640,16 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "A",
-          "expr": "max by (module) (aedst_outbox_oldest_pending_age_seconds)",
-          "legendFormat": "{{module}}"
+          "expr": "max(aedst_river_oldest_available_age_seconds)",
+          "legendFormat": "ready job age"
         }
       ]
     },
     {
       "id": 14,
       "type": "timeseries",
-      "title": "Pending events",
-      "description": "Capped at 10 000.",
+      "title": "River jobs by state",
+      "description": "available, retryable, scheduled, running and discarded (dead-letter) jobs.",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -697,16 +697,16 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "A",
-          "expr": "max by (module) (aedst_outbox_pending)",
-          "legendFormat": "{{module}}"
+          "expr": "max by (state) (aedst_river_jobs)",
+          "legendFormat": "{{state}}"
         }
       ]
     },
     {
       "id": 15,
       "type": "timeseries",
-      "title": "Delivered / failed / poisoned per second",
-      "description": "Any poisoned event pages.",
+      "title": "Event deliveries per second (delivered / failed / discarded)",
+      "description": "Any discarded delivery pages (AedstEventDiscarded).",
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
@@ -754,8 +754,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "A",
-          "expr": "sum by (module) (rate(aedst_outbox_delivered_total[$__rate_interval]))",
-          "legendFormat": "{{module}} delivered"
+          "expr": "sum by (consumer) (rate(aedst_events_delivered_total[$__rate_interval]))",
+          "legendFormat": "{{consumer}} delivered"
         },
         {
           "datasource": {
@@ -763,8 +763,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "B",
-          "expr": "sum by (module) (rate(aedst_outbox_failed_total[$__rate_interval]))",
-          "legendFormat": "{{module}} failed"
+          "expr": "sum by (consumer) (rate(aedst_events_failed_total[$__rate_interval]))",
+          "legendFormat": "{{consumer}} failed"
         },
         {
           "datasource": {
@@ -772,8 +772,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "C",
-          "expr": "sum by (module) (rate(aedst_outbox_poisoned_total[$__rate_interval]))",
-          "legendFormat": "{{module}} poisoned"
+          "expr": "sum by (consumer) (rate(aedst_events_discarded_total[$__rate_interval]))",
+          "legendFormat": "{{consumer}} discarded"
         }
       ]
     },
@@ -899,7 +899,7 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "A",
-          "expr": "max by (pod) (go_goroutines)",
+          "expr": "max by (pod) (go_goroutine_count)",
           "legendFormat": "{{pod}}"
         }
       ]
@@ -907,7 +907,7 @@
     {
       "id": 19,
       "type": "timeseries",
-      "title": "Heap in use / process RSS",
+      "title": "Go runtime memory / container working set",
       "description": "",
       "datasource": {
         "type": "prometheus",
@@ -956,8 +956,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "A",
-          "expr": "max by (pod) (go_memstats_heap_inuse_bytes)",
-          "legendFormat": "{{pod}} heap"
+          "expr": "sum by (pod) (go_memory_used_bytes)",
+          "legendFormat": "{{pod}} go runtime"
         },
         {
           "datasource": {
@@ -965,8 +965,8 @@
             "uid": "${DS_PROMETHEUS}"
           },
           "refId": "B",
-          "expr": "max by (pod) (process_resident_memory_bytes)",
-          "legendFormat": "{{pod}} rss"
+          "expr": "max by (pod) (container_memory_working_set_bytes{container=\"server\"})",
+          "legendFormat": "{{pod}} container"
         }
       ]
     }

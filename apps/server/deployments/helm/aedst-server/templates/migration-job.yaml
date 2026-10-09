@@ -42,10 +42,14 @@ spec:
             - -c
             - |
               set -eu
+              # River first: it owns river_job and friends; idempotent, tracked in river_migration.
+              river migrate-up --database-url "$GOOSE_DBSTRING"
               for m in "$@"; do
                 echo "migrating module $m"
                 goose -dir "/migrations/$m" -table "goose_$m" up
               done
+              # A failed CREATE INDEX CONCURRENTLY leaves an INVALID index: fail the Job.
+              check-invalid-indexes
             - --
             {{- range .Values.migrations.modules }}
             - {{ . | quote }}

@@ -60,15 +60,16 @@ func (*GetOverviewRequest) Descriptor() ([]byte, []int) {
 }
 
 type GetOverviewResponse struct {
-	state        protoimpl.MessageState `protogen:"open.v1"`
-	UsersTotal   int64                  `protobuf:"varint,1,opt,name=users_total,json=usersTotal,proto3" json:"users_total,omitempty"`
-	TasksTotal   int64                  `protobuf:"varint,2,opt,name=tasks_total,json=tasksTotal,proto3" json:"tasks_total,omitempty"`
-	TasksDone    int64                  `protobuf:"varint,3,opt,name=tasks_done,json=tasksDone,proto3" json:"tasks_done,omitempty"`
-	TasksOverdue int64                  `protobuf:"varint,4,opt,name=tasks_overdue,json=tasksOverdue,proto3" json:"tasks_overdue,omitempty"`
-	MediaTotal   int64                  `protobuf:"varint,5,opt,name=media_total,json=mediaTotal,proto3" json:"media_total,omitempty"`
-	MediaBytes   int64                  `protobuf:"varint,6,opt,name=media_bytes,json=mediaBytes,proto3" json:"media_bytes,omitempty"`
-	PushDevices  int64                  `protobuf:"varint,7,opt,name=push_devices,json=pushDevices,proto3" json:"push_devices,omitempty"`
-	// Oldest unpublished outbox row age, seconds (0 when the outbox is empty).
+	state      protoimpl.MessageState `protogen:"open.v1"`
+	UsersTotal int64                  `protobuf:"varint,1,opt,name=users_total,json=usersTotal,proto3" json:"users_total,omitempty"`
+	// tasks_* count at most 1,000,000 tasks (lower bounds beyond that).
+	TasksTotal   int64 `protobuf:"varint,2,opt,name=tasks_total,json=tasksTotal,proto3" json:"tasks_total,omitempty"`
+	TasksDone    int64 `protobuf:"varint,3,opt,name=tasks_done,json=tasksDone,proto3" json:"tasks_done,omitempty"`
+	TasksOverdue int64 `protobuf:"varint,4,opt,name=tasks_overdue,json=tasksOverdue,proto3" json:"tasks_overdue,omitempty"`
+	MediaTotal   int64 `protobuf:"varint,5,opt,name=media_total,json=mediaTotal,proto3" json:"media_total,omitempty"`
+	MediaBytes   int64 `protobuf:"varint,6,opt,name=media_bytes,json=mediaBytes,proto3" json:"media_bytes,omitempty"`
+	PushDevices  int64 `protobuf:"varint,7,opt,name=push_devices,json=pushDevices,proto3" json:"push_devices,omitempty"`
+	// Age of the oldest ready River job (event deliveries included), seconds (0 when none waits). Field name kept for wire compatibility; it was the outbox lag before ADR-0014.
 	OutboxLagSeconds int64 `protobuf:"varint,8,opt,name=outbox_lag_seconds,json=outboxLagSeconds,proto3" json:"outbox_lag_seconds,omitempty"`
 	// Queued + retrying River jobs.
 	JobsPending   int64 `protobuf:"varint,9,opt,name=jobs_pending,json=jobsPending,proto3" json:"jobs_pending,omitempty"`

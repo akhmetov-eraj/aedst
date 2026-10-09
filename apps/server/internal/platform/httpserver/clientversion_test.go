@@ -24,7 +24,7 @@ func callGate(t *testing.T, mins map[string]string, header string) (reached bool
 	if header != "" {
 		req.Header().Set(httpserver.ClientHeader, header)
 	}
-	_, err = httpserver.ClientVersionInterceptor(mins, slog.New(slog.DiscardHandler))(next)(context.Background(), req)
+	_, err = httpserver.ClientVersionInterceptor(context.Background(), mins, nil, slog.New(slog.DiscardHandler))(next)(context.Background(), req)
 	return reached, err
 }
 

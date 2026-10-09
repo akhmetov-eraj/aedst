@@ -5,9 +5,8 @@ import (
 	"testing"
 	"time"
 
-	chimw "github.com/go-chi/chi/v5/middleware"
-
 	"github.com/aedst/server/internal/modules/auth/infrastructure/ratelimit"
+	"github.com/aedst/server/internal/platform/clientip"
 )
 
 // budgets is an exact-count limiter: each key gets `limit` calls, then is
@@ -26,10 +25,9 @@ func (b *budgets) Allow(_ context.Context, key string, limit int, _ time.Duratio
 }
 
 func fromAddress(ip string) context.Context {
-	// chi stores the client IP under an unexported key, set by its
-	// ClientIP middleware; go through the middleware to build a real context.
+	// Go through the real clientip middleware to build a real context.
 	var ctx context.Context
-	h := chimw.ClientIPFromRemoteAddr(handlerFunc(func(c context.Context) { ctx = c }))
+	h := clientip.Middleware(0)(handlerFunc(func(c context.Context) { ctx = c }))
 	req, _ := newRequest(ip)
 	h.ServeHTTP(nil, req)
 	return ctx

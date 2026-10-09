@@ -25,6 +25,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.okhttp.core)
+    implementation(libs.okhttp.coroutines)
 
     implementation(libs.workmanager.runtime)
     implementation(libs.hilt.work)
@@ -38,6 +39,8 @@ dependencies {
     implementation(libs.media3.ui.compose)
     implementation(libs.media3.transformer)
     implementation(libs.media3.effect)
+}
 
-    testImplementation(libs.junit4)
+dependencies {
+    testImplementation(project(":core:testing"))
 }

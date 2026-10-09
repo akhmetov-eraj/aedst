@@ -6,7 +6,7 @@ import Foundation
 /// accounts ships with no telemetry at all.
 ///
 /// Info.plist keys: `AEDST_SENTRY_DSN`, `AEDST_POSTHOG_KEY`,
-/// `AEDST_POSTHOG_HOST`, `AEDST_TELEMETRY_ENVIRONMENT`.
+/// `AEDST_POSTHOG_HOST`, `AEDST_POSTHOG_SESSION_REPLAY`, `AEDST_TELEMETRY_ENVIRONMENT`.
 public struct TelemetryConfiguration: Sendable, Equatable {
     /// Sentry DSN; `nil` disables error reporting.
     public let sentryDSN: String?
@@ -25,6 +25,9 @@ public struct TelemetryConfiguration: Sendable, Equatable {
     public let apiHost: String?
     /// Traces sample rate (1 locally, sampled in production — same as web).
     public let tracesSampleRate: Double
+    /// PostHog session replay (iOS only; masked, consent-gated, default off).
+    /// Requires `postHogKey`; the build setting must opt in explicitly.
+    public let postHogSessionReplay: Bool
 
     /// Memberwise initializer (tests).
     public init(
@@ -35,7 +38,8 @@ public struct TelemetryConfiguration: Sendable, Equatable {
         release: String,
         dist: String,
         apiHost: String?,
-        tracesSampleRate: Double
+        tracesSampleRate: Double,
+        postHogSessionReplay: Bool = false
     ) {
         self.sentryDSN = Self.nonEmpty(sentryDSN)
         self.postHogKey = Self.nonEmpty(postHogKey)
@@ -45,6 +49,7 @@ public struct TelemetryConfiguration: Sendable, Equatable {
         self.dist = dist
         self.apiHost = apiHost
         self.tracesSampleRate = tracesSampleRate
+        self.postHogSessionReplay = postHogSessionReplay
     }
 
     /// Reads the configuration from `bundle`'s Info.plist.
@@ -61,8 +66,18 @@ public struct TelemetryConfiguration: Sendable, Equatable {
             release: "\(bundleID)@\(version)+\(build)",
             dist: build,
             apiHost: apiBaseURL.host,
-            tracesSampleRate: environment == "production" ? 0.2 : 1
+            tracesSampleRate: environment == "production" ? 0.2 : 1,
+            postHogSessionReplay: flag(bundle.object(forInfoDictionaryKey: "AEDST_POSTHOG_SESSION_REPLAY"))
         )
+    }
+
+    /// Parses a boolean build setting: `YES` / `true` / `1` (case-insensitive,
+    /// or a real plist boolean) are on; empty, unset, an unexpanded `$(VAR)`
+    /// and anything else are off.
+    static func flag(_ raw: Any?) -> Bool {
+        if let bool = raw as? Bool { return bool }
+        guard let string = nonEmpty(raw as? String) else { return false }
+        return ["yes", "true", "1"].contains(string.lowercased())
     }
 
     /// Treats empty strings and unexpanded `$(VAR)` placeholders as "not set".

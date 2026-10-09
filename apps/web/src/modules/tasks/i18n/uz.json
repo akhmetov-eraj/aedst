@@ -30,7 +30,8 @@
     "priorityFilterLabel": "Ustuvorlik bo'yicha filtr",
     "sortLabel": "Vazifalarni saralash",
     "paginationLabel": "Sahifalash",
-    "resultsLabel": "Vazifalar"
+    "resultsLabel": "Vazifalar",
+    "resultCount": "{count, plural, one {# ta vazifa} other {# ta vazifa}}"
   },
   "status": {
     "todo": "Bajarilishi kerak",
@@ -78,10 +79,18 @@
     "deleteCancelAction": "Bekor qilish",
     "notFoundTitle": "Vazifa topilmadi",
     "notFoundDescription": "U o'chirilgan yoki boshqa foydalanuvchiga tegishli bo'lishi mumkin.",
-    "loadErrorTitle": "Vazifani yuklab bo'lmadi"
+    "loadErrorTitle": "Vazifani yuklab bo'lmadi",
+    "pageTitle": "Vazifa"
   },
   "a11y": {
     "priority": "Ustuvorlik",
     "status": "Holat"
+  },
+  "sync": {
+    "pendingBadge": "Sinxronlash kutilmoqda",
+    "failedBadge": "Sinxronlanmadi",
+    "discard": "Bekor qilish",
+    "queuedTitle": "Sinxronlash kutilmoqda",
+    "queuedHint": "Qurilmada saqlandi. Avtomatik yuboriladi."
   }
 }

@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const WEB_PORT = 3100;
+const WEB_PORT = Number(process.env.E2E_WEB_PORT ?? 3100);
 const MOCK_API_PORT = 8181;
 const baseURL = `http://127.0.0.1:${WEB_PORT}`;
 const mockApiURL = `http://127.0.0.1:${MOCK_API_PORT}`;
@@ -61,6 +61,13 @@ export default defineConfig({
         : `pnpm dev --port ${WEB_PORT}`,
       env: {
         API_BASE_URL: mockApiURL,
+        // The mock API doubles as the OpenID Connect provider (e2e/mock-api/oidc.mjs).
+        OIDC_ISSUER: `${mockApiURL}/oidc`,
+        OIDC_CLIENT_ID: "aedst-web-e2e",
+        OIDC_PROJECT_ID: "aedst-api-e2e",
+        OIDC_STATE_SECRET: "e2e-only-state-secret-e2e-only-state-secret",
+        // ZITADEL's roles claim, as the mock IdP issues it.
+        AUTH_ROLES_CLAIM: "urn:zitadel:iam:org:project:roles",
         NEXT_PUBLIC_SITE_URL: baseURL,
         // The mock doubles as object storage for presigned uploads.
         MEDIA_ORIGINS: mockApiURL,

@@ -19,7 +19,8 @@ class DataStoreAnalyticsConsentStore @Inject constructor(private val dataStore: 
             when (prefs.analyticsConsent) {
                 AnalyticsConsent.ANALYTICS_CONSENT_GRANTED -> AnalyticsConsentState.GRANTED
                 AnalyticsConsent.ANALYTICS_CONSENT_DENIED -> AnalyticsConsentState.DENIED
-                else -> AnalyticsConsentState.UNSET
+                // No recorded or an unreadable value: the privacy-preserving default is "not asked yet", never granted.
+                AnalyticsConsent.ANALYTICS_CONSENT_UNSET, AnalyticsConsent.UNRECOGNIZED -> AnalyticsConsentState.UNSET
             }
         }
         .distinctUntilChanged()

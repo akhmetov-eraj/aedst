@@ -85,16 +85,16 @@ core::Outcome<std::vector<TrustedKey>> parseTrustedKeys(std::string_view spec) {
         const std::string_view entry = spec.substr(start, comma - start);
         const std::size_t colon = entry.find(':');
         if (colon == std::string_view::npos) {
-            return fail(Error::invalidArgument("trusted keys: expected keyId:hex"));
+            return fail(Error::invalidInput("trusted keys: expected keyId:hex"));
         }
         const std::string_view keyId = entry.substr(0, colon);
         const auto raw = detail::decodeHex(entry.substr(colon + 1));
         if (!isValidKeyId(keyId) || !raw || raw->size() != kEd25519PublicKeyBytes) {
-            return fail(Error::invalidArgument("trusted keys: invalid keyId or public key"));
+            return fail(Error::invalidInput("trusted keys: invalid keyId or public key"));
         }
         for (const TrustedKey& existing : keys) {
             if (existing.keyId == keyId) {
-                return fail(Error::invalidArgument("trusted keys: duplicate keyId"));
+                return fail(Error::invalidInput("trusted keys: duplicate keyId"));
             }
         }
         TrustedKey key;
@@ -112,6 +112,7 @@ core::Outcome<std::vector<TrustedKey>> parseTrustedKeys(std::string_view spec) {
 std::vector<TrustedKey> embeddedTrustedKeys() {
     auto keys = parseTrustedKeys(AEDST_UPDATE_PUBLIC_KEYS);
     if (!keys) {
+        // aedst-allow: Update is a Qt-free layer that uses QtJson only to parse (ADR-0024 lists it as an AedstLogger consumer)
         core::AedstLogger::error("update: AEDST_UPDATE_PUBLIC_KEYS is malformed; no update key is trusted");
         return {};
     }
@@ -146,27 +147,27 @@ core::Outcome<UpdateManifest> ManifestVerifier::verify(std::string_view envelope
         return fail(Error::unauthenticated("update: no trusted signing keys are configured"));
     }
     if (envelopeJson.empty() || envelopeJson.size() > kMaxEnvelopeBytes) {
-        return fail(Error::invalidArgument("update: envelope has an invalid size"));
+        return fail(Error::invalidInput("update: envelope has an invalid size"));
     }
     QJsonParseError parseError;
     const QJsonDocument document = QJsonDocument::fromJson(
         QByteArray::fromRawData(envelopeJson.data(), static_cast<qsizetype>(envelopeJson.size())), &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-        return fail(Error::invalidArgument("update: envelope is not a JSON object"));
+        return fail(Error::invalidInput("update: envelope is not a JSON object"));
     }
     const QJsonObject root = document.object();
     const QJsonValue payloadValue = root.value(QStringLiteral("payload"));
     const QJsonValue signaturesValue = root.value(QStringLiteral("signatures"));
     if (!payloadValue.isString() || !signaturesValue.isArray()) {
-        return fail(Error::invalidArgument("update: envelope needs payload and signatures"));
+        return fail(Error::invalidInput("update: envelope needs payload and signatures"));
     }
     const auto payload = decodeBase64(payloadValue.toString(), kMaxEnvelopeBytes);
     if (!payload || payload->empty()) {
-        return fail(Error::invalidArgument("update: payload is not valid base64"));
+        return fail(Error::invalidInput("update: payload is not valid base64"));
     }
     const QJsonArray signatures = signaturesValue.toArray();
     if (signatures.isEmpty() || static_cast<std::size_t>(signatures.size()) > kMaxSignaturesPerEnvelope) {
-        return fail(Error::invalidArgument("update: envelope needs 1..8 signatures"));
+        return fail(Error::invalidInput("update: envelope needs 1..8 signatures"));
     }
 
     bool verified = false;

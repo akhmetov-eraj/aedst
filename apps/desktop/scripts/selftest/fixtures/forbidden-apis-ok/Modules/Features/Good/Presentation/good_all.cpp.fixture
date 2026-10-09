@@ -1,0 +1,16 @@
+// Positive control for scripts/check-forbidden-apis.sh: must PASS. Comments may name banned APIs
+// (ignoreSslErrors, std::thread, QNetworkAccessManager, qDebug(), qmlRegisterType) without tripping a rule.
+#include <QSettings>
+#include <QString>
+
+#include <thread>
+
+/* a block comment mentioning Q_LOGGING_CATEGORY and AedstLogger:: is fine too */
+void escapeHatch(const QString& tokenName) {
+    // aedst-allow: fixture - proves the escape hatch works when a reason is given
+    std::thread worker([] {});
+    // aedst-allow: fixture - a marker on the line above covers exactly the next line
+    qDebug("allowed with a reason");
+    QSettings settings; // aedst-allow: fixture - same-line marker; this file mentions a token name only as a label
+    (void)tokenName;
+}

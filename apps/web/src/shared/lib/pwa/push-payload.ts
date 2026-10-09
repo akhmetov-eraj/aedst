@@ -3,6 +3,7 @@
  * Parsed defensively: a push from an older/newer server must still show
  * *something* rather than throw inside the service worker.
  */
+
 export type PushPayload = {
   title: string;
   body?: string;

@@ -19,15 +19,20 @@ UpdateService::UpdateService(update::UpdateCheckerConfig config, update::HttpFet
     : QObject(parent), config_(std::move(config)), fetcher_(fetcher), verifier_(std::move(verifier)),
       stateStore_(stateStore), installer_(installer), timing_(timing) {
     timer_.setSingleShot(true);
+    timer_.setTimerType(Qt::VeryCoarseTimer); // minutes to hours: no precision needed
     connect(&timer_, &QTimer::timeout, this, &UpdateService::checkNow);
+    // Its own pool with ONE thread that never expires: update work never competes with (or blocks on) the global pool,
+    // and the QtHttpFetcher's thread-local QNetworkAccessManager is created exactly once, on this thread.
+    pool_.setMaxThreadCount(1);
+    pool_.setExpiryTimeout(-1);
 }
 
 UpdateService::~UpdateService() {
     ++generation_; // a result that arrives after destruction is dropped by the guard in checkNow()
     stop();
     // The worker uses the fetcher, state store and installer the owner passed in; they must not die under it. Every call in
-    // the pipeline has its own timeout, so this is bounded.
-    QThreadPool::globalInstance()->waitForDone(15'000);
+    // the pipeline has its own timeout, so this is bounded. Only THIS service's pool is waited for, never the global one.
+    pool_.waitForDone(15'000);
 }
 
 QString UpdateService::availableVersion() const {
@@ -102,7 +107,7 @@ void UpdateService::checkNow() {
     update::HttpFetcher* const fetcher = &fetcher_;
     update::UpdateStateStore* const stateStore = &stateStore_;
     UpdateInstaller* const installer = &installer_;
-    QThreadPool::globalInstance()->start([self, generation, config, verifier, fetcher, stateStore, installer]() {
+    pool_.start([self, generation, config, verifier, fetcher, stateStore, installer]() {
         PipelineEvents events;
         events.stage = [self, generation](PipelineStage stage) {
             if (stage == PipelineStage::Downloading && self) {

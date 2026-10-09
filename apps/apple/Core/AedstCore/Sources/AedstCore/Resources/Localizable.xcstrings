@@ -281,6 +281,41 @@
         }
       }
     },
+    "errorUpgradeRequired" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لم يعد هذا الإصدار من التطبيق مدعومًا. حدّث التطبيق للمتابعة."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This version of the app is no longer supported. Update to continue."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эта версия приложения больше не поддерживается. Обновите приложение, чтобы продолжить."
+          }
+        },
+        "tg" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ин нусхаи барнома дигар дастгирӣ намешавад. Барои идома додан барномаро навсозӣ кунед."
+          }
+        },
+        "uz" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ilovaning bu versiyasi endi qoʻllab-quvvatlanmaydi. Davom etish uchun yangilang."
+          }
+        }
+      }
+    },
     "errorValidation" : {
       "extractionState" : "manual",
       "localizations" : {

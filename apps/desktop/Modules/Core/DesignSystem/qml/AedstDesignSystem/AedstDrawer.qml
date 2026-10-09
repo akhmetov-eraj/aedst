@@ -24,7 +24,7 @@ T.Drawer {
     Accessible.name: title
 
     Overlay.modal: Rectangle {
-        color: Qt.rgba(0, 0, 0, 0.35)
+        color: Theme.scrimLight
     }
 
     background: Rectangle {

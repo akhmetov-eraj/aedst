@@ -4,6 +4,9 @@ pragma Singleton
 import QtQuick
 
 QtObject {
+    readonly property int breakpointSm: 480
+    readonly property int breakpointMd: 720
+    readonly property int breakpointLg: 1024
     readonly property color darkBackground: "#ff0a0a0a"
     readonly property color darkForeground: "#fffafafa"
     readonly property color darkCard: "#ff171717"
@@ -39,6 +42,8 @@ QtObject {
     readonly property color darkSuccessForeground: "#ff052e16"
     readonly property color darkWarning: "#fffbbf24"
     readonly property color darkWarningForeground: "#ff451a03"
+    readonly property color darkInfo: "#ff60a5fa"
+    readonly property color darkInfoForeground: "#ff172554"
     readonly property color darkDestructiveForeground: "#fffafafa"
     readonly property color lightBackground: "#ffffffff"
     readonly property color lightForeground: "#ff0a0a0a"
@@ -75,6 +80,8 @@ QtObject {
     readonly property color lightSuccessForeground: "#fffafafa"
     readonly property color lightWarning: "#ffb45309"
     readonly property color lightWarningForeground: "#fffafafa"
+    readonly property color lightInfo: "#ff1d4ed8"
+    readonly property color lightInfoForeground: "#fffafafa"
     readonly property color lightDestructiveForeground: "#fffafafa"
     readonly property int elevationNone: 0
     readonly property int elevationLevel1: 1

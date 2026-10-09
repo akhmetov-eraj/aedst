@@ -12,5 +12,14 @@
   "multiElementCollectionTrailingCommas" : true,
   "fileScopedDeclarationPrivacy" : {
     "accessLevel" : "private"
+  },
+  "rules" : {
+    "AlwaysUseLowerCamelCase" : true,
+    "OrderedImports" : true,
+    "UseLetInEveryBoundCaseVariable" : true,
+    "NeverForceUnwrap" : false,
+    "NeverUseForceTry" : false,
+    "NeverUseImplicitlyUnwrappedOptionals" : false,
+    "AllPublicDeclarationsHaveDocumentation" : false
   }
 }

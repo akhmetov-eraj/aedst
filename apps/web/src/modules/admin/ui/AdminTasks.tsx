@@ -1,46 +1,31 @@
 "use client";
 
 import { timestampDate } from "@bufbuild/protobuf/wkt";
-import {
-  createConnectQueryKey,
-  useMutation,
-  useQuery,
-} from "@connectrpc/connect-query";
-import { zodResolver } from "@hookform/resolvers/zod";
-import { keepPreviousData, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@connectrpc/connect-query";
+import { keepPreviousData } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { useLocale, useTranslations } from "next-intl";
 import { useId, useMemo, useState } from "react";
-import { useForm } from "react-hook-form";
-import * as z from "zod/mini";
-
-import type { Locale } from "@/app/config/i18n/locales";
 import { useCursorPages } from "@/modules/admin/lib/use-cursor-pages";
 import { type AdminColumn, DataTable } from "@/modules/admin/ui/DataTable";
 import { AdminService } from "@/shared/api/connect/client";
 import type { AdminTask } from "@/shared/api/connect/generated/aedst/admin/v1/admin_pb";
 import { TaskStatus } from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
 import { formatDate } from "@/shared/date/format-date";
-import { track } from "@/shared/lib/analytics/analytics";
 import { useDebouncedValue } from "@/shared/lib/hooks/use-debounced-value";
 import { Button } from "@/shared/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/ui/dialog";
+import { Field, FieldLabel } from "@/shared/ui/field";
 import { Input } from "@/shared/ui/input";
-import { Textarea } from "@/shared/ui/textarea";
 
 const PAGE_SIZE = 25;
 
-// Mirrors admin.proto's DeleteTaskRequest.reason (3..500 characters).
-const deleteSchema = z.object({
-  reason: z.string().check(z.trim(), z.minLength(3), z.maxLength(500)),
-});
-type DeleteValues = z.infer<typeof deleteSchema>;
+// The dialog (Dialog stack, React Hook Form, Protovalidate) is needed only after
+// "Delete" is clicked, so it loads on demand and then stays mounted.
+const AdminDeleteTaskDialog = dynamic(() =>
+  import("@/modules/admin/ui/AdminDeleteTaskDialog").then(
+    (m) => m.AdminDeleteTaskDialog,
+  ),
+);
 
 const STATUS_KEYS: Partial<Record<number, "todo" | "inProgress" | "done">> = {
   [TaskStatus.TODO]: "todo",
@@ -51,12 +36,14 @@ const STATUS_KEYS: Partial<Record<number, "todo" | "inProgress" | "done">> = {
 /** Every user's tasks (cross-tenant read) with delete-with-reason (audited). */
 export function AdminTasks() {
   const t = useTranslations("admin.tasks");
-  const locale = useLocale() as Locale;
+  const locale = useLocale();
   const searchId = useId();
-  const [search, setSearch] = useState("");
-  const query = useDebouncedValue(search.trim(), 300);
   const pages = useCursorPages();
-  const [deleting, setDeleting] = useState<AdminTask | null>(null);
+  const query = useDebouncedValue(pages.query.trim(), 300);
+  const [deleting, setDeleting] = useState<{
+    task: AdminTask;
+    open: boolean;
+  } | null>(null);
 
   const tasks = useQuery(
     AdminService.method.listTasks,
@@ -97,7 +84,7 @@ export function AdminTasks() {
           <Button
             variant="destructive"
             size="sm"
-            onClick={() => setDeleting(row.original)}
+            onClick={() => setDeleting({ task: row.original, open: true })}
           >
             {t("delete")}
           </Button>
@@ -109,21 +96,15 @@ export function AdminTasks() {
 
   return (
     <div className="flex flex-col gap-3">
-      <label
-        htmlFor={searchId}
-        className="flex max-w-sm flex-col gap-1 text-sm"
-      >
-        {t("search")}
+      <Field className="max-w-sm">
+        <FieldLabel htmlFor={searchId}>{t("search")}</FieldLabel>
         <Input
           id={searchId}
           type="search"
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            pages.reset();
-          }}
+          value={pages.query}
+          onChange={(event) => pages.setQuery(event.target.value)}
         />
-      </label>
+      </Field>
       <DataTable
         label={t("title")}
         columns={columns}
@@ -135,94 +116,13 @@ export function AdminTasks() {
         onPrevious={pages.previous}
         onNext={() => pages.next(tasks.data?.nextPageToken ?? "")}
       />
-      <DeleteTaskDialog task={deleting} onClose={() => setDeleting(null)} />
+      {deleting && (
+        <AdminDeleteTaskDialog
+          task={deleting.task}
+          open={deleting.open}
+          onClose={() => setDeleting({ ...deleting, open: false })}
+        />
+      )}
     </div>
-  );
-}
-
-function DeleteTaskDialog({
-  task,
-  onClose,
-}: {
-  task: AdminTask | null;
-  onClose: () => void;
-}) {
-  const t = useTranslations("admin.tasks");
-  const reasonId = useId();
-  const queryClient = useQueryClient();
-  const form = useForm<DeleteValues>({
-    resolver: zodResolver(deleteSchema),
-    defaultValues: { reason: "" },
-  });
-  const remove = useMutation(AdminService.method.deleteTask, {
-    meta: { feature: "admin" },
-    onSuccess: async () => {
-      track("admin_task_deleted");
-      form.reset();
-      onClose();
-      await queryClient.invalidateQueries({
-        queryKey: createConnectQueryKey({
-          schema: AdminService,
-          cardinality: undefined,
-        }),
-      });
-    },
-  });
-
-  return (
-    <Dialog
-      open={task !== null}
-      onOpenChange={(open) => {
-        if (!open) {
-          form.reset();
-          onClose();
-        }
-      }}
-    >
-      <DialogContent>
-        <form
-          noValidate
-          onSubmit={form.handleSubmit((values) => {
-            if (task) {
-              remove.mutate({ id: task.id, reason: values.reason.trim() });
-            }
-          })}
-          className="flex flex-col gap-4"
-        >
-          <DialogHeader>
-            <DialogTitle>{t("deleteTitle")}</DialogTitle>
-            <DialogDescription>
-              {t("deleteDescription", { title: task?.title ?? "" })}
-            </DialogDescription>
-          </DialogHeader>
-          <div className="flex flex-col gap-1">
-            <label htmlFor={reasonId} className="font-medium text-sm">
-              {t("reason")}
-            </label>
-            <Textarea
-              id={reasonId}
-              aria-invalid={Boolean(form.formState.errors.reason)}
-              aria-describedby={`${reasonId}-error`}
-              {...form.register("reason")}
-            />
-            <p id={`${reasonId}-error`} className="text-destructive text-xs">
-              {form.formState.errors.reason ? t("reasonInvalid") : null}
-            </p>
-          </div>
-          <DialogFooter>
-            <Button type="button" variant="outline" onClick={onClose}>
-              {t("cancel")}
-            </Button>
-            <Button
-              type="submit"
-              variant="destructive"
-              disabled={remove.isPending}
-            >
-              {t("confirmDelete")}
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
   );
 }

@@ -8,14 +8,12 @@ import { routerMock } from "@/test/mocks/navigation";
 import { messages, renderWithProviders } from "@/test/render";
 
 vi.mock("@/modules/auth/lib/auth-actions", () => ({
-  loginAction: vi.fn(),
-  registerAction: vi.fn(),
   logoutAction: vi.fn(),
 }));
 
 describe("SignOutButton", () => {
   it("revokes the session and returns to the sign-in page", async () => {
-    vi.mocked(logoutAction).mockResolvedValue(undefined);
+    vi.mocked(logoutAction).mockResolvedValue({ endSessionUrl: null });
     renderWithProviders(<SignOutButton />, { initialUserId: "user-1" });
 
     await userEvent.click(

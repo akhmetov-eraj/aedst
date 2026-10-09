@@ -22,7 +22,9 @@ to NSIS/MSIX; GPG-signed DEB/RPM repositories; a minimal Flatpak sandbox; reprod
 - **Velopack is the transport and installer** (`Aedst::Updater`, `VelopackInstaller`): it reads its own release feed
   (`releases.<channel>.json`), downloads, and swaps the install on exit. Velopack has no publisher signature for packages,
   so the app does not trust its feed: `runUpdatePipeline` accepts a candidate only if its version, SHA-256 and size equal
-  what the signed manifest declares, then verifies the downloaded file again (`ArtifactVerifier`). A tampered feed or CDN
+  what the signed manifest declares, then verifies the downloaded file again (`ArtifactVerifier`) when the installer
+  reports where the file is (NOT the case for Velopack, whose SDK exposes no path: Velopack verifies the package against
+  the feed SHA-256 itself; see "Proposal awaiting the owner" at the end). A tampered feed or CDN
   cannot move a user to a package the release owner did not sign. Windows binaries and the setup are additionally
   Authenticode-signed (layer 2 for humans and SmartScreen).
 - The pipeline never installs by itself: `UpdateService` ends in `ReadyToInstall`, the user presses "Restart to update"
@@ -99,3 +101,19 @@ module (`AEDST_SYSTEM_QTKEYCHAIN=ON`) because the sandbox build has no network; 
 - A signing certificate type is chosen (update `docs/signing.md`, wire the CI step to it).
 - Velopack ships package signing, or its API changes (re-check the adapter).
 - An arm64 build is added (`archName()` already reports `arm64`; the manifest needs an artifact for it).
+
+## Proposal awaiting the owner: the independent re-hash of the downloaded package (nothing implemented)
+
+The design is "hash the package again after the download and compare it with the SHA-256 of the signed manifest". For
+Velopack that is **not done in the code**: `VelopackInstaller::download()` returns an empty path because the
+C++ SDK does not expose where Velopack keeps the package, and the pipeline then skips the re-hash. What holds instead: the
+manifest binds the SHA-256, size and version of the installer's own feed entry (checked before the download), and Velopack
+verifies the package against the feed's SHA-256 itself.
+
+Two honest ways out: **(a) amend this ADR and `SECURITY.md`** to state exactly that (the re-hash exists for installers that
+return a path, i.e. report-only/AppImage flows, and not for Velopack), or **(b) make the re-hash mandatory** (an installer that
+returns no path fails with an error, plus a pipeline test "empty download path = fail") and obtain the path from Velopack
+(pin a package-directory convention or an SDK release that exposes it).
+
+**Recommendation: (a) now, (b) when the SDK exposes the path.** (b) cannot be switched on safely today: the only production
+installer would fail every update. The pipeline test for (b) is deliberately not added.

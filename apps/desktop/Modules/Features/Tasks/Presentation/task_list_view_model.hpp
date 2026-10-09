@@ -1,10 +1,12 @@
 #pragma once
 
 #include "Presentation/task_list_model.hpp"
+#include "aedst/qmlsupport/singleton_slot.hpp"
 
 #include <QObject>
 #include <QString>
 #include <QTimer>
+#include <QtQml/qqmlregistration.h>
 
 #include <memory>
 #include <string>
@@ -16,6 +18,10 @@ class AnalyticsTracker;
 namespace aedst::core {
 class ErrorSink;
 } // namespace aedst::core
+
+namespace aedst::outbox {
+class OutboxService;
+} // namespace aedst::outbox
 
 namespace aedst::navigation {
 class Router;
@@ -32,16 +38,23 @@ class CreateTaskUseCase;
 /// (toast) and `errorMessage` (inline error state).
 class TaskListViewModel final : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
     Q_PROPERTY(QAbstractItemModel* tasks READ tasks CONSTANT)
     Q_PROPERTY(bool isLoading READ isLoading NOTIFY isLoadingChanged)
     Q_PROPERTY(bool isCreating READ isCreating NOTIFY isCreatingChanged)
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
     Q_PROPERTY(int totalCount READ totalCount NOTIFY totalCountChanged)
     Q_PROPERTY(bool hasMore READ hasMore NOTIFY hasMoreChanged)
+    /// Changes saved on this device that the server has not confirmed yet (the offline outbox).
+    Q_PROPERTY(int pendingSyncCount READ pendingSyncCount NOTIFY pendingSyncCountChanged)
     Q_PROPERTY(QString filter READ filter WRITE setFilter NOTIFY filterChanged)
     Q_PROPERTY(bool showCompleted READ showCompleted WRITE setShowCompleted NOTIFY showCompletedChanged)
 
 public:
+    static TaskListViewModel* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<TaskListViewModel>::create(engine, script);
+    }
     static constexpr int kFilterDebounceMs = 300;
 
     TaskListViewModel(std::shared_ptr<TaskRepository> repository, std::shared_ptr<CreateTaskUseCase> createTask,
@@ -55,6 +68,10 @@ public:
     [[nodiscard]] QString errorMessage() const { return errorMessage_; }
     [[nodiscard]] int totalCount() const noexcept { return totalCount_; }
     [[nodiscard]] bool hasMore() const { return !nextPageToken_.empty(); }
+    [[nodiscard]] int pendingSyncCount() const;
+    /// Enables offline writes: a create or a complete/reopen that fails for lack of a connection is queued in `outbox`
+    /// (which must outlive this view model) and shown as pending until the server confirms it.
+    void setOutbox(outbox::OutboxService* outbox);
     [[nodiscard]] QString filter() const { return filter_; }
     void setFilter(const QString& filter);
     [[nodiscard]] bool showCompleted() const noexcept { return showCompleted_; }
@@ -75,6 +92,7 @@ signals:
     void errorMessageChanged();
     void totalCountChanged();
     void hasMoreChanged();
+    void pendingSyncCountChanged();
     void filterChanged();
     void showCompletedChanged();
     /// One-shot effect: the create form can close and reset.
@@ -86,12 +104,16 @@ private:
     void setLoading(bool loading);
     void setErrorMessage(const QString& message);
     void setNextPageToken(std::string token);
+    /// Offline fallbacks; both return false when nothing was queued (no outbox) so the caller reports the error.
+    bool queueCreate(const NewTask& task);
+    bool queueSetDone(const std::string& id, bool done, const std::string& requestId, const Task& previous);
 
     std::shared_ptr<TaskRepository> repository_;
     std::shared_ptr<CreateTaskUseCase> createTask_;
     std::shared_ptr<core::ErrorSink> errors_;
     std::shared_ptr<analytics::AnalyticsTracker> analytics_;
     navigation::Router* router_;
+    outbox::OutboxService* outbox_{nullptr};
 
     TaskListModel model_;
     QTimer filterDebounce_;

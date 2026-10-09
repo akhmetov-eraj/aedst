@@ -1,51 +1,51 @@
-# Спека: tasks/complete-task
+# Spec: tasks/complete-task
 
-Тип: Command
-Модуль: tasks
-Статус: Реализовано
+Type: Command
+Module: tasks
+Status: Implemented
 
-## Контекст
+## Context
 
-Завершение задачи — единственное на сегодня изменение состояния в этом
-сервере, о котором может быть интересно знать другой системе/модулю
-(например, будущей аналитике активности пользователя), поэтому это первое
-место, где применён паттерн Outbox (`internal/platform/outbox`) вместо
-прямой публикации во внешний брокер (брокера нет: доставка — outbox relay → in-process шина `messaging`).
+Completing a task is the only state change on this server today that
+another system/module may care about (for example, future analytics of
+user activity), so it is the first place where the transactional outbox pattern on River
+(`internal/platform/events`, ADR-0014) is applied instead of publishing
+directly to an external broker (there is no broker: `events.Publisher` inserts a River job per consumer in the same transaction; `river_job` is the outbox).
 
-## Сценарии
+## Scenarios
 
 **Happy path**
 
-- Given задача существует и принадлежит вызывающему пользователю
-- When пользователь вызывает `CompleteTask`
-- Then статус задачи меняется на `done`, `completed_at` проставляется, в
-  той же транзакции пишется строка в `platform.outbox` (`module = 'tasks'`) с событием
+- Given the task exists and belongs to the calling user
+- When the user calls `CompleteTask`
+- Then the task status changes to `done`, `completed_at` is set, and in
+  the same transaction River jobs `platform.event_delivery` (one per consumer) are inserted with the event
   `tasks.v1.TaskCompleted`
 
-**Граничные случаи**
+**Edge cases**
 
-- Given задача не существует или принадлежит другому пользователю
-- When вызывается `CompleteTask`
-- Then возвращается `NotFound` (не `PermissionDenied` — см. `GetTask`'s doc
-  comment в `application/service.go` про object-level access)
+- Given the task does not exist or belongs to another user
+- When `CompleteTask` is called
+- Then `NotFound` is returned (not `PermissionDenied`; see the doc comment of
+  `GetTask` in `application/service.go` about object-level access)
 
-- Given задача уже завершена
-- When вызывается `CompleteTask` повторно
-- Then операция идемпотентна: возвращается текущая задача без изменений
-  (`completed_at`, `updated_at` и `version` не меняются) и **новая строка
-  outbox не пишется**. Переход `todo|in_progress → done` защищён в SQL
-  (`UPDATE … WHERE status <> 'done'`), поэтому повтор, двойной клик и два
-  устройства одновременно дают ровно одно событие `TaskCompleted`. Дедупликация
-  на стороне потребителя (inbox) этого не заменяет: у второго события был бы
-  другой `event_id`, и оно прошло бы мимо inbox'а. Проверяется интеграционным
-  тестом `TestRepository_Complete_IsIdempotent` (8 горутин, одна строка outbox).
+- Given the task is already completed
+- When `CompleteTask` is called again
+- Then the operation is idempotent: the current task is returned unchanged
+  (`completed_at`, `updated_at` and `version` do not change) and **no new event
+  row is published**. The transition `todo|in_progress → done` is guarded in SQL
+  (`UPDATE … WHERE status <> 'done'`), so a retry, a double click and two
+  devices at once yield exactly one `TaskCompleted` event. Deduplication
+  on the consumer side (an idempotent handler) is not a substitute: a second event would have
+  a different `event_id` and would pass as new. Verified by the integration
+  test `TestRepository_Complete_IsIdempotent` (8 goroutines, one delivery).
 
-## Ошибки
+## Errors
 
-| Условие              | `sharederrors.Kind` | `connect.Code`   |
-| --------------------- | -------------------- | ----------------- |
-| Задача не найдена/не своя | `KindNotFound`        | `CodeNotFound`     |
-| БД недоступна          | `KindUnknown` (Wrap)  | `CodeInternal`     |
+| Condition | `sharederrors.Kind` | `connect.Code` |
+| --------- | ------------------- | -------------- |
+| Task not found / not the caller's | `KindNotFound` | `CodeNotFound` |
+| Database unavailable | `KindUnknown` (Wrap) | `CodeInternal` |
 
 ## API
 
@@ -53,25 +53,25 @@
 rpc CompleteTask(CompleteTaskRequest) returns (CompleteTaskResponse);
 ```
 
-| Поле | Тип    | Обязательно | Описание             |
-| ---- | ------ | ----------- | --------------------- |
-| id   | string | да          | UUID задачи            |
+| Field | Type | Required | Description |
+| ----- | ---- | -------- | ----------- |
+| id | string | yes | Task UUID |
 
-## События
+## Events
 
-| Тип события            | Версия | partition_key | Payload                                    | Потребители                          |
-| ----------------------- | ------ | -------------- | ------------------------------------------- | -------------------------------------- |
-| `tasks.v1.TaskCompleted` | 1      | task id        | `{task_id, user_id, completed_at}` (JSON)    | пока ни одного — инфраструктура готова |
+| Event type | Version | partition_key | Payload | Consumers |
+| ---------- | ------- | ------------- | ------- | --------- |
+| `tasks.v1.TaskCompleted` | 1 | task id | `{task_id, user_id, completed_at}` (JSON) | notifications (inbox and push) |
 
-## Кросс-модульные зависимости
+## Cross-module dependencies
 
-Нет. `tasks` не вызывает `auth` синхронно для этой операции — принадлежность
-задачи проверяется по `user_id`, уже провалидированному
-`AuthInterceptor`'ом на входе.
+None. `tasks` does not call `auth` synchronously for this operation; task
+ownership is checked against the `user_id` already validated by
+`AuthInterceptor` on entry.
 
 ## NFR
 
-- Идемпотентность: не требуется `Idempotency-Key` — повторный вызов для уже
-  завершённой задачи безопасен по построению (см. граничный случай выше).
-- Таймаут: стандартный `RequestTimeout` (30s, `httpserver.Options`).
-- Hot path: нет.
+- Idempotency: no `Idempotency-Key` is required; a repeated call for an already
+  completed task is safe by construction (see the edge case above).
+- Timeout: the standard `RequestTimeout` (30s, `httpserver.Options`).
+- Hot path: no.

@@ -16,3 +16,19 @@ indent_style = tab
 
 [*.md]
 trim_trailing_whitespace = false
+
+# Native platforms: 4 spaces, matching their formatters (apps/apple/.swift-format
+# "indentation.spaces": 4, apps/desktop/.clang-format IndentWidth: 4, apps/android/.editorconfig
+# indent_size = 4 for ktlint). Web, server, docs and config files keep the 2-space default above.
+[*.{swift,kt,kts}]
+indent_size = 4
+
+[*.{c,cc,cpp,h,hpp,qml,cmake}]
+indent_size = 4
+
+[CMakeLists.txt]
+indent_size = 4
+
+# Xcode writes String Catalogs with 2 spaces; do not fight it.
+[*.xcstrings]
+indent_size = 2

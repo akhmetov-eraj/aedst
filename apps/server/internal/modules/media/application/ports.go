@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/aedst/server/internal/modules/media/domain"
+	"github.com/aedst/server/internal/platform/imgproxy"
 	"github.com/aedst/server/internal/platform/storage"
 	"github.com/aedst/server/internal/shared/ids"
 	"github.com/aedst/server/internal/shared/pagination"
@@ -58,6 +59,9 @@ type Config struct {
 	Limits         domain.Limits
 	UploadURLTTL   time.Duration
 	DownloadURLTTL time.Duration
+	// Delivery signs imgproxy URLs for generic image sizes (ADR-0015). Nil
+	// disables derived variants; clients then use the original URL.
+	Delivery *imgproxy.Signer
 }
 
 // Upload is CreateUpload's result.
@@ -70,4 +74,17 @@ type Upload struct {
 type Links struct {
 	Original string
 	Variants map[domain.VariantKind]string
+	// Derived are signed imgproxy URLs; empty when imgproxy is not enabled.
+	Derived []DerivedVariant
+}
+
+// DerivedVariant is an on-demand imgproxy rendition of an image (or of a
+// video poster). It is never stored: the URL is built from the stored source
+// object and the preset. Width/Height are the preset's target box; Height is
+// proportional to the source for width-only presets (0 when unknown).
+type DerivedVariant struct {
+	Kind   domain.VariantKind
+	URL    string
+	Width  int
+	Height int
 }

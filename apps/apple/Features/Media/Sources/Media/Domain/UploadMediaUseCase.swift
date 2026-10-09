@@ -83,7 +83,7 @@ public struct UploadMediaUseCase: Sendable {
         } catch let error as AedstError {
             return .failure(error)
         } catch {
-            return .failure(.network(reason: String(describing: error)))
+            return .failure(.unavailable(reason: String(describing: error)))
         }
 
         onPhase(.finishing)

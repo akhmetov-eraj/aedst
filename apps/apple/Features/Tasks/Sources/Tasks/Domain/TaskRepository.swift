@@ -8,31 +8,23 @@ public protocol TaskRepository: Sendable {
     /// One page of the caller's tasks, newest first. `search` is a substring filter.
     func list(search: String, pageToken: String?) async -> Outcome<Page<TaskItem>>
     func get(id: String) async -> Outcome<TaskItem>
-    func create(_ task: NewTask) async -> Outcome<TaskItem>
+    /// `idempotencyKey` is sent as `Idempotency-Key`. Pass the same value the offline queue would use for this
+    /// intent (the draft id), so an online attempt that lost its response and the later outbox delivery are one
+    /// write for the server.
+    func create(_ task: NewTask, idempotencyKey: String?) async -> Outcome<TaskItem>
     func complete(id: String) async -> Outcome<TaskItem>
     func reopen(id: String) async -> Outcome<TaskItem>
-    func delete(id: String) async -> Outcome<Void>
+    func delete(id: String, idempotencyKey: String?) async -> Outcome<Void>
 }
 
-/// Validates and creates a task — the one place title rules live on the client
-/// (the server enforces the same limits via Protovalidate).
-public struct CreateTaskUseCase: UseCase {
-    /// Same limit as `CreateTaskRequest.title` (max_len 200).
-    public static let maxTitleLength = 200
-    private let repository: any TaskRepository
-
-    /// Uses `repository`.
-    public init(repository: any TaskRepository) {
-        self.repository = repository
+extension TaskRepository {
+    /// A create without a caller-chosen key (the server then treats each request as new).
+    public func create(_ task: NewTask) async -> Outcome<TaskItem> {
+        await create(task, idempotencyKey: nil)
     }
 
-    public func callAsFunction(_ input: NewTask) async -> Outcome<TaskItem> {
-        let title = input.title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !title.isEmpty, title.count <= Self.maxTitleLength else {
-            return .failure(.validation(fields: ["title"]))
-        }
-        var task = input
-        task.title = title
-        return await repository.create(task)
+    /// A delete without a caller-chosen key (a repeated delete is naturally idempotent: `notFound` on the second).
+    public func delete(id: String) async -> Outcome<Void> {
+        await delete(id: id, idempotencyKey: nil)
     }
 }

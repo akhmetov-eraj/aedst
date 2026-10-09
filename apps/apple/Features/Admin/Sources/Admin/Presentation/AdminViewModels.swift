@@ -1,11 +1,11 @@
 import AedstAnalytics
 import AedstCore
 import Foundation
-import Perception
+import Observation
 
 /// Overview numbers for the admin dashboard.
 @MainActor
-@Perceptible
+@Observable
 public final class AdminDashboardViewModel {
     public private(set) var overview: AdminOverview?
     /// Bound to `aedstErrorPresenter` (`.forbidden` if the role was revoked).
@@ -46,7 +46,7 @@ public struct PagedList<Item: Sendable>: Sendable {
 
 /// Users, filtered by a case-insensitive query on email/display name.
 @MainActor
-@Perceptible
+@Observable
 public final class AdminUsersViewModel {
     public var query = ""
     public private(set) var list = PagedList<AdminUser>()
@@ -78,7 +78,7 @@ public final class AdminUsersViewModel {
 
 /// Any user's tasks, with audited deletion.
 @MainActor
-@Perceptible
+@Observable
 public final class AdminTasksViewModel {
     public var query = ""
     public private(set) var list = PagedList<AdminTask>()
@@ -135,7 +135,7 @@ public final class AdminTasksViewModel {
 
 /// The audit log, newest first.
 @MainActor
-@Perceptible
+@Observable
 public final class AdminAuditLogViewModel {
     public private(set) var list = PagedList<AuditEntry>()
     public var error: AedstError?
@@ -165,7 +165,7 @@ public final class AdminAuditLogViewModel {
 
 /// Sends a SYSTEM notification to one user or everyone.
 @MainActor
-@Perceptible
+@Observable
 public final class AdminBroadcastViewModel {
     public var draft = Broadcast()
     public private(set) var isSending = false

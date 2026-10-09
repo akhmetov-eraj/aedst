@@ -29,7 +29,7 @@ Page {
             Layout.fillWidth: true
             spacing: Theme.spacingMd
 
-            Label {
+            AedstLabel {
                 text: TaskListViewModel.totalCount > 0 ? qsTr("Tasks (%1)").arg(TaskListViewModel.totalCount)
                                                        : qsTr("Tasks")
                 font: Theme.titleFont
@@ -45,6 +45,15 @@ Page {
                 text: qsTr("New task")
                 onClicked: createDialog.open()
             }
+        }
+
+        // Offline outbox: changes saved on this device that the server has not confirmed yet.
+        AedstAlert {
+            Layout.fillWidth: true
+            visible: TaskListViewModel.pendingSyncCount > 0
+            variant: AedstAlert.Variant.Info
+            title: qsTr("Waiting to sync: %1").arg(TaskListViewModel.pendingSyncCount)
+            description: qsTr("Saved on this device. Sent as soon as you are online.")
         }
 
         AedstTextField {
@@ -86,7 +95,7 @@ Page {
 
                 onAtYEndChanged: if (atYEnd && TaskListViewModel.hasMore) TaskListViewModel.loadMore()
 
-                delegate: ItemDelegate {
+                delegate: AedstListItem {
                     id: row
                     required property string taskId
                     required property string title
@@ -95,6 +104,7 @@ Page {
                     required property int priority
                     required property var dueDate
                     required property bool overdue
+                    required property bool pendingSync
                     required property int index
 
                     width: ListView.view.width
@@ -102,6 +112,7 @@ Page {
                     Accessible.name: row.title
                     Accessible.description: (row.done ? qsTr("Completed") : qsTr("Open"))
                         + (row.overdue ? ", " + qsTr("overdue") : "")
+                        + (row.pendingSync ? ", " + qsTr("Pending sync") : "")
                     Keys.onReturnPressed: TaskListViewModel.openTask(row.taskId)
                     onClicked: TaskListViewModel.openTask(row.taskId)
 
@@ -121,8 +132,8 @@ Page {
                         }
                         ColumnLayout {
                             Layout.fillWidth: true
-                            spacing: 2
-                            Text {
+                            spacing: Theme.spacingXxs
+                            AedstLabel {
                                 Layout.fillWidth: true
                                 text: row.title
                                 font: Theme.bodyFont
@@ -130,7 +141,7 @@ Page {
                                 color: row.done ? Theme.mutedForeground : Theme.foreground
                                 elide: Text.ElideRight
                             }
-                            Text {
+                            AedstLabel {
                                 Layout.fillWidth: true
                                 visible: row.description.length > 0
                                 text: row.description
@@ -141,11 +152,16 @@ Page {
                             }
                         }
                         AedstBadge {
+                            visible: row.pendingSync
+                            variant: AedstBadge.Variant.Outline
+                            text: qsTr("Pending sync")
+                        }
+                        AedstBadge {
                             visible: row.overdue
                             variant: AedstBadge.Variant.Destructive
                             text: qsTr("Overdue")
                         }
-                        Text {
+                        AedstLabel {
                             visible: row.dueDate !== undefined && !isNaN(row.dueDate)
                             text: visible ? Qt.formatDate(row.dueDate, Locale.ShortFormat) : ""
                             font: Theme.captionFont
@@ -156,7 +172,7 @@ Page {
 
                 footer: Item {
                     width: ListView.view ? ListView.view.width : 0
-                    height: TaskListViewModel.hasMore ? 48 : 0
+                    height: TaskListViewModel.hasMore ? Theme.spacingMassive : 0
                     AedstCircularProgress {
                         anchors.centerIn: parent
                         visible: TaskListViewModel.hasMore && TaskListViewModel.isLoading

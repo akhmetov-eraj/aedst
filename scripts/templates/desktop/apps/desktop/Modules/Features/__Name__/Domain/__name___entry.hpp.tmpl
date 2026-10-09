@@ -1,0 +1,15 @@
+#pragma once
+
+#include <string>
+
+namespace aedst::feature::{{name}} {
+
+/// Scaffolded by `task new:module`: replace with the module's real model.
+struct {{Name}}Entry {
+    std::string id;
+    std::string title;
+
+    friend bool operator==(const {{Name}}Entry&, const {{Name}}Entry&) = default;
+};
+
+} // namespace aedst::feature::{{name}}

@@ -1,6 +1,7 @@
 package com.aedst.core.ui.components
 
 import android.content.res.Configuration
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
@@ -9,7 +10,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.tooling.preview.Preview
+import com.aedst.core.ui.R
 import com.aedst.core.ui.theme.AedstTheme
 
 /**
@@ -20,22 +23,34 @@ import com.aedst.core.ui.theme.AedstTheme
 @Composable
 fun AedstAlertDialog(
     title: String,
-    text: String,
     onConfirm: () -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    confirmLabel: String = "Confirm",
-    dismissLabel: String = "Cancel",
+    text: String? = null,
+    confirmLabel: String = stringResource(R.string.aedst_action_confirm),
+    dismissLabel: String = stringResource(R.string.aedst_action_cancel),
     isDestructive: Boolean = false,
+    confirmEnabled: Boolean = true,
+    content: (@Composable () -> Unit)? = null,
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
         modifier = modifier,
         title = { Text(title) },
-        text = { Text(text) },
+        text = if (text == null && content == null) {
+            null
+        } else {
+            {
+                Column {
+                    text?.let { Text(it) }
+                    content?.invoke()
+                }
+            }
+        },
         confirmButton = {
             TextButton(
                 onClick = onConfirm,
+                enabled = confirmEnabled,
                 colors = if (isDestructive) {
                     ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error)
                 } else {

@@ -69,25 +69,46 @@ public struct MediaItem: Sendable, Equatable, Identifiable {
         variants.first { $0.kind == kind }
     }
 
-    /// Best URL to *play* a video: the optimized rendition, else the original.
+    /// The best image variant for `preset`: that preset, else the nearest preset
+    /// the server returned, else the video poster. `nil` means "no variant":
+    /// callers then fall back to the original (`url`).
+    public func imageVariant(_ preset: MediaVariant.Kind) -> MediaVariant? {
+        let presets = MediaVariant.Kind.presets
+        guard let at = presets.firstIndex(of: preset) else { return variant(.poster) }
+        let nearest = presets.enumerated()
+            .sorted { abs($0.offset - at) < abs($1.offset - at) }
+            .lazy
+            .compactMap { variant($0.element) }
+            .first
+        return nearest ?? variant(.poster)
+    }
+
+    /// URL to *play* a video: the original (the server makes no re-encoded renditions).
     public var playbackURL: URL? {
-        variant(.optimized)?.url ?? url
+        url
     }
 }
 
-/// A server-side rendition (thumbnail, preview, optimized, poster).
+/// A server-side rendition: a signed imgproxy preset URL (ADR-0015) or a stored video poster.
 public struct MediaVariant: Sendable, Equatable {
-    /// Mirrors `VariantKind`.
+    /// Mirrors `VariantKind` (values 4-9; the legacy 1-3 are reserved on the wire).
     public enum Kind: String, Sendable, Equatable {
-        case thumbnail
-        case preview
-        case optimized
+        case thumb64
+        case avatar256
+        case card400
+        case feed800x600
+        case story1080x1350
         case poster
         case other
+
+        /// The imgproxy presets, smallest to largest (also the nearest-fallback order).
+        /// Pick by UI context: `thumb64` tiny lists, `avatar256` avatars and small
+        /// tiles, `card400` grids and cards, `feed800x600` feeds, `story1080x1350` stories.
+        public static let presets: [Kind] = [.thumb64, .avatar256, .card400, .feed800x600, .story1080x1350]
     }
 
     public let kind: Kind
-    /// Short-lived presigned GET URL.
+    /// Signed imgproxy URL (format negotiated from `Accept`) or presigned poster URL.
     public let url: URL
     public let width: Int
     public let height: Int

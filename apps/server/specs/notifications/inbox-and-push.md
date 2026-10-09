@@ -1,74 +1,76 @@
-# Спека: notifications/inbox-and-push
+# Spec: notifications/inbox-and-push
 
-Тип: Command + Query
-Модуль: notifications
-Статус: Реализовано
+Type: Command + Query
+Module: notifications
+Status: Implemented
 
-## Контекст
+## Context
 
-Глобальный модуль уведомлений шаблона: in-app inbox (проекция чужих событий),
-реестр push-устройств, пользовательские настройки и доставка push через Web
-Push (VAPID), FCM HTTP v1 и APNs. Модуль никогда не вызывается синхронно ради
-создания уведомления — он потребляет integration events (`tasks.v1.TaskCompleted`,
-`tasks.v1.TaskDueSoon`, `media.v1.MediaReady`) в inbox-транзакции; единственная
-синхронная точка записи — `api.Broadcaster` для admin-модуля.
+The template's global notifications module: an in-app inbox (a projection of other modules' events),
+a registry of push devices, user settings, and push delivery via Web
+Push (VAPID, `webpush-go`), FCM (Firebase Admin Go, `messaging` client) and APNs
+(`sideshow/apns2`, token auth). Providers are used only through libraries, behind
+`internal/platform/push`. The module is never called synchronously to
+create a notification; it consumes integration events (`tasks.v1.TaskCompleted`,
+`tasks.v1.TaskDueSoon`, `media.v1.MediaReady`) with idempotent handlers (River delivery, a transaction on the jobs pool). The only
+synchronous write point is `api.Broadcaster` for the admin module.
 
-## Сценарии
+## Scenarios
 
 **Happy path**
 
-- Given событие `tasks.v1.TaskCompleted` в outbox
-- When relay доставляет его в шину
-- Then в одной inbox-транзакции создаётся строка `notifications.notifications`,
-  ставится River-job `notifications.push` и отметка в `platform.inbox`;
-  job раскладывает доставку на `notifications.push_device` (по одному на активное
-  устройство), каждый отправляет push провайдеру платформы.
+- Given a River delivery job for `tasks.v1.TaskCompleted` for the consumer `notifications.task_completed`
+- When a worker runs the handler
+- Then in one transaction a row in `notifications.notifications` is created
+  and a River job `notifications.push` is enqueued (redelivery of the same event changes nothing: UNIQUE source_event_id);
+  the job fans delivery out to `notifications.push_device` (one per active
+  device), and each sends a push to the platform's provider.
 
-- Given клиент получил токен FCM/APNs или PushSubscription
-- When вызывает `RegisterPushDevice`
-- Then устройство upsert-ится по `(platform, address)` и активируется.
+- Given a client obtained an FCM/APNs token or a PushSubscription
+- When it calls `RegisterPushDevice`
+- Then the device is upserted by `(platform, address)` and activated.
 
-**Граничные случаи**
+**Edge cases**
 
-- Повторная доставка события → `ON CONFLICT (source_event_id) DO NOTHING`, push не ставится повторно.
-- Провайдер отвечает 404/410/`Unregistered`/`BadDeviceToken`/`UNREGISTERED` → устройство деактивируется, job успешен.
-- 429/5xx → River ретраит только этот device-job.
-- Провайдер не сконфигурирован → устройство пропускается (`push.ErrDisabled`).
-- Настройки `push_enabled=false` или выключенный вид → in-app запись создаётся, push нет.
-- Более 20 активных устройств → `INVALID_ARGUMENT`.
-- Устройство перешло к другому аккаунту после fan-out → push не отправляется.
+- Redelivery of an event → `ON CONFLICT (source_event_id) DO NOTHING`, the push is not enqueued again.
+- The provider answers 404/410/`Unregistered`/`BadDeviceToken`/`UNREGISTERED` → the device is deactivated, the job succeeds.
+- 429/5xx → River retries only that device job.
+- Provider not configured → the device is skipped (`push.ErrDisabled`).
+- Settings `push_enabled=false` or a disabled kind → the in-app record is created, no push.
+- More than 20 active devices → `INVALID_ARGUMENT`.
+- The device moved to another account after the fan-out → no push is sent.
 
-## Ошибки
+## Errors
 
-| Условие | `sharederrors.Kind` | `connect.Code` |
-| ------- | ------------------- | -------------- |
-| Чужой/несуществующий id в MarkRead/UnregisterPushDevice | NotFound | NOT_FOUND |
-| Невалидная подписка/токен, лимит устройств, чужой cursor | Validation | INVALID_ARGUMENT |
-| Нет identity | Unauthorized | UNAUTHENTICATED |
+| Condition | `sharederrors.Kind` | `connect.Code` |
+| --------- | ------------------- | -------------- |
+| Someone else's / nonexistent id in MarkRead/UnregisterPushDevice | NotFound | NOT_FOUND |
+| Invalid subscription/token, device limit, foreign cursor | Validation | INVALID_ARGUMENT |
+| No identity | Unauthorized | UNAUTHENTICATED |
 
 ## API
 
-`aedst.notifications.v1.NotificationsService` (см. `api/proto/aedst/notifications/v1/notifications.proto`).
+`aedst.notifications.v1.NotificationsService` (see `api/proto/aedst/notifications/v1/notifications.proto`).
 
-## События
+## Events
 
-| Тип события | Версия | partition_key | Payload | Потребители |
-| ----------- | ------ | -------------- | ------- | ----------- |
-| (потребляет) tasks.v1.TaskCompleted / TaskDueSoon | 1 | task_id | tasks/api/events.go | notifications |
-| (потребляет) media.v1.MediaReady | 1 | media_id | media/api/events.go | notifications |
+| Event type | Version | partition_key | Payload | Consumers |
+| ---------- | ------- | ------------- | ------- | --------- |
+| (consumes) tasks.v1.TaskCompleted / TaskDueSoon | 1 | task_id | tasks/api/events.go | notifications |
+| (consumes) media.v1.MediaReady | 1 | media_id | media/api/events.go | notifications |
 
-## Push payload (контракт клиентов)
+## Push payload (client contract)
 
-- FCM: `data` = `{kind, title, body, link, notification_id}` + блок `notification`.
-- APNs: `aps` = `{alert:{title,body}, badge: unread count, sound: default}`, рядом ключи `link`, `kind`, `notification_id`.
-- Web Push: зашифрованный (RFC 8291) JSON `{title, body, link, kind, notification_id}`.
+- FCM: `data` = `{kind, title, body, link, notification_id}` + a `notification` block.
+- APNs: `aps` = `{alert:{title,body}, badge: unread count, sound: default}`, with the keys `link`, `kind`, `notification_id` alongside.
+- Web Push: encrypted (RFC 8291) JSON `{title, body, link, kind, notification_id}`.
 
-## Кросс-модульные зависимости
+## Cross-module dependencies
 
-Только через `tasks/api` и `media/api` (типы событий). Admin вызывает `api.Broadcaster.BroadcastTx` в своей транзакции аудита.
+Only through `tasks/api` and `media/api` (event types). Admin calls `api.Broadcaster.BroadcastTx` in its audit transaction.
 
 ## NFR
 
-- Идемпотентность: проекции — через inbox + UNIQUE source_event_id; Register — upsert.
-- Retention: уведомления `AEDST_RETENTION_NOTIFICATION_DAYS` (90), отключённые устройства 30 дней.
-- Hot path: `ListNotifications`, `GetUnreadCount` (ограниченный счётчик, cap 1000).
+- Idempotency: projections are idempotent handlers + UNIQUE source_event_id; Register is an upsert.
+- Retention: notifications `AEDST_RETENTION_NOTIFICATION_DAYS` (90), disabled devices 30 days.
+- Hot path: `ListNotifications`, `GetUnreadCount` (a bounded counter, cap 1000).

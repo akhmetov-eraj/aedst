@@ -156,6 +156,12 @@ std::shared_ptr<MediaImageFetcher::Ticket> MediaImageFetcher::fetch(const QUrl& 
     return ticket;
 }
 
+void MediaImageFetcher::clear() {
+    if (auto* cache = network_->cache()) {
+        cache->clear();
+    }
+}
+
 void MediaImageFetcher::cancel(const std::shared_ptr<Ticket>& ticket) {
     if (!ticket) {
         return;
@@ -177,6 +183,11 @@ MediaImageProvider::MediaImageProvider(MediaImageFetcher& fetcher, qsizetype mem
 
 QQuickImageResponse* MediaImageProvider::requestImageResponse(const QString& id, const QSize& requestedSize) {
     return new MediaImageResponse(*this, fetcher_, id, requestedSize);
+}
+
+void MediaImageProvider::clear() {
+    const QMutexLocker lock(&mutex_);
+    memory_.clear();
 }
 
 QImage MediaImageProvider::cached(const QString& key) const {

@@ -2,17 +2,12 @@ package com.aedst.core.ui.components
 
 import android.content.Context
 import androidx.compose.material3.Surface
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.assert
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
-import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import com.aedst.core.ui.R
 import com.aedst.core.ui.theme.AedstTheme
@@ -49,34 +44,18 @@ class AccessibilityTest {
     fun `offline banner is a polite live region so TalkBack announces it`() {
         show { AedstOfflineBanner(isOffline = true) }
 
-        compose.onNodeWithText(context.getString(R.string.aedst_offline_banner))
-            .assert(SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite))
+        // The live region is on the banner container; its descendant Text is what gets announced.
+        compose.onNode(
+            SemanticsMatcher.expectValue(SemanticsProperties.LiveRegion, LiveRegionMode.Polite),
+        ).assertExists()
+        compose.onNodeWithText(context.getString(R.string.aedst_offline_banner)).assertExists()
     }
 
     @Test
-    fun `pagination arrows have localized descriptions`() {
-        show { AedstPagination(currentPage = 2, totalPages = 5, onPageChange = {}) }
+    fun `password field offers a localized show-password action`() {
+        show { AedstPasswordTextField(value = "secret", onValueChange = {}, label = "Password") }
 
-        compose.onNodeWithContentDescription(context.getString(R.string.aedst_a11y_previous_page)).assertExists()
-        compose.onNodeWithContentDescription(context.getString(R.string.aedst_a11y_next_page)).assertExists()
-        compose.onNodeWithContentDescription(context.getString(R.string.aedst_a11y_page, 3)).assertExists()
-    }
-
-    @Test
-    fun `expandable section announces the action it will perform and flips after a click`() {
-        show { AedstExpandableSection(title = "Details") { } }
-
-        compose.onNodeWithContentDescription(context.getString(R.string.aedst_a11y_expand)).performClick()
-
-        compose.onNodeWithContentDescription(context.getString(R.string.aedst_a11y_collapse)).assertExists()
-    }
-
-    @Test
-    fun `otp input reports progress`() {
-        var value by mutableStateOf("12")
-        show { AedstOtpInput(value = value, onValueChange = { value = it }, length = 6) }
-
-        compose.onNodeWithContentDescription(context.getString(R.string.aedst_a11y_otp_progress, 2, 6)).assertExists()
+        compose.onNodeWithContentDescription(context.getString(R.string.aedst_a11y_show_password)).assertExists()
     }
 
     @Test
@@ -88,12 +67,12 @@ class AccessibilityTest {
 
     @Test
     fun `descriptions follow the device locale`() {
-        val english = context.getString(R.string.aedst_a11y_next_page)
+        val english = context.getString(R.string.aedst_a11y_show_password)
         RuntimeEnvironment.setQualifiers("+ru")
 
-        val russian = context.getString(R.string.aedst_a11y_next_page)
+        val russian = context.getString(R.string.aedst_a11y_show_password)
 
-        assertEquals("Next page", english)
-        assertEquals("Следующая страница", russian)
+        assertEquals("Show password", english)
+        assertEquals("Показать пароль", russian)
     }
 }

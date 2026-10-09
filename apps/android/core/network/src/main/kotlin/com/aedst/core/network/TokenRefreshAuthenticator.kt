@@ -8,13 +8,15 @@ import javax.inject.Inject
 
 /**
  * Supplies a fresh access token after the server rejected the one we sent.
- * Implemented by `feature/auth` (it owns the refresh token and the
- * `RefreshToken` RPC); declared here so `core/network` never depends on it.
+ * Implemented by `feature/auth` (it owns the refresh token and performs the OIDC `refresh_token` grant at the IdP
+ * through AppAuth); declared here so `core/network` never depends on it.
  *
  * Called on an OkHttp worker thread, so it may block. Implementations must:
  *  - serialize concurrent callers (one refresh, everyone reuses the result);
  *  - return the already-refreshed token if [staleAccessToken] is no longer current;
- *  - return `null` when no valid session remains (after clearing it) or the refresh failed transiently.
+ *  - return `null` when no valid session remains (after clearing it): the 401 surfaces as unauthenticated;
+ *  - throw [java.io.IOException] when the refresh failed transiently (offline, 5xx): OkHttp propagates it, so the call
+ *    fails as a retryable network error and the session is kept.
  */
 fun interface TokenRefresher {
     fun refresh(staleAccessToken: String?): String?
@@ -25,8 +27,9 @@ fun interface TokenRefresher {
  * (The proactive half — attaching the token — is [AuthInterceptor].)
  *
  * Gives up (returns `null`, surfacing the 401 to the caller) when:
- *  - the failed request was itself an auth call — avoids refresh loops;
- *  - we already retried this request once;
+ *  - we already retried this request once (a second 401 with a fresh token means the token is not the problem, so
+ *    there is no refresh loop). IdP calls (token, revocation) never pass through here: AppAuth and the revoker use their
+ *    own connections (`@ExternalHttpClient` has no authenticator), and the API is protected by the IdP token only;
  *  - no fresh token could be obtained.
  *
  * [TokenRefresher] is injected lazily: the refresher's implementation needs the RPC client, which needs the
@@ -37,7 +40,7 @@ class TokenRefreshAuthenticator @Inject constructor(private val tokenRefresher: 
 
     override fun authenticate(route: Route?, response: Response): Request? {
         val request = response.request
-        if (isAuthCall(request) || responseCount(response) > 1) return null
+        if (responseCount(response) > 1) return null
 
         val staleToken = request.header(AUTHORIZATION)?.removePrefix(BEARER_PREFIX)
         val freshToken = tokenRefresher.get().refresh(staleToken)?.takeIf { it.isNotBlank() } ?: return null
@@ -58,13 +61,5 @@ class TokenRefreshAuthenticator @Inject constructor(private val tokenRefresher: 
     private companion object {
         const val AUTHORIZATION = "Authorization"
         const val BEARER_PREFIX = "Bearer "
-
-        /** Connect unary calls are `POST /<package>.<Service>/<Method>`; these establish/refresh/end a session. */
-        val AUTH_METHODS = setOf("Login", "Register", "RefreshToken", "Logout")
-
-        fun isAuthCall(request: Request): Boolean {
-            val path = request.url.encodedPath
-            return path.contains(".AuthService/") && path.substringAfterLast('/') in AUTH_METHODS
-        }
     }
 }

@@ -5,9 +5,11 @@ import createNextIntlPlugin from "next-intl/plugin";
 
 const withNextIntl = createNextIntlPlugin("./src/app/config/i18n/request.ts");
 
-// The page CSP is per-request (nonce-based) and lives in `src/proxy.ts` /
-// `src/app/config/security/csp.ts`. Only headers that are the same for every
-// response are static here.
+// Content-Security-Policy is deliberately NOT set here: `src/proxy.ts` (built
+// by `src/app/config/security/csp.ts`) is the single place that emits it, for
+// pages (per-request nonce), `/api/*` and `/serwist/*`. A second static CSP
+// header would be intersected with it by browsers. Only headers that are the
+// same for every response and are not a CSP are static here.
 const securityHeaders = [
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "X-Frame-Options", value: "DENY" },
@@ -27,6 +29,9 @@ const securityHeaders = [
   { key: "Cross-Origin-Resource-Policy", value: "same-origin" },
   { key: "X-DNS-Prefetch-Control", value: "off" },
 ];
+
+const SHARED_METADATA_CACHE =
+  "public, s-maxage=3600, stale-while-revalidate=86400";
 
 /**
  * PostHog reverse proxy: the browser posts to `/ingest/*` on this origin and
@@ -65,6 +70,11 @@ const nextConfig: NextConfig = {
   // dev-only resources (HMR) from origins not listed here.
   allowedDevOrigins: ["127.0.0.1"],
   poweredByHeader: false,
+  // Self-contained `.next/standalone/server.js` for the container image
+  // (deployments/docker/Dockerfile). apps/web is its own pnpm project with its
+  // own lockfile, so the default tracing root (this directory) is correct:
+  // no outputFileTracingRoot is needed. Vercel ignores this option.
+  output: "standalone",
   // PostHog's API paths end in a slash (`/e/`, `/flags/?v=2`); Next's
   // trailing-slash redirect would otherwise break the `/ingest` proxy.
   skipTrailingSlashRedirect: true,
@@ -75,16 +85,36 @@ const nextConfig: NextConfig = {
     return [
       { source: "/:path*", headers: securityHeaders },
       {
-        // JSON responses (the /api/rpc proxy) never render anything, so the
-        // strictest possible policy costs nothing.
+        // JSON responses (the /api/rpc proxy) must never be cached.
         source: "/api/:path*",
-        headers: [
-          {
-            key: "Content-Security-Policy",
-            value: "default-src 'none'; frame-ancestors 'none'",
-          },
-          { key: "Cache-Control", value: "no-store" },
-        ],
+        headers: [{ key: "Cache-Control", value: "no-store" }],
+      },
+      {
+        // Crawler and metadata files change rarely: let a CDN hold them for an
+        // hour and serve stale while it revalidates. The opengraph-image
+        // route is per locale; llms*.txt are served by route handlers.
+        source: "/robots.txt",
+        headers: [{ key: "Cache-Control", value: SHARED_METADATA_CACHE }],
+      },
+      {
+        source: "/sitemap.xml",
+        headers: [{ key: "Cache-Control", value: SHARED_METADATA_CACHE }],
+      },
+      {
+        source: "/llms.txt",
+        headers: [{ key: "Cache-Control", value: SHARED_METADATA_CACHE }],
+      },
+      {
+        source: "/llms-full.txt",
+        headers: [{ key: "Cache-Control", value: SHARED_METADATA_CACHE }],
+      },
+      {
+        source: "/manifest.webmanifest",
+        headers: [{ key: "Cache-Control", value: SHARED_METADATA_CACHE }],
+      },
+      {
+        source: "/:locale/opengraph-image",
+        headers: [{ key: "Cache-Control", value: SHARED_METADATA_CACHE }],
       },
       {
         // The service worker must never be served stale (an old worker
@@ -94,10 +124,6 @@ const nextConfig: NextConfig = {
           {
             key: "Cache-Control",
             value: "no-cache, no-store, must-revalidate",
-          },
-          {
-            key: "Content-Security-Policy",
-            value: "default-src 'self'; script-src 'self'",
           },
         ],
       },

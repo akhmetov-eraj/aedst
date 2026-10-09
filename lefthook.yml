@@ -1,23 +1,28 @@
-# Lefthook (https://lefthook.dev) git hooks. Install the CLI once per
-# machine — `go install github.com/evilmartians/lefthook@latest` (Go is
-# already a repo prerequisite for apps/server), `npm i -g lefthook`, or
-# `brew install lefthook` — then run `lefthook install` once per clone to
-# wire these into `.git/hooks`.
+# Lefthook (https://lefthook.dev) git hooks. Install the CLI once per machine
+# at the version pinned in mise.toml (`mise install`, or the same version via
+# `npm i -g lefthook` / `brew install lefthook`; see mise.toml for the pin and
+# do not install an unpinned "latest"), then run `lefthook install` once per
+# clone to wire these into `.git/hooks`.
 #
 # Every command is `glob`-scoped to one app, so a commit touching only
 # apps/server never pays for apps/web's typecheck and vice versa. `glob`
 # paths are always relative to the repo root regardless of `root:` (see
-# https://lefthook.dev/configuration/glob.html) — matched twice per app
+# https://lefthook.dev/configuration/glob.html) - matched twice per app
 # (`app/**/*.ext` and `app/*.ext`) because lefthook's `**` requires at
 # least one directory in between, so it alone would miss a top-level file
 # like `apps/web/next.config.ts`. `root:` does two things once a command
 # actually runs: it `cd`s into that directory, AND it rewrites
-# `{staged_files}` to be relative to it instead of the repo root —
+# `{staged_files}` to be relative to it instead of the repo root -
 # verified empirically (not just from the docs) before relying on it here.
 #
-# Wired apps: web (Biome, tsc, knip) and server (gofmt, go vet). Android,
-# Apple and Desktop are gated in CI only: their toolchains (JDK/Gradle, Xcode,
-# Qt/vcpkg) are too heavy for a pre-commit hook; run `task lint` locally.
+# Wired apps: web (Biome, tsc, knip), server (gofumpt, go vet) and, when the
+# toolchain is installed, the cheap native linters: ktlint (Android), swiftlint
+# (Apple), clang-format + the C++ subset check (Desktop). Each native command
+# first checks `command -v <tool>` and is SKIPPED (not failed) when the binary
+# is missing, because JDK/Gradle, Xcode and Qt/vcpkg are too heavy for a
+# pre-commit hook. CI is the authority; locally run `task lint`.
+# Repo-wide guards: naming, file size, color literals, staged-file hygiene
+# (ASCII names, <= 1 MiB) and gitleaks (when installed).
 # Biome is the only JS linter/formatter (no ESLint/Prettier).
 pre-commit:
   parallel: true
@@ -40,8 +45,42 @@ pre-commit:
       # touched, blocking unrelated work. `--write` autofixes what Biome
       # can (import order, quote style, ...); `stage_fixed` re-stages
       # exactly what it changed so the commit includes the fix.
-      run: pnpm biome check --write --no-errors-on-unmatched {staged_files}
+      run: pnpm biome check --write --error-on-warnings --no-errors-on-unmatched {staged_files}
       stage_fixed: true
+
+    # A staged form without React Hook Form, or a module/shared file that imports
+    # src/app (upward import), fails the commit. Both scripts are whole-tree and fast.
+    web-forms:
+      root: "apps/web/"
+      glob:
+        - "apps/web/**/*.{ts,tsx}"
+        - "apps/web/*.{ts,tsx}"
+      run: node scripts/check-forms.mjs
+    web-deps:
+      root: "apps/web/"
+      glob:
+        - "apps/web/**/*.{ts,tsx}"
+        - "apps/web/*.{ts,tsx}"
+      run: pnpm check:deps
+    web-boundaries:
+      root: "apps/web/"
+      glob:
+        - "apps/web/**/*.{ts,tsx}"
+        - "apps/web/*.{ts,tsx}"
+      run: bash scripts/check-feature-boundaries.sh
+    web-colors:
+      root: "apps/web/"
+      glob:
+        - "apps/web/**/*.{ts,tsx,css}"
+      run: node scripts/check-color-literals.mjs
+    # The gates themselves: only when a rule, plugin, fixture or script changes.
+    web-gate-selftest:
+      root: "apps/web/"
+      glob:
+        - "apps/web/biome.json"
+        - "apps/web/lint/**"
+        - "apps/web/scripts/**"
+      run: node scripts/check-selftest.mjs
 
     # Whole-project by nature (unused exports/files/deps). Slower than the
     # others, so it only runs when web sources/config change.
@@ -54,20 +93,116 @@ pre-commit:
     # File/directory naming (CONVENTIONS.md). --staged keeps it fast.
     naming:
       run: bash scripts/check-naming.sh --staged
+    # File-size policy (CONVENTIONS.md, "File size"): fails on staged files over 500 lines.
+    file-size:
+      run: bash scripts/check-file-size.sh --staged
+    # No color literals in hand-written UI code (design tokens only); desktop is report-only.
+    color-literals:
+      glob: "apps/**/*.{ts,tsx,js,mjs,css,kt,xml,swift,qml,cpp,hpp,html,tmpl}"
+      run: node scripts/check-color-literals.mjs --staged
 
     # Go: formatting on staged files, vet on the whole module (a type error can
     # be caused by a change in another package). gen/ is sqlc/buf output
-    # (already gofmt-clean); regenerate it instead of editing it by hand.
+    # (excluded from server-fmt: generator import order); regenerate it instead of editing it by hand.
     server-fmt:
       root: "apps/server/"
       glob:
         - "apps/server/**/*.go"
         - "apps/server/*.go"
-      # Prints the unformatted files and fails; silent and green otherwise.
-      run: "! gofmt -l {staged_files} | grep ."
+      # gofumpt (stricter superset of gofmt), the same formatter as
+      # apps/server/Taskfile.yml `lint` and the PostToolUse hook. Prints the
+      # unformatted files and fails; silent and green otherwise.
+      run: "! gofumpt -l {staged_files} | grep -v '^gen.go.aedst' | grep ."
     server-vet:
       root: "apps/server/"
       glob:
         - "apps/server/**/*.go"
         - "apps/server/*.go"
       run: go vet ./...
+
+    # Hygiene: no non-ASCII file names (pasted chat prompts, odd screenshots) and no staged
+    # file over 1 MiB. See scripts/check-staged-files.sh (AEDST_ALLOW_LARGE_FILES=1 to override size).
+    staged-files:
+      run: bash scripts/check-staged-files.sh
+
+    # Secret scanning on the staged diff. Skipped when gitleaks is not installed (CI runs it
+    # unconditionally, see .gitleaks.toml). `gitleaks git --pre-commit --staged` is the current
+    # form (the pinned version is in mise.toml); older releases only know `protect --staged`.
+    # UNVERIFIED locally: no gitleaks binary was available when this was written.
+    gitleaks:
+      run: bash scripts/pre-commit-gitleaks.sh
+
+    # Native clients: cheap, staged-files-only linters, each skipped when its binary is missing.
+    # ktlint reads apps/android/.editorconfig. The Gradle-pinned ktlint is the CI authority;
+    # a different native version can disagree on edge cases, so treat a local-only failure as a hint.
+    android-ktlint:
+      root: "apps/android/"
+      glob:
+        - "apps/android/**/*.{kt,kts}"
+      exclude: "**/kotlin-gen/**"
+      run: bash ../../scripts/run-if-installed.sh ktlint "CI runs ./gradlew ktlintCheck" {staged_files}
+    # Android Library-First shell gates (grep/awk only, no Gradle): module boundaries, UI tokens and screen previews,
+    # RPC contract vs call sites, catalog allowlist. The full set (detekt rules, Lint, Kover) runs in android-ci.
+    android-gates:
+      root: "apps/android/"
+      glob:
+        - "apps/android/**/*.{kt,kts,xml,toml}"
+        - "docs/content/library-first/android.md"
+      exclude: "**/kotlin-gen/**"
+      run: bash scripts/check-feature-boundaries.sh && bash scripts/check-ui-tokens.sh && bash scripts/check-rpc-contract.sh && bash scripts/check-catalog-allowlist.sh
+    apple-swiftlint:
+      root: "apps/apple/"
+      glob:
+        - "apps/apple/**/*.swift"
+      exclude: "**/Generated/**"
+      run: bash ../../scripts/run-if-installed.sh swiftlint "CI runs make lint" lint --config .swiftlint.yml {staged_files}
+    # Library-first gates that need no Xcode/SwiftLint: custom rules (static mirror of .swiftlint.yml custom_rules),
+    # approved packages, Keychain/web-auth confinement. CI runs the same via scripts/check-feature-boundaries.sh.
+    apple-library-first:
+      root: "apps/apple/"
+      glob:
+        - "apps/apple/**/*.{swift,xcstrings}"
+        - "apps/apple/**/Package.swift"
+        - "apps/apple/.swiftlint.yml"
+      exclude: "**/Generated/**"
+      run: node scripts/swiftlint-rules-static.mjs && bash scripts/check-apple-sensitive-apis.sh && bash scripts/check-dependencies.sh
+    desktop-clang-format:
+      root: "apps/desktop/"
+      glob:
+        - "apps/desktop/**/*.{cpp,hpp,h}"
+      exclude: "**/generated/**"
+      run: bash ../../scripts/run-if-installed.sh clang-format "CI runs scripts/check-format.sh" --dry-run --Werror --style=file {staged_files}
+    desktop-cxx-subset:
+      root: "apps/desktop/"
+      glob:
+        - "apps/desktop/**/*.{cpp,hpp,h}"
+      # Pure grep, no toolchain needed; whole-tree by nature (see CODING_STANDARDS.md).
+      run: bash scripts/check-cxx-subset.sh
+    # Mandatory-library-per-concern gates (library-first/desktop.md "Enforced rules"): bash/awk/node only, whole-tree
+    # by nature, a few seconds each. Escape hatch: `// aedst-allow: <reason>`.
+    desktop-forbidden-apis:
+      root: "apps/desktop/"
+      glob:
+        - "apps/desktop/**/*.{cpp,hpp,h}"
+        - "apps/desktop/**/CMakeLists.txt"
+        - "apps/desktop/**/*.cmake"
+        - "apps/desktop/vcpkg.json"
+      exclude: "**/scripts/selftest/**"
+      run: bash scripts/check-forbidden-apis.sh
+    desktop-qml-gates:
+      root: "apps/desktop/"
+      glob:
+        - "apps/desktop/**/*.qml"
+      exclude: "**/scripts/selftest/**"
+      run: bash scripts/check-qml-components.sh && bash scripts/check-qml-accessibility.sh
+    desktop-migration-hashes:
+      root: "apps/desktop/"
+      glob:
+        - "apps/desktop/Modules/Core/Persistence/**/migrator*.cpp"
+      run: bash scripts/check-migration-hashes.sh
+    desktop-i18n-extract:
+      root: "apps/desktop/"
+      glob:
+        - "apps/desktop/**/*.{qml,cpp,hpp,ts}"
+      exclude: "**/scripts/selftest/**"
+      run: node scripts/check-i18n-extract.mjs

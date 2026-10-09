@@ -9,7 +9,7 @@ import (
 )
 
 // DirectorySortToken binds directory cursors to their ordering.
-const DirectorySortToken = "auth:created_at:desc"
+const DirectorySortToken = "auth:created_at:desc" //nolint:gosec // G101 false positive: a pagination sort-token name, not a credential
 
 // DirectoryUser is one first-party account as an operator sees it (never the
 // password hash).

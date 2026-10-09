@@ -55,13 +55,13 @@ func TestRouter_HardeningHeaders(t *testing.T) {
 
 func TestRouter_CORSNeverAllowsCredentials(t *testing.T) {
 	router := httpserver.NewRouter(httpserver.Options{Logger: discardLogger(), AllowedOrigins: []string{"https://app.example.com"}})
-	router.Post("/x", func(w http.ResponseWriter, _ *http.Request) {})
+	router.HandleFunc("POST /x", func(w http.ResponseWriter, _ *http.Request) {})
 
 	preflight := func(origin string) *httptest.ResponseRecorder {
 		req := httptest.NewRequest(http.MethodOptions, "/x", nil)
 		req.Header.Set("Origin", origin)
 		req.Header.Set("Access-Control-Request-Method", http.MethodPost)
-		req.Header.Set("Access-Control-Request-Headers", "content-type,connect-protocol-version")
+		req.Header.Set("Access-Control-Request-Headers", "connect-protocol-version,content-type")
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)
 		return rec
@@ -81,7 +81,7 @@ func TestRouter_CORSNeverAllowsCredentials(t *testing.T) {
 func TestRouter_MaxBodyBytes(t *testing.T) {
 	router := httpserver.NewRouter(httpserver.Options{Logger: discardLogger(), MaxBodyBytes: 16})
 	var readErr error
-	router.Post("/echo", func(w http.ResponseWriter, r *http.Request) {
+	router.HandleFunc("POST /echo", func(w http.ResponseWriter, r *http.Request) {
 		_, readErr = io.ReadAll(r.Body)
 	})
 
@@ -120,8 +120,8 @@ func TestStreamingProceduresEscapeUnaryDeadlines(t *testing.T) {
 			http.NewResponseController(w).Flush()
 		}
 	}
-	router.Get(streamPath, handler)
-	router.Get("/unary", handler)
+	router.HandleFunc("GET "+streamPath, handler)
+	router.HandleFunc("GET /unary", handler)
 
 	srv := httptest.NewUnstartedServer(router)
 	srv.Config.WriteTimeout = 100 * time.Millisecond

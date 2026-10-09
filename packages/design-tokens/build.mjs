@@ -5,7 +5,7 @@
 // Only pieces with no Style Dictionary built-in are custom: the name transforms (AEDST
 // naming per CONVENTIONS.md), the web CSS file layout (one file, :root + .dark), the QML
 // singleton format and a whitespace normaliser around the built-in Kotlin/Swift formats.
-import { execFileSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -107,7 +107,8 @@ StyleDictionary.registerFormat({
     const all = dictionary.allTokens;
     const light = all.filter(mode('light'));
     const dark = all.filter(mode('dark')).map((t) => ({ ...t, name: t.name.slice(DARK_PREFIX.length) }));
-    const scales = all.filter((t) => !isColor(t));
+    // Breakpoints are a desktop-window concept (the web uses CSS media queries): not emitted into tokens.css.
+    const scales = all.filter((t) => !isColor(t) && t.path[0] !== 'breakpoint');
     // Trim trailing zeros (0.1450 -> 0.145, 0.00 -> 0) so the file is stable under Biome's CSS formatter.
     const trimZeros = (s) =>
       s.replace(/(\d+)\.(\d*?)0+(?=[\s)\/;a-z])/g, (_m, i, f) => (f ? `${i}.${f}` : i));
@@ -198,11 +199,16 @@ const swift = (className, filter, imports = ['SwiftUI']) => ({
   },
 });
 
+// task template:new --profile core|mobile deletes whole apps; skip the targets whose app directory is gone.
+const APP_ROOT = { android: 'apps/android', apple: 'apps/apple', desktop: 'apps/desktop' };
+const existing = (all) =>
+  Object.fromEntries(Object.entries(all).filter(([name]) => !APP_ROOT[name] || existsSync(path.join(repo, APP_ROOT[name]))));
+
 const sd = new StyleDictionary({
   usesDtcg: true,
   source: ['tokens/**/*.json'],
   log: { verbosity: 'default', warnings: 'error' },
-  platforms: {
+  platforms: existing({
     web: {
       buildPath: OUT.web,
       transforms: [
@@ -256,7 +262,7 @@ const sd = new StyleDictionary({
         },
       ],
     },
-  },
+  }),
 });
 
 // Light and dark must define exactly the same token names.
@@ -271,19 +277,21 @@ if (JSON.stringify(light) !== JSON.stringify(dark)) {
   throw new Error(`color/light.json and color/dark.json differ in tokens: ${diff.join(', ')}`);
 }
 
+const checking = process.argv.includes('--check');
+const generated = Object.values(sd.options.platforms).flatMap((p) =>
+  p.files.map((f) => path.join(here, p.buildPath, f.destination)),
+);
+const read = (file) => (existsSync(file) ? readFileSync(file, 'utf8') : null);
+const before = checking ? generated.map(read) : [];
+
 await sd.buildAllPlatforms();
 
-// `--check`: fail when regenerating changed (or created) any committed output, i.e. tokens and
-// generated files have drifted apart.
-if (process.argv.includes('--check')) {
-  const generated = Object.values(sd.options.platforms).flatMap((p) =>
-    p.files.map((f) => path.join(p.buildPath, f.destination)),
-  );
-  const git = (...args) => execFileSync('git', [...args, '--', ...generated], { cwd: here, encoding: 'utf8' });
-  const changed = git('diff', '--name-only').trim();
-  const untracked = git('ls-files', '--others', '--exclude-standard').trim();
-  if (changed || untracked) {
-    console.error(`Design tokens are out of sync with generated files. Run "pnpm build" and commit:\n${changed}\n${untracked}`);
+// `--check`: fail when regenerating changed (or created) any output, i.e. tokens and generated
+// files have drifted apart. Compares content before/after the build, so a dirty git tree does not matter.
+if (checking) {
+  const drifted = generated.filter((file, i) => read(file) !== before[i]).map((f) => path.relative(here, f));
+  if (drifted.length > 0) {
+    console.error(`Design tokens are out of sync with generated files. Run "pnpm build" and commit:\n${drifted.join('\n')}`);
     process.exit(1);
   }
   console.log('Generated design-token outputs are up to date.');

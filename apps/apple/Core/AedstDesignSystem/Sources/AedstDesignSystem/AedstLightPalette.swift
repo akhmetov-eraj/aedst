@@ -21,6 +21,8 @@ public enum AedstLightPalette {
     public static let destructive = Color(red: 0.906, green: 0.000, blue: 0.043, opacity: 1)
     public static let destructiveForeground = Color(red: 0.980, green: 0.980, blue: 0.980, opacity: 1)
     public static let foreground = Color(red: 0.039, green: 0.039, blue: 0.039, opacity: 1)
+    public static let info = Color(red: 0.114, green: 0.306, blue: 0.847, opacity: 1)
+    public static let infoForeground = Color(red: 0.980, green: 0.980, blue: 0.980, opacity: 1)
     public static let input = Color(red: 0.898, green: 0.898, blue: 0.898, opacity: 1)
     public static let muted = Color(red: 0.961, green: 0.961, blue: 0.961, opacity: 1)
     public static let mutedForeground = Color(red: 0.451, green: 0.451, blue: 0.451, opacity: 1)

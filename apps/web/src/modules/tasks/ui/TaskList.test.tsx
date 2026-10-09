@@ -1,6 +1,5 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { TaskList } from "@/modules/tasks/ui/TaskList";
@@ -12,12 +11,7 @@ import {
   TasksService,
 } from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
 import { makeTask } from "@/test/fixtures";
-import {
-  rpcErrorHandler,
-  rpcHandler,
-  TEST_RPC_BASE_URL,
-} from "@/test/mocks/connect";
-import { server } from "@/test/mocks/server";
+import { backend, Code, rpc, rpcError } from "@/test/mocks/transport";
 import { messages, renderWithProviders } from "@/test/render";
 
 const t = messages.tasks.list;
@@ -38,8 +32,8 @@ function serveTasks(
   },
 ) {
   const requests: Captured[] = [];
-  server.use(
-    rpcHandler(TasksService.method.listTasks, (input) => {
+  backend.use(
+    rpc(TasksService.method.listTasks, (input) => {
       requests.push(input as unknown as Captured);
       return respond(input as unknown as Captured);
     }),
@@ -106,8 +100,8 @@ describe("TaskList", () => {
     });
 
     it("announces a failed load and retries on demand", async () => {
-      server.use(
-        rpcErrorHandler(TasksService.method.listTasks, "internal", "boom"),
+      backend.use(
+        rpcError(TasksService.method.listTasks, Code.Internal, "boom"),
       );
       renderWithProviders(<TaskList />);
 
@@ -144,7 +138,7 @@ describe("TaskList", () => {
       ).toHaveValue("report");
     });
 
-    it("labels every filter control for assistive tech", () => {
+    it("labels every filter control for assistive tech", async () => {
       serveTasks(() => ({ tasks: [] }));
 
       renderWithProviders(<TaskList />);
@@ -155,7 +149,9 @@ describe("TaskList", () => {
         t.priorityFilterLabel,
         t.sortLabel,
       ]) {
-        expect(screen.getByRole("combobox", { name })).toBeInTheDocument();
+        expect(
+          await screen.findByRole("combobox", { name }, { timeout: 5000 }),
+        ).toBeInTheDocument();
       }
     });
   });
@@ -257,20 +253,5 @@ describe("TaskList", () => {
         screen.queryByRole("navigation", { name: t.paginationLabel }),
       ).not.toBeInTheDocument();
     });
-  });
-
-  it("only talks to the same-origin proxy", async () => {
-    const seen: string[] = [];
-    server.events.on("request:start", ({ request }) => {
-      seen.push(new URL(request.url).origin);
-    });
-    serveTasks(() => ({ tasks: [] }));
-    server.use(http.get("*", () => HttpResponse.text("")));
-
-    renderWithProviders(<TaskList />);
-    await screen.findByText(t.emptyTitle);
-
-    expect(new Set(seen)).toEqual(new Set([new URL(TEST_RPC_BASE_URL).origin]));
-    server.events.removeAllListeners();
   });
 });

@@ -23,6 +23,7 @@ import (
 	"github.com/aedst/server/internal/modules/notifications/domain"
 	"github.com/aedst/server/internal/platform/push"
 	"github.com/aedst/server/internal/shared/ids"
+	sharedtime "github.com/aedst/server/internal/shared/time"
 )
 
 // PushArgs fans one notification out to the owner's devices.
@@ -119,7 +120,7 @@ type DeviceWorker struct {
 }
 
 func NewDeviceWorker(store Store, sender push.Sender, logger *slog.Logger) *DeviceWorker {
-	return &DeviceWorker{store: store, sender: sender, logger: logger, now: time.Now}
+	return &DeviceWorker{store: store, sender: sender, logger: logger, now: sharedtime.Real{}.Now}
 }
 
 // Timeout bounds one delivery attempt (the provider client has its own).

@@ -28,8 +28,10 @@ function(aedst_fetch_qtkeychain)
 
     FetchContent_Declare(qtkeychain
         GIT_REPOSITORY https://github.com/frankosterfeld/qtkeychain.git
-        GIT_TAG 0.17.0
-        GIT_SHALLOW TRUE)
+        # Peeled commit of the annotated tag 0.17.0 (git ls-remote, same commit as the Flatpak manifest). A tag can be
+        # moved; a full commit cannot (scripts/check-forbidden-apis.sh, rule cmake-fetch-pin). No GIT_SHALLOW: it does
+        # not combine reliably with a commit hash.
+        GIT_TAG 875f77d9f61bd97fd84cca47ce3bc71186dfbd09)
 
     FetchContent_GetProperties(qtkeychain)
     if(NOT qtkeychain_POPULATED)

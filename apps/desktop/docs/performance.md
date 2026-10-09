@@ -12,13 +12,22 @@ change that.
 ## Performance gate (CI)
 
 `scripts/perf/run-perf.mjs` is the single entry point (Node, standard library only; job `perf` in
-`.github/workflows/desktop-ci.yml`, on main, manual dispatch and PRs labelled `perf`):
+`.github/workflows/desktop-ci.yml`: on main and manual dispatch the full gate; on EVERY pull request `--only micro` (the Qt Test
+regression check), and the full gate as well when the PR is labelled `perf`):
 
 | Part | What is measured | Checked against |
 |---|---|---|
 | startup | median of 7 launches into an empty profile: `first frame` and `QML loaded` (from `startup +N ms` log lines) and resident memory 3 s later | `perf/budgets.json` `startup` |
 | scroll | `Modules/Core/Media/bench/scroll_bench.cpp`: the real `MediaGrid` over 5 000 async-image tiles, 300 frames at constant speed; p50/p95/p99/max frame time, frames over 20 ms, resident memory | `perf/budgets.json` `scroll` |
 | micro | Qt Test `QBENCHMARK`s (`AedstNetworkBench`) | regression threshold (30 %) against `perf/baseline.json`, per platform; new benchmarks are recorded and pass |
+
+The harness isolates the profile with `AEDST_DATA_DIR=<temp dir>` (data, cache and QSettings all move there, on Windows too; the
+XDG/APPDATA variables alone did not isolate it) and starts the app with `--perf-exit-after-ms=20000`, so the app ends itself 20 s
+after its first frame even when the harness dies.
+
+**`perf/baseline.json` does not exist yet and cannot be written without a run**: the first `--update-baseline` on each runner
+type creates it (until then every micro-benchmark is "recorded, not checked"). Commit the file produced by the CI runner, not
+one from a developer machine.
 
 Locally: `cmake --preset bench && cmake --build --preset bench && node scripts/perf/run-perf.mjs --build-dir build/bench`
 (`--only startup,scroll,micro`, `--update-baseline` after an intended change, `--report file.json`).

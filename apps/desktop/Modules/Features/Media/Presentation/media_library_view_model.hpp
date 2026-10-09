@@ -2,10 +2,12 @@
 
 #include "aedst/media/media_list_model.hpp"
 #include "aedst/media/media_upload_controller.hpp"
+#include "aedst/qmlsupport/singleton_slot.hpp"
 
 #include <QObject>
 #include <QString>
 #include <QTimer>
+#include <QtQml/qqmlregistration.h>
 
 #include <memory>
 #include <string>
@@ -35,6 +37,8 @@ namespace aedst::feature::media {
 /// model, and the Core MediaRemoteDataSource is the repository.
 class MediaLibraryViewModel final : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
     Q_PROPERTY(aedst::media::MediaListModel* items READ items CONSTANT)
     Q_PROPERTY(aedst::media::MediaUploadController* uploader READ uploader CONSTANT)
     Q_PROPERTY(QString kindFilter READ kindFilter WRITE setKindFilter NOTIFY kindFilterChanged)
@@ -43,6 +47,9 @@ class MediaLibraryViewModel final : public QObject {
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
 
 public:
+    static MediaLibraryViewModel* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<MediaLibraryViewModel>::create(engine, script);
+    }
     struct Dependencies {
         std::shared_ptr<aedst::media::MediaRemoteDataSource> remote;
         std::shared_ptr<core::ErrorSink> errors;

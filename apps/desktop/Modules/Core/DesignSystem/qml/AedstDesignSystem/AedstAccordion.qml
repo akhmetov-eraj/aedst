@@ -10,8 +10,13 @@ ColumnLayout {
     property var model: []
     property bool single: true
     property int expandedIndex: -1
+    /// Name read out for the group of sections.
+    property string accessibleName
 
     spacing: Theme.spacingXs
+
+    Accessible.role: Accessible.Grouping
+    Accessible.name: root.accessibleName
 
     Repeater {
         model: root.model

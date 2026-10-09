@@ -6,19 +6,26 @@
       "Bash(rm -rf*)",
       "Bash(git reset --hard*)",
       "Bash(git clean -f*)",
-      "Read(.env)",
-      "Read(.env.*)"
+      "Read(**/.env)",
+      "Read(**/.env.local)",
+      "Read(**/.env.*.local)",
+      "Read(**/.env.production*)",
+      "Read(**/.env.staging*)",
+      "Read(**/.env.development*)",
+      "Read(**/.env.test*)"
     ],
-    "allow": ["Read(.env.example)"]
+    "allow": [
+      "Read(**/.env.example)"
+    ]
   },
   "hooks": {
     "PostToolUse": [
       {
-        "matcher": "Edit|Write",
+        "matcher": "Edit|Write|MultiEdit",
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR}/apps/server/.claude/hooks/post-edit.sh\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/post-edit.sh\""
           }
         ]
       }
@@ -28,7 +35,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash \"${CLAUDE_PROJECT_DIR}/apps/server/.claude/hooks/on-stop.sh\""
+            "command": "bash \"$CLAUDE_PROJECT_DIR/.claude/hooks/on-stop.sh\"",
+            "timeout": 600
           }
         ]
       }

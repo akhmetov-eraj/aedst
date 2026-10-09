@@ -11,7 +11,7 @@ namespace {
 
 Outcome<int> parsePositive(int value) {
     if (value <= 0) {
-        return fail(Error::invalidArgument("must be positive"));
+        return fail(Error::invalidInput("must be positive"));
     }
     return value;
 }
@@ -39,7 +39,7 @@ TEST(OutcomeTest, HoldsTypedErrorOnFailure) {
     const auto outcome = parsePositive(-1);
 
     ASSERT_FALSE(outcome.has_value());
-    EXPECT_EQ(outcome.error().code, ErrorCode::InvalidArgument);
+    EXPECT_EQ(outcome.error().code, ErrorCode::InvalidInput);
     EXPECT_EQ(outcome.error().message, "must be positive");
 }
 
@@ -48,13 +48,17 @@ TEST(OutcomeTest, VoidOutcomeOkHasValue) {
 }
 
 TEST(OutcomeTest, ErrorsCompareByCodeAndMessage) {
-    EXPECT_EQ(Error::network("offline"), Error::network("offline"));
-    EXPECT_NE(Error::network("offline"), Error::storage("offline"));
+    EXPECT_EQ(Error::unavailable("offline"), Error::unavailable("offline"));
+    EXPECT_NE(Error::unavailable("offline"), Error::storage("offline"));
 }
 
 TEST(OutcomeTest, ErrorCodeHasStableWireName) {
     EXPECT_EQ(toString(ErrorCode::Unauthenticated), "unauthenticated");
     EXPECT_EQ(toString(ErrorCode::Unknown), "unknown");
+    EXPECT_EQ(toString(ErrorCode::UpgradeRequired), "upgradeRequired");
+    EXPECT_EQ(toString(ErrorCode::InvalidInput), "invalidInput");
+    EXPECT_EQ(toString(ErrorCode::Forbidden), "forbidden");
+    EXPECT_EQ(toString(ErrorCode::RateLimited), "rateLimited");
 }
 
 TEST(UseCaseTest, CompletionReceivesMappedResult) {
@@ -76,7 +80,7 @@ TEST(UseCaseTest, CompletionReceivesError) {
 
     ASSERT_TRUE(received.has_value());
     ASSERT_FALSE(received->has_value());
-    EXPECT_EQ(received->error().code, ErrorCode::InvalidArgument);
+    EXPECT_EQ(received->error().code, ErrorCode::InvalidInput);
 }
 
 } // namespace

@@ -27,6 +27,15 @@ Rectangle {
     Accessible.name: root.title
     Accessible.description: root.description
 
+    // Spoken when the banner appears (it is shown only while offline).
+    function announce() {
+        if (root.visible) {
+            Accessible.announce(root.title + ". " + root.description, Accessible.Assertive)
+        }
+    }
+    onVisibleChanged: announce()
+    Component.onCompleted: announce()
+
     Rectangle {
         width: 3
         anchors.top: parent.top

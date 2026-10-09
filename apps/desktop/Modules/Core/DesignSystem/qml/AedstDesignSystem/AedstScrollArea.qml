@@ -9,6 +9,11 @@ T.ScrollView {
     id: root
 
     default property alias content: inner.data
+    /// Name read out for the scrollable region.
+    property string accessibleName
+
+    Accessible.role: Accessible.Pane
+    Accessible.name: root.accessibleName
 
     T.ScrollBar.vertical: T.ScrollBar {
         id: vbar

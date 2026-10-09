@@ -4,26 +4,24 @@ import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { useQuery } from "@connectrpc/connect-query";
 import { keepPreviousData } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
-import { useId, useMemo, useState } from "react";
-
-import type { Locale } from "@/app/config/i18n/locales";
+import { useId, useMemo } from "react";
 import { useCursorPages } from "@/modules/admin/lib/use-cursor-pages";
 import { type AdminColumn, DataTable } from "@/modules/admin/ui/DataTable";
 import { AdminService } from "@/shared/api/connect/client";
 import type { AdminUser } from "@/shared/api/connect/generated/aedst/admin/v1/admin_pb";
 import { formatDate } from "@/shared/date/format-date";
 import { useDebouncedValue } from "@/shared/lib/hooks/use-debounced-value";
+import { Field, FieldLabel } from "@/shared/ui/field";
 import { Input } from "@/shared/ui/input";
 
 const PAGE_SIZE = 25;
 
 export function AdminUsers() {
   const t = useTranslations("admin.users");
-  const locale = useLocale() as Locale;
+  const locale = useLocale();
   const searchId = useId();
-  const [search, setSearch] = useState("");
-  const query = useDebouncedValue(search.trim(), 300);
   const pages = useCursorPages();
+  const query = useDebouncedValue(pages.query.trim(), 300);
 
   const users = useQuery(
     AdminService.method.listUsers,
@@ -54,21 +52,15 @@ export function AdminUsers() {
 
   return (
     <div className="flex flex-col gap-3">
-      <label
-        htmlFor={searchId}
-        className="flex max-w-sm flex-col gap-1 text-sm"
-      >
-        {t("search")}
+      <Field className="max-w-sm">
+        <FieldLabel htmlFor={searchId}>{t("search")}</FieldLabel>
         <Input
           id={searchId}
           type="search"
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            pages.reset();
-          }}
+          value={pages.query}
+          onChange={(event) => pages.setQuery(event.target.value)}
         />
-      </label>
+      </Field>
       <DataTable
         label={t("title")}
         columns={columns}

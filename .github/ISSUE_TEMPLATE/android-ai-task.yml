@@ -11,7 +11,7 @@ body:
         Mentioning `@claude` in a comment on this Issue starts the pipeline
         in `apps/android/AGENTS.md`: a spec gets posted as the first comment
         for you to approve, then scaffold/tests/implementation/review/PR
-        follow automatically. See `apps/android/docs/ai/`.
+        follow automatically. The spec follows `.claude/skills/write-spec/SKILL.md`.
   - type: textarea
     id: task
     attributes:

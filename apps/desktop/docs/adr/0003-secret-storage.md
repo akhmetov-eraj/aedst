@@ -43,3 +43,20 @@ cached once in a wiped-on-destroy buffer.
 QtKeychain (or a Qt-native secret API) becomes an approved dependency and covers
 all three platforms without a synchronous-API mismatch; or the threat model
 requires hardware-backed keys (TPM / Secure Enclave).
+
+## Proposal awaiting the owner: one secret store, QtKeychain (nothing implemented)
+
+QtKeychain 0.17.0 is already an approved, pinned dependency (ADR-0025: it holds the OIDC refresh token on both OSes). The
+first-party session still uses the code in this ADR: `DpapiMasterKeyProvider`, `KeyringMasterKeyProvider` + the libsecret
+backend, `FileMasterKeyProvider` and the legacy-key migration (about 820 lines in `Aedst::Persistence` with their tests).
+The trigger named above ("QtKeychain ... covers all OSes") is therefore met on paper.
+
+**Recommendation: unify**, in this order, once a real build shows QtKeychain works on Windows and on a Linux session with a
+Secret Service: (1) implement `MasterKeyProvider` on top of QtKeychain (one 32-byte random key under one entry name, the
+same `AsyncTokenStore` contract); (2) migrate an existing DPAPI / libsecret / key-file key into it on first start, then delete the
+old copy; (3) only after that, delete the three providers and `libsecret_backend.cpp`, and drop `AEDST_ENABLE_LIBSECRET` and
+the optional `libsecret` package. It also removes the `0600` key-file fallback, the weakest part of this design.
+
+**Why it is not done here:** the deletion is irreversible for sessions encrypted under the old providers if step 2 is wrong,
+and none of this code has ever run, so there is no evidence yet which backend behaves better. The owner decides; until then
+the tables above stay the truth.

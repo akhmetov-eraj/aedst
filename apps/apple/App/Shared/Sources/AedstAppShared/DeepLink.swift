@@ -7,7 +7,7 @@ import Foundation
 /// query, is rejected rather than guessed at, so a hostile link cannot steer
 /// the app anywhere the enum does not list. HTTPS *universal links* are a
 /// separate, server-side-gated feature (apple-app-site-association +
-/// Associated Domains entitlement); see `docs/content/apple-release.md`.
+/// Associated Domains entitlement); see `docs/content/apple/release.md`.
 public enum DeepLink: Equatable, Sendable {
     case login
 

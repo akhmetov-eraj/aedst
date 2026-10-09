@@ -140,7 +140,7 @@ TEST_F(LocalTokenStoreAdapterTest, TheCacheChangesOnlyAfterTheWriteSucceeded) {
     const auto loaded = adapter->load();
     ASSERT_TRUE(loaded.has_value() && loaded->has_value());
     EXPECT_EQ((*loaded)->userId, "user-1");
-    EXPECT_EQ((*loaded)->refreshToken, "refresh-secret");
+    EXPECT_EQ((*loaded)->refreshToken.reveal(), "refresh-secret");
 }
 
 TEST_F(LocalTokenStoreAdapterTest, ASavedSessionIsFoundByAFreshAdapterAfterPreload) {

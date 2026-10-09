@@ -205,11 +205,11 @@ TEST_F(UpdatePipelineTest, AnUnsignedOrForgedManifestNeverReachesTheFeed) {
 TEST_F(UpdatePipelineTest, FailuresOfTheFeedDownloadAndManifestFetchAreReported) {
     serve("2.0.0");
     feedMatches("2.0.0");
-    installer.feedError = core::Error::network("feed offline");
-    EXPECT_EQ(run().error().code, core::ErrorCode::Network);
+    installer.feedError = core::Error::unavailable("feed offline");
+    EXPECT_EQ(run().error().code, core::ErrorCode::Unavailable);
 
     installer.feedError.reset();
-    installer.downloadError = core::Error::network("connection reset");
+    installer.downloadError = core::Error::unavailable("connection reset");
     EXPECT_EQ(run().error().message, "connection reset");
 
     installer.downloadError.reset();

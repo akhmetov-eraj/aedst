@@ -1,0 +1,7 @@
+// Fixture: a second migration was appended but its hash was not recorded. MUST fail.
+constexpr std::string_view kCreateA = R"sql(
+CREATE TABLE IF NOT EXISTS a (id INTEGER PRIMARY KEY);
+)sql";
+constexpr std::string_view kCreateB = R"sql(
+CREATE TABLE IF NOT EXISTS b (id INTEGER PRIMARY KEY);
+)sql";

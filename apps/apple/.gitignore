@@ -32,8 +32,13 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots/**/*.png
 fastlane/test_output
+fastlane/screenshots/
+*.ipa
+*.dSYM.zip
 vendor/bundle/
 .bundle/
+# fastlane lanes write archives/exports here (Gemfile.lock IS committed).
+build/
 
 
 # Local telemetry keys (Sentry DSN, PostHog key) — copy Secrets.local.xcconfig.example.

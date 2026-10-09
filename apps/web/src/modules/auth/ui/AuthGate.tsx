@@ -1,28 +1,65 @@
-"use client";
+import { useTranslations } from "next-intl";
 
-import { useState } from "react";
+import type { AuthErrorCode } from "@/shared/lib/auth/auth-errors";
+import { buttonVariants } from "@/shared/ui/button";
 
-import { LoginForm } from "@/modules/auth/ui/LoginForm";
-import { RegisterForm } from "@/modules/auth/ui/RegisterForm";
+const LOGIN_PATH = "/api/auth/login";
+
+function loginHref(redirectTo: string | undefined, register: boolean) {
+  const params = new URLSearchParams();
+  if (redirectTo) {
+    params.set("next", redirectTo);
+  }
+  if (register) {
+    params.set("screen_hint", "register");
+  }
+  const query = params.toString();
+  return query ? `${LOGIN_PATH}?${query}` : LOGIN_PATH;
+}
 
 /**
- * The home page's content for a signed-out visitor: a Login/Register toggle.
- * Signed-in visitors never reach it — `proxy.ts` redirects them to their
- * destination before the page renders, so there is no client-side redirect
- * effect and no signed-out flash here.
+ * The locale root page's content for a signed-out visitor: sign in (or create an
+ * account) with the identity provider. Both are plain links to the OIDC
+ * Route Handler, so they work before hydration and without JavaScript.
+ * Signed-in visitors never reach it — `proxy.ts` redirects them first.
  */
-export function AuthGate({ redirectTo }: { redirectTo?: string }) {
-  const [mode, setMode] = useState<"login" | "register">("login");
+export function AuthGate({
+  redirectTo,
+  error,
+}: {
+  redirectTo?: string;
+  error?: AuthErrorCode;
+}) {
+  const t = useTranslations("auth.login");
 
-  return mode === "login" ? (
-    <LoginForm
-      redirectTo={redirectTo}
-      onSwitchToRegister={() => setMode("register")}
-    />
-  ) : (
-    <RegisterForm
-      redirectTo={redirectTo}
-      onSwitchToLogin={() => setMode("login")}
-    />
+  return (
+    <section className="flex w-full max-w-sm flex-col gap-3">
+      <h2 className="font-medium text-lg">{t("title")}</h2>
+      <p className="text-muted-foreground text-sm">{t("description")}</p>
+
+      {error && (
+        <p role="alert" className="text-destructive text-sm">
+          {t(`errors.${error}`)}
+        </p>
+      )}
+
+      {/* A document navigation, never client-side routing: it leaves the app. */}
+      <a href={loginHref(redirectTo, false)} className={buttonVariants()}>
+        {t("submit")}
+      </a>
+
+      <p className="text-muted-foreground text-sm">
+        {t("switchPrompt")}{" "}
+        <a
+          href={loginHref(redirectTo, true)}
+          className={buttonVariants({
+            variant: "link",
+            className: "h-auto p-0 font-medium",
+          })}
+        >
+          {t("switchAction")}
+        </a>
+      </p>
+    </section>
   );
 }

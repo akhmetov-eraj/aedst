@@ -27,6 +27,8 @@ public:
     void complete(const std::string& id, core::Completion<Task> done) override;
     void reopen(const std::string& id, core::Completion<Task> done) override;
     void remove(const std::string& id, core::Completion<void> done) override;
+    void setDone(const std::string& id, bool done, const std::string& idempotencyKey,
+                 core::Completion<Task> completion) override;
 
     /// Proto -> Domain, exposed for the mapping test.
     [[nodiscard]] static Task toDomain(const tasksv1::Task& task);

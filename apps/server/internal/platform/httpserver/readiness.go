@@ -3,9 +3,17 @@ package httpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"slices"
+	"sync"
 	"sync/atomic"
 	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/metric"
+	"golang.org/x/sync/singleflight"
 )
 
 // Check is one named dependency probe used by /readyz.
@@ -27,10 +35,20 @@ type Check struct {
 type Readiness struct {
 	checks   []Check
 	draining atomic.Bool
+
+	// Probes arrive from every kubelet, load balancer and scrape: one evaluation
+	// is shared by concurrent callers (singleflight) and reused for
+	// readinessCacheTTL, so /readyz cannot multiply load on the database.
+	flight singleflight.Group
+	mu     sync.Mutex
+	last   readinessResult
+	lastAt time.Time
+	now    func() time.Time
+	ttl    time.Duration
 }
 
 func NewReadiness(checks ...Check) *Readiness {
-	return &Readiness{checks: checks}
+	return &Readiness{checks: checks, now: time.Now, ttl: readinessCacheTTL}
 }
 
 // SetDraining flips /readyz to 503 permanently; call at the start of shutdown.
@@ -89,7 +107,7 @@ func (r *Readiness) Handler() http.HandlerFunc {
 			return
 		}
 
-		failed, degraded := r.Evaluate(req.Context())
+		failed, degraded := r.evaluateShared(req.Context())
 		body := map[string]any{"status": "ok"}
 		switch {
 		case len(failed) > 0:
@@ -100,4 +118,75 @@ func (r *Readiness) Handler() http.HandlerFunc {
 		}
 		_ = json.NewEncoder(w).Encode(body)
 	}
+}
+
+// readinessCacheTTL is how long an evaluation is reused. Shorter than the
+// fastest probe period (kubelet readiness: 5 s) so state changes are seen
+// promptly, longer than a burst of concurrent probes.
+const readinessCacheTTL = 1500 * time.Millisecond
+
+type readinessResult struct{ failed, degraded []string }
+
+// evaluateShared returns a recent evaluation, running at most one at a time.
+// The probe runs on a context detached from any one caller, so a caller that
+// gives up cannot fail the evaluation everyone else is waiting for.
+func (r *Readiness) evaluateShared(ctx context.Context) (failed, degraded []string) {
+	if r == nil {
+		return nil, nil
+	}
+	r.mu.Lock()
+	if r.ttl > 0 && !r.lastAt.IsZero() && r.now().Sub(r.lastAt) < r.ttl {
+		res := r.last
+		r.mu.Unlock()
+		return res.failed, res.degraded
+	}
+	r.mu.Unlock()
+
+	v, _, _ := r.flight.Do("evaluate", func() (any, error) {
+		f, d := r.Evaluate(context.WithoutCancel(ctx))
+		res := readinessResult{failed: f, degraded: d}
+		r.mu.Lock()
+		r.last, r.lastAt = res, r.now()
+		r.mu.Unlock()
+		return res, nil
+	})
+	res, _ := v.(readinessResult)
+	return res.failed, res.degraded
+}
+
+// WithCacheTTL sets how long an evaluation is reused (0 = never; concurrent
+// probes are still coalesced). The default is readinessCacheTTL.
+func (r *Readiness) WithCacheTTL(d time.Duration) *Readiness {
+	r.ttl = d
+	return r
+}
+
+// RegisterMetrics exports aedst_readiness_degraded{check}: 1 while an optional
+// dependency (Valkey, the read replica) fails its probe, 0 while it passes. A
+// degraded instance still serves (that is the point of Optional), so without
+// this gauge a Valkey outage, which switches every rate limit off, is invisible
+// to alerting. The callback reads the shared evaluation, so a scrape costs no
+// extra probes.
+func (r *Readiness) RegisterMetrics() error {
+	meter := otel.Meter("github.com/aedst/server/internal/platform/httpserver")
+	_, err := meter.Int64ObservableGauge("aedst_readiness_degraded",
+		metric.WithDescription("1 while an optional dependency check fails (the instance serves in degraded mode), per check."),
+		metric.WithInt64Callback(func(ctx context.Context, o metric.Int64Observer) error {
+			_, degraded := r.evaluateShared(ctx)
+			for _, c := range r.checks {
+				if !c.Optional {
+					continue
+				}
+				v := int64(0)
+				if slices.Contains(degraded, c.Name) {
+					v = 1
+				}
+				o.Observe(v, metric.WithAttributes(attribute.String("check", c.Name)))
+			}
+			return nil
+		}))
+	if err != nil {
+		return fmt.Errorf("httpserver: register readiness metric: %w", err)
+	}
+	return nil
 }

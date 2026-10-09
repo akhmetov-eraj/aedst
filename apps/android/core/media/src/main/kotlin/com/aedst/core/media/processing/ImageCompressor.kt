@@ -6,6 +6,7 @@ import android.graphics.BitmapFactory
 import android.graphics.ImageDecoder
 import android.net.Uri
 import android.os.Build
+import androidx.core.graphics.scale
 import java.io.File
 import javax.inject.Inject
 import kotlin.math.max
@@ -72,11 +73,9 @@ class ImageCompressor @Inject constructor() {
         val longEdge = max(decoded.width, decoded.height)
         if (longEdge <= maxDimension) return decoded
         val scale = maxDimension.toFloat() / longEdge
-        val scaled = Bitmap.createScaledBitmap(
-            decoded,
+        val scaled = decoded.scale(
             (decoded.width * scale).roundToInt().coerceAtLeast(1),
             (decoded.height * scale).roundToInt().coerceAtLeast(1),
-            true,
         )
         if (scaled !== decoded) decoded.recycle()
         return scaled

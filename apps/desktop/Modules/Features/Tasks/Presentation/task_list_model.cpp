@@ -48,6 +48,8 @@ QVariant TaskListModel::data(const QModelIndex& index, int role) const {
         return toQDateTime(task.dueDate);
     case OverdueRole:
         return task.isOverdue(std::chrono::system_clock::now());
+    case PendingSyncRole:
+        return task.pendingSync;
     default:
         break;
     }
@@ -58,7 +60,7 @@ QHash<int, QByteArray> TaskListModel::roleNames() const {
     return {
         {TaskIdRole, "taskId"},     {TitleRole, "title"},     {DescriptionRole, "description"},
         {StatusRole, "status"},     {DoneRole, "done"},       {PriorityRole, "priority"},
-        {DueDateRole, "dueDate"},   {OverdueRole, "overdue"},
+        {DueDateRole, "dueDate"},   {OverdueRole, "overdue"},  {PendingSyncRole, "pendingSync"},
     };
 }
 

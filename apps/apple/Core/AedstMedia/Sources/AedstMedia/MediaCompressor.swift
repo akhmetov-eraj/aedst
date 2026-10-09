@@ -82,22 +82,7 @@ public enum MediaCompressor {
         let output = temporaryURL(extension: "mp4")
         session.shouldOptimizeForNetworkUse = true
 
-        if #available(iOS 18, macOS 15, *) {
-            try await session.export(to: output, as: .mp4)
-        } else {
-            session.outputURL = output
-            session.outputFileType = .mp4
-            let box = ExportSessionBox(session)
-            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                box.session.exportAsynchronously {
-                    if box.session.status == .completed {
-                        continuation.resume()
-                    } else {
-                        continuation.resume(throwing: box.session.error ?? AedstError.storage(reason: "Video export failed"))
-                    }
-                }
-            }
-        }
+        try await session.export(to: output, as: .mp4)
         return PreparedFile(url: output, contentType: "video/mp4", filename: renamed(source, extension: "mp4"))
     }
 
@@ -116,17 +101,5 @@ public enum MediaCompressor {
     static func renamed(_ source: URL, extension pathExtension: String) -> String {
         let base = source.deletingPathExtension().lastPathComponent
         return (base.isEmpty ? "upload" : base) + "." + pathExtension
-    }
-}
-
-/// iOS 15–17 / macOS 12–14 only: `exportAsynchronously`'s completion handler is
-/// `@Sendable`, and `AVAssetExportSession` is not declared `Sendable` on those
-/// SDK paths. The session is only read (status/error) after export finished,
-/// which AVFoundation documents as safe.
-private final class ExportSessionBox: @unchecked Sendable {
-    let session: AVAssetExportSession
-
-    init(_ session: AVAssetExportSession) {
-        self.session = session
     }
 }

@@ -1,0 +1,13 @@
+#pragma once
+
+#include "Domain/{{name}}_repository.hpp"
+
+namespace aedst::feature::{{name}} {
+
+/// Placeholder repository that returns no entries.
+class InMemory{{Name}}Repository final : public {{Name}}Repository {
+public:
+    void list(core::Completion<std::vector<{{Name}}Entry>> done) override;
+};
+
+} // namespace aedst::feature::{{name}}

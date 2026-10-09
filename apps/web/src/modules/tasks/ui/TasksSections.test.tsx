@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react";
 import { NextIntlClientProvider } from "next-intl";
 import { NuqsTestingAdapter } from "nuqs/adapters/testing";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { loadTaskSearchParams } from "@/modules/tasks/lib/task-search-params";
 import {
@@ -14,23 +14,15 @@ import {
 } from "@/modules/tasks/ui/TasksSections";
 import { TasksService } from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
 import { makeTask } from "@/test/fixtures";
-import { fakeJwt } from "@/test/jwt";
-import { rpcHandler, TEST_API_ORIGIN } from "@/test/mocks/connect";
-import { server } from "@/test/mocks/server";
+import { backend, rpc } from "@/test/mocks/transport";
 import { messages, renderWithProviders } from "@/test/render";
 
-const jar = new Map<string, string>();
-
-vi.mock("next/headers", () => ({
-  cookies: async () => ({
-    get: (name: string) =>
-      jar.has(name) ? { name, value: jar.get(name) } : undefined,
-  }),
-}));
-
-beforeEach(() => {
-  jar.clear();
-  jar.set("aedst_session", fakeJwt({ expiresInSeconds: 600 }));
+// The server prefetch (createRpcPrefetcher -> getServerTransport) is pointed at
+// the in-memory Connect backend; the bearer/cookie handling of the real server
+// transport is covered by prefetch.test.ts and the BFF route tests.
+vi.mock("@/shared/api/connect/server", async () => {
+  const { backend } = await import("@/test/mocks/transport");
+  return { getServerTransport: () => backend.transport };
 });
 
 /**
@@ -41,12 +33,8 @@ beforeEach(() => {
  */
 describe("server sections", () => {
   it("DashboardStatsSection ships prefetched stats into the client component", async () => {
-    server.use(
-      rpcHandler(
-        TasksService.method.getTaskStats,
-        () => ({ total: 4, todo: 4 }),
-        TEST_API_ORIGIN,
-      ),
+    backend.use(
+      rpc(TasksService.method.getTaskStats, () => ({ total: 4, todo: 4 })),
     );
 
     const tree = await DashboardStatsSection();
@@ -60,15 +48,11 @@ describe("server sections", () => {
 
   it("TaskListSection prefetches the page the URL asks for", async () => {
     let seen: { pageToken?: string; search?: string } = {};
-    server.use(
-      rpcHandler(
-        TasksService.method.listTasks,
-        (input) => {
-          seen = input;
-          return { tasks: [makeTask({ title: "From the server" })] };
-        },
-        TEST_API_ORIGIN,
-      ),
+    backend.use(
+      rpc(TasksService.method.listTasks, (input) => {
+        seen = input;
+        return { tasks: [makeTask({ title: "From the server" })] };
+      }),
     );
 
     const tree = await TaskListSection({
@@ -85,13 +69,7 @@ describe("server sections", () => {
 
   it("TaskDetailsSection prefetches one task", async () => {
     const task = makeTask({ title: "Detail from server" });
-    server.use(
-      rpcHandler(
-        TasksService.method.getTask,
-        () => ({ task }),
-        TEST_API_ORIGIN,
-      ),
-    );
+    backend.use(rpc(TasksService.method.getTask, () => ({ task })));
 
     const tree = await TaskDetailsSection({ taskId: String(task.id) });
     renderWithProviders(tree, { staleTime: Number.POSITIVE_INFINITY });
@@ -104,14 +82,10 @@ describe("server sections", () => {
   it("still renders when the server prefetch fails — the client takes over", async () => {
     // No handler: the prefetch's request fails (unhandled → network error),
     // yet the section must not throw and the client fetches on its own.
-    server.use(
-      rpcHandler(
-        TasksService.method.getTaskStats,
-        () => {
-          throw new Error("boom");
-        },
-        TEST_API_ORIGIN,
-      ),
+    backend.use(
+      rpc(TasksService.method.getTaskStats, () => {
+        throw new Error("boom");
+      }),
     );
 
     await expect(DashboardStatsSection()).resolves.toBeTruthy();

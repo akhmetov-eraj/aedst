@@ -1,99 +1,146 @@
+---
+title: "UI Kit — cross-platform component parity"
+description: "AEDST ships one design system with four platform kits: Web (shadcn/ui, apps/web/src/shared/ui/), Android (Jetpack Compose, apps/android/core/ui/), Apple..."
+---
+
 # UI Kit — cross-platform component parity
 
-AEDST ships one design system with four renderings: **Web** (shadcn/ui,
+AEDST ships one design system with four platform kits: **Web** (shadcn/ui,
 `apps/web/src/shared/ui/`), **Android** (Jetpack Compose,
 `apps/android/core/ui/`), **Apple** (SwiftUI,
 `apps/apple/Core/AedstDesignSystem/`), and **Desktop** (Qt Quick/QML,
-`apps/desktop/Modules/Core/DesignSystem/`). Web is the source of truth;
-each native platform's README documents its own adaptations in full detail —
-this page is the cross-platform index, not a duplicate of any of them.
+`apps/desktop/Modules/Core/DesignSystem/`). A fifth, TV-only surface exists on
+Android: `apps/android/core/ui-tv/` (`androidx.tv:tv-material`-based), used
+solely by the `:app-tv` module — see
+[Android architecture](/android/architecture#phone-and-tv-a-second-thin-app-target)
+for why that is a Gradle module boundary and not a fork of the Android column.
 
-A separate TV-specific surface exists on Android only:
-`apps/android/core/ui-tv/` (`androidx.tv:tv-material`-based), used solely by
-the `:app-tv` module — see [architecture-android.md](/architecture-android#phone-and-tv-a-second-thin-app-target)
-for why that's a Gradle module boundary, not a fork of this table's Android
-column.
+The **tokens** (colors, spacing, radius, elevation, typography, motion) are
+shared and **generated**; the **components** are hand-written per platform.
+Web components are the reference for behavior and naming, but web is **not**
+the source of truth for token values: those live in `packages/design-tokens`.
 
-## Tokens
+Each platform README documents its own adaptations in full detail; this page is
+the cross-platform index and does not duplicate them.
 
-| Token category | Web | Android | Apple | Desktop |
+## Tokens (generated, never hand-edited)
+
+Source of truth: DTCG JSON in `packages/design-tokens/tokens/` (`color/light.json`,
+`color/dark.json`, `spacing.json`, `radius.json`, `elevation.json`,
+`typography.json`, `motion.json`). [Style Dictionary](https://styledictionary.com/)
+(`pnpm build` in `packages/design-tokens`, or `task tokens:check` for the drift
+check) writes committed files into each platform. Every generated file starts
+with `GENERATED — do not edit; edit packages/design-tokens/tokens`.
+
+| Platform | Generated files | Hand-written layer that consumes them |
+|---|---|---|
+| Web | `apps/web/src/shared/ui/tokens.css` (`:root` light + scales, `.dark`) | `src/app/styles/globals.css` (`@theme inline` maps to Tailwind) |
+| Android | `core/ui/.../theme/Aedst{Light,Dark}Palette.kt`, `AedstSpacing.kt`, `AedstRadius.kt`, `AedstElevation.kt`, `AedstTypeScale.kt`, `AedstMotion.kt` | `Theme.kt`, `ExtendedColors.kt`, `Type.kt` |
+| Apple | `AedstDesignSystem/Aedst{Light,Dark}Palette.swift`, `AedstSpacing.swift`, `AedstRadius.swift`, `AedstElevation.swift`, `AedstTypeScale.swift`, `AedstMotion.swift` | `AedstColor.swift` (adaptive light/dark pairing) |
+| Desktop | `qml/AedstDesignSystem/AedstTokens.qml` (singleton) | `Theme.qml` (selects light/dark) |
+
+Semantic status colors are tokens too: `success`, `warning`, `info`,
+`destructive`, each with a `*Foreground` pair, in light and dark. Components must
+use them instead of literals; `task check:colors` enforces this (see
+[Platform status](/status#repo-wide-policy-checks)). To add a token see
+`packages/design-tokens/README.md`.
+
+## Component parity matrix
+
+Legend: **yes** = implemented (native name in the cell when it differs from
+`Aedst<Component>`); **removed** = intentionally not part of that kit (being
+pruned from the native kits; see the note below); **n/a** = no equivalent by
+design; **web-only** = exists only on web.
+
+How to update: edit the one row, keep the legend words, and change the "Last
+checked" line. When a component is added or removed in a platform kit, update
+the row in the same change; `apps/*/README` stays the detailed record.
+
+Last checked: 2026-10-08, from the pruning work reports (Android 21 and Apple 30 components removed), **not** re-listed from the file trees; re-run the check once the native kits compile.
+
+| Component (web file) | Web | Android | Apple | Desktop |
 |---|---|---|---|---|
-| Color (OKLCH source) | `src/app/styles/globals.css` | `core/ui/theme/Color.kt` | `AedstColor.swift` | `ThemeController`/`Theme.qml` (hand-converted to sRGB hex) |
-| Spacing | Tailwind scale | `core/ui/theme/Spacing.kt` (`AedstSpacing`) | `AedstSpacing.swift` (4pt grid) | `Theme.qml` (`spacingXs`..`spacing2xl`) |
-| Radius | `--radius-*` | `core/ui/theme/Radius.kt` (`AedstRadius`) | `AedstRadius.swift` | `Theme.qml` (`radiusSm`..`radius2xl`) |
-| Typography | Tailwind type scale | `core/ui/theme/Type.kt` (`AedstTypography`) | `AedstTypography.swift` | `Theme.qml` font roles |
-| Elevation | shadow utilities | `core/ui/theme/Elevation.kt` (`AedstElevation`) | native SwiftUI shadow modifiers | QML `MultiEffect`/native elevation |
+| Accordion | yes | removed | removed | yes |
+| Alert | yes | yes | yes | yes |
+| AlertDialog | yes | yes | yes (`AedstAlertDialogModifier`) | yes |
+| Avatar | yes | yes (image loading not wired) | yes | yes |
+| Badge | yes | yes | yes | yes |
+| Breadcrumb | yes | removed | removed | yes |
+| Button | yes | yes | yes | yes |
+| Calendar | yes | yes (`AedstDatePicker`) | removed | yes (`AedstCalendar`) |
+| Card | yes | yes | yes | yes |
+| Carousel | yes | removed | removed | yes |
+| Chart | yes (Recharts) | removed | removed | yes |
+| Checkbox | yes | yes | yes | yes (`AedstCheckBox`) |
+| Collapsible | yes | removed | removed | yes |
+| Combobox | yes | removed | removed | yes (`AedstSearchableComboBox`) |
+| Command (palette) | yes | removed | removed | yes (`AedstSearchableList`) |
+| ContextMenu | yes | removed | removed | yes |
+| Dialog | yes | yes | removed | yes |
+| Drawer / Sheet | yes | yes (`AedstBottomSheet`) | yes (`AedstSheet`) | yes (`AedstDrawer`) |
+| DropdownMenu | yes | yes | removed | yes |
+| HoverCard | yes | removed | removed | yes |
+| InputOTP | yes | removed | removed | yes (`AedstOtpInput`) |
+| Label | yes | yes | yes | yes |
+| Menubar | yes | removed (no menubar on Android) | removed | yes |
+| NavigationMenu | yes | `AedstTopAppBar` (bottom bar removed; the app uses the platform navigation suite) | removed (`AedstTabBar` and `AedstTabs` pruned; use native `TabView`/`NavigationStack`) | yes (`AedstTabBar`) |
+| Pagination | yes | removed | removed | yes |
+| Popover | yes | removed | removed | yes |
+| Progress | yes | yes (`AedstProgressIndicator`) | yes (`AedstProgressView`) | yes (`AedstProgressBar`, `AedstCircularProgress`) |
+| RadioGroup | yes | yes | yes | yes |
+| ScrollArea | yes | removed | removed | yes |
+| Select | yes | yes | removed | yes (`AedstComboBox`) |
+| Separator | yes | yes (`AedstDivider`) | yes (`AedstSeparator`) | yes (`AedstSeparator`) |
+| Skeleton | yes | yes | yes | yes |
+| Slider | yes | removed | removed | yes |
+| Switch | yes | yes | yes | yes |
+| Table | yes | removed | removed | yes (`AedstTableView`) |
+| Tabs | yes | yes | removed | covered by `AedstTabBar` |
+| Textarea | yes | yes (`AedstTextArea`) | removed | yes (`AedstTextArea`) |
+| Toast (Sonner) | yes | yes (`AedstSnackbar`) | yes (`AedstToast`) | yes (`AedstToast`) |
+| Toggle / ToggleGroup | yes | removed | removed | yes |
+| Tooltip | yes | removed | removed | yes (`AedstToolTip`) |
+| Input / TextField | yes | yes (`AedstTextField`, password variant) | yes | yes |
+| IconButton (`button.tsx` `size="icon"`) | n/a | yes | yes | yes |
+| AspectRatio | yes | removed | removed | yes |
 
-All four derive from the same web `globals.css` palette; Desktop's mapping
-is the one manual step (no OKLCH parser in Qt — see its README for the
-conversion table) and is the first place to check if a color looks off after
-a web palette change.
+Notes:
 
-## Component parity
-
-| Component (web name) | Web | Android | Apple | Desktop |
-|---|---|---|---|---|
-| Accordion | `accordion.tsx` | `AedstAccordion` | `AedstAccordion` | `AedstAccordion.qml` (stack of `AedstCollapsible`) |
-| Alert | `alert.tsx` | `AedstAlert` | `AedstAlert` | `AedstAlert.qml` |
-| AlertDialog | `alert-dialog.tsx` | `AedstAlertDialog` | `AedstAlertDialogModifier` (native `.alert()`) | `AedstAlertDialog.qml` |
-| Avatar | `avatar.tsx` | `AedstAvatar` (image loading not wired — no Coil dep yet) | `AedstAvatar` | `AedstAvatar.qml` (circular mask via `MultiEffect`) |
-| Badge | `badge.tsx` | `AedstBadge` | `AedstBadge` | `AedstBadge.qml` |
-| Breadcrumb | `breadcrumb.tsx` | `AedstBreadcrumb` | `AedstBreadcrumb` | `AedstBreadcrumb.qml` |
-| Button | `button.tsx` | `AedstButton` | `AedstButton` | `AedstButton.qml` |
-| Calendar | `calendar.tsx` | `AedstDatePicker` | `AedstDatePicker` | `AedstCalendar.qml` (hand-rolled month grid; QQC2's `Calendar` was removed) |
-| Card | `card.tsx` | `AedstCard` (+slots) | `AedstCard` | `AedstCard.qml` |
-| Carousel | `carousel.tsx` | `AedstCarousel` | `AedstCarousel` | `AedstCarousel.qml` (`T.SwipeView`-based) |
-| Chart | `chart.tsx` (Recharts) | `AedstChart` (Canvas-drawn bar+line) | `AedstChart` (Swift Charts) | `AedstChart.qml` (Canvas-drawn, single-series only) |
-| Checkbox | `checkbox.tsx` | `AedstCheckbox` | `AedstCheckbox` (hand-built, no native iOS control) | `AedstCheckBox.qml` (tri-state) |
-| Collapsible | `collapsible.tsx` | `AedstExpandableSection` | `AedstCollapsible` | `AedstCollapsible.qml` |
-| Combobox | `combobox.tsx` | `AedstSearchableDropdown` | `AedstCombobox` | `AedstSearchableComboBox.qml` |
-| Command | `command.tsx` | `AedstCommandPalette` | `AedstCommandPalette` (`.searchable` List in a sheet) | `AedstSearchableList.qml` |
-| ContextMenu | `context-menu.tsx` | `AedstContextMenu` | `AedstContextMenuModifier` | `AedstContextMenu.qml` (native right-click `Menu`) |
-| Dialog | `dialog.tsx` | `AedstDialog` | `AedstDialogModifier` (custom centered card) | `AedstDialog.qml` |
-| Drawer | `drawer.tsx` | `AedstDrawer` (side, `ModalNavigationDrawer`) | `AedstDrawerModifier` (custom side panel) | `AedstDrawer.qml` |
-| DropdownMenu | `dropdown-menu.tsx` | `AedstDropdownMenu` | `AedstDropdownMenu` | `AedstDropdownMenu.qml` |
-| HoverCard | `hover-card.tsx` | `AedstLongPressPreview` (no hover on touch) | `AedstHoverCardModifier` (real hover on macOS, long-press elsewhere) | `AedstHoverCard.qml` (ToolTip-based, real hover) |
-| InputOTP | `input-otp.tsx` | `AedstOtpInput` | `AedstOTPInput` | `AedstOtpInput.qml` |
-| Label | `label.tsx` | `AedstLabel` | `AedstLabel` | `AedstLabel.qml` |
-| Menubar | `menubar.tsx` | **skipped** (no menubar paradigm on Android) | `AedstMenuBar` (macOS only; inline `Menu` elsewhere) | `AedstMenuBar.qml` |
-| NavigationMenu | `navigation-menu.tsx` | split: `AedstTopAppBar` + `AedstBottomNavigationBar` | split: `AedstTabBar` (bottom nav) + `AedstTabs` (in-page) | `AedstTabBar.qml` |
-| Pagination | `pagination.tsx` | `AedstPagination` | `AedstPagination` | `AedstPagination.qml` |
-| Popover | `popover.tsx` | `AedstPopover` | `AedstPopoverModifier` | `AedstPopover.qml` |
-| Progress | `progress.tsx` | `AedstProgressIndicator` (linear+circular) | `AedstProgressView` | `AedstProgressBar.qml` / `AedstCircularProgress.qml` |
-| RadioGroup | `radio-group.tsx` | `AedstRadioGroup` | `AedstRadioGroup` (hand-built) | `AedstRadioButton.qml` / `AedstRadioGroup.qml` |
-| ScrollArea | `scroll-area.tsx` | `AedstScrollArea` (+Horizontal) | `AedstScrollArea` | `AedstScrollArea.qml` |
-| Select | `select.tsx` | `AedstSelect` | `AedstSelect` | `AedstComboBox.qml` |
-| Separator | `separator.tsx` | `AedstDivider` | `AedstSeparator` | `AedstSeparator.qml` |
-| Sheet | `sheet.tsx` | `AedstBottomSheet` (`ModalBottomSheet`) | native `.sheet()` (`AedstSheetModifier`) | mapped to `AedstDrawer.qml` |
-| Skeleton | `skeleton.tsx` | `AedstSkeleton` (+Text) | `AedstSkeleton` (hand-built shimmer) | `AedstSkeleton.qml` |
-| Slider | `slider.tsx` | `AedstSlider` (+Range) | `AedstSlider` | `AedstSlider.qml` |
-| Switch | `switch.tsx` | `AedstSwitch` | `AedstSwitch` | `AedstSwitch.qml` |
-| Table | `table.tsx` | `AedstDataTable` | `AedstTable` (row-based `VStack`, cross-platform) | `AedstTableView.qml` |
-| Tabs | `tabs.tsx` | `AedstTabs` | `AedstTabs` | covered by `AedstTabBar.qml` |
-| Textarea | `textarea.tsx` | `AedstTextArea` | `AedstTextEditor` | `AedstTextArea.qml` |
-| Toast | (Sonner) | `AedstSnackbar` | hand-built `AedstToastModifier` | `AedstToast.qml` (single instance, no global queue yet) |
-| Toggle / ToggleGroup | `toggle(-group).tsx` | `AedstToggleButton` / `AedstToggleGroup` | `AedstToggleButton` / `AedstToggleGroup` | `AedstToggleButton.qml` / `AedstToggleGroup.qml` |
-| Tooltip | `tooltip.tsx` | `AedstTooltip` | `AedstTooltipModifier` | `AedstToolTip.qml` |
-| Input / TextField | `input.tsx` | `AedstTextField` (+`AedstPasswordTextField`) | `AedstTextField` (rewritten) | `AedstTextField.qml` (rewritten) |
-| IconButton (no direct web file — `button.tsx` `size="icon"`) | — | `AedstIconButton` | `AedstIconButton` | `AedstIconButton.qml` |
-| AspectRatio | `aspect-ratio.tsx` | `AspectRatioBox` | `AedstAspectRatioModifier` | `AedstAspectRatio.qml` |
-
-Not every web primitive has a native equivalent and vice versa (e.g. web's
-`sidebar.tsx`/`resizable.tsx`/`command`-adjacent pieces map onto the rows
-above or are covered by platform-native navigation chrome instead of a 1:1
-port) — when in doubt, the three platform READMEs linked below are the
-authoritative, fully-detailed source; this table exists so a change to one
-platform's component surface can be checked for parity across the other
-three at a glance.
+- **Pruned in this round** (unused native components removed; none compiled):
+  Android `core/ui` lost 21 (Accordion, ExpandableSection, BottomNavigationBar,
+  Breadcrumb, Carousel, Chart, CommandPalette, ContextMenu, DataTable, Drawer,
+  LongPressPreview, Popover, OtpInput, Pagination, ScrollArea,
+  SearchableDropdown, Slider, ToggleButton, ToggleGroup, Tooltip,
+  AspectRatioBox). Apple `AedstDesignSystem` lost 30 and keeps 18 (Accordion,
+  AspectRatio, Breadcrumb, Carousel, Chart, Collapsible, Combobox,
+  CommandPalette, ContextMenu, DatePicker, Dialog, Drawer, DropdownMenu,
+  HoverCard, MenuBar, NavigationContainer, OTPInput, Pagination, Popover,
+  PopoverAdaptationModifier, ScrollArea, Select, Slider, TabBar, Table, Tabs,
+  TextEditor, ToggleButton, ToggleGroup, Tooltip). The matrix cells are updated
+  from those reports. Desktop is untouched; its kit pruning is still open.
+- **Open owner question**: the Apple pruning is broader than the five
+  components requested (Carousel, MenuBar, HoverCard, CommandPalette, Chart)
+  and removes basics such as Dialog, Select and Tabs. The files are restorable
+  from git HEAD; confirm or restore (also tracked in [Platform status](/status)).
+- Web has a Storybook 10 story for every `src/shared/ui` component (62), with
+  an a11y gate; see [decisions](/decisions/web).
+- Native-only helpers (no web file): Android `AedstOfflineBanner`,
+  `LoadingIndicator`, `ErrorMessages`; Apple `AedstErrorPresenter` (`AedstNavigationContainer` was pruned),
+  Desktop `AedstOfflineBanner`, `AedstStateView`.
+- Web-only primitives with no native counterpart: `attachment`, `bubble`,
+  `button-group`, `direction`, `empty`, `field`, `input-group`, `item`, `kbd`,
+  `marker`, `message`, `message-scroller`, `mode-toggle`, `native-select`,
+  `questionnaire`, `resizable`, `sidebar`, `spinner` (native platforms use
+  platform navigation chrome and system controls instead).
 
 ## Full detail per platform
 
-- [`apps/android/core/ui/README.md`](../../apps/android/core/ui/README.md) — Compose components, adaptation rationale, verification status.
-- [`apps/android/core/ui-tv/README.md`](../../apps/android/core/ui-tv/README.md) — TV-only Compose surface (`:core:ui-tv`).
-- [`apps/apple/Core/AedstDesignSystem/README.md`](../../apps/apple/Core/AedstDesignSystem/README.md) — SwiftUI components, HIG adaptation rationale.
-- [`apps/desktop/Modules/Core/DesignSystem/README.md`](../../apps/desktop/Modules/Core/DesignSystem/README.md) — QML components, Qt Quick Controls adaptation rationale.
+- [`apps/android/core/ui/README.md`](../../apps/android/core/ui/README.md): Compose components, adaptation rationale, verification status.
+- [`apps/android/core/ui-tv/README.md`](../../apps/android/core/ui-tv/README.md): TV-only Compose surface (`:core:ui-tv`).
+- [`apps/apple/Core/AedstDesignSystem/README.md`](../../apps/apple/Core/AedstDesignSystem/README.md): SwiftUI components, HIG adaptation rationale.
+- [`apps/desktop/Modules/Core/DesignSystem/README.md`](../../apps/desktop/Modules/Core/DesignSystem/README.md): QML components, Qt Quick Controls adaptation rationale.
 
-All three native READMEs currently carry the same caveat: no Gradle/Xcode/Qt
-toolchain was available when they were written, so components are
-structurally reviewed but not yet compiler-verified — run the platform's
-real build before treating any of them as final.
+Verification: none of the four native READMEs can promise a compiled kit. The
+Android, Apple and Desktop components were written without a Gradle/Xcode/Qt
+toolchain and are structurally reviewed only; see
+[Platform status](/status) for what has actually been run.

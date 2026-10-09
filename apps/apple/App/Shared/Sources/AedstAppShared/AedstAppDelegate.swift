@@ -1,4 +1,5 @@
 import AedstAnalytics
+import AedstCore
 import AedstMedia
 import Foundation
 import Notifications
@@ -17,10 +18,19 @@ public final class AedstAppDelegate: NSObject, UIApplicationDelegate {
     public private(set) lazy var dependencies = AppDependencies(
         deviceName: UIDevice.current.name,
         registerForRemoteNotifications: { UIApplication.shared.registerForRemoteNotifications() },
-        // `applicationIconBadgeNumber` is deprecated on iOS 17 in favour of
-        // `UNUserNotificationCenter.setBadgeCount` (iOS 16+); keep the one call
-        // that works across the whole iOS 15+ range.
-        setAppBadge: { UIApplication.shared.applicationIconBadgeNumber = $0 }
+        // `applicationIconBadgeNumber` is deprecated since iOS 17 in favour of
+        // `UNUserNotificationCenter.setBadgeCount` (async throws).
+        setAppBadge: { count in
+            Task {
+                do {
+                    try await UNUserNotificationCenter.current().setBadgeCount(count)
+                } catch {
+                    AedstLogger(category: "badge").error("Could not set the app badge", error: error)
+                }
+            }
+        },
+        // The system wakes the app later to drain queued writes (BGAppRefreshTask).
+        scheduleOutboxSync: { OutboxBackgroundTask.schedule(after: $0) }
     )
 
     private var backgroundSessionCompletion: (() -> Void)?
@@ -30,6 +40,7 @@ public final class AedstAppDelegate: NSObject, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         UNUserNotificationCenter.current().delegate = self
+        OutboxBackgroundTask.register(coordinator: dependencies.outbox.coordinator)
         dependencies.uploader.setEventsFinishedHandler { [weak self] in
             Task { @MainActor in self?.finishBackgroundEvents() }
         }
@@ -79,6 +90,12 @@ public final class AedstAppDelegate: NSObject, NSApplicationDelegate {
         UNUserNotificationCenter.current().delegate = self
     }
 
+    /// One window owns the event streams of `AppDependencies`; once it closes they have ended, so quit instead of
+    /// leaving a windowless process that a reopened window could not reattach to.
+    public func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
+    }
+
     public func application(_ application: NSApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         Task { await dependencies.push.didRegister(deviceToken: deviceToken) }
     }
@@ -114,7 +131,7 @@ extension AedstAppDelegate: UNUserNotificationCenterDelegate {
         completionHandler()
         Task { @MainActor [weak self] in
             guard let self else { return }
-            self.dependencies.analytics.track(.init(name: "notification_opened", parameters: ["source": "push"]))
+            self.dependencies.analytics.track(.init(name: "notification_opened", parameters: ["via": "push"]))
             if let link { self.dependencies.linkInbox.open(link) }
         }
     }

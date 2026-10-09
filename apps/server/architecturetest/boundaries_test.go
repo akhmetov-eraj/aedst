@@ -1,6 +1,6 @@
 // Package architecturetest statically enforces the module boundary rules
-// documented in docs/architecture.md and docs/decisions/0006-module-boundaries.md.
-// A violation here means a module extraction (docs/architecture.md#extraction-path)
+// documented in docs/content/server/architecture.md and docs/content/decisions/0006-module-boundaries.md.
+// A violation here means a module extraction (docs/content/server/architecture.md#extraction-path)
 // would no longer be a mechanical move — this test exists to keep that
 // property true, so it must run in CI on every change.
 package architecturetest
@@ -18,27 +18,19 @@ import (
 const (
 	modulePrefix   = "github.com/aedst/server/internal/modules/"
 	platformPrefix = "github.com/aedst/server/internal/platform/"
+	cmdPrefix      = "github.com/aedst/server/cmd/"
 )
 
 func TestModuleBoundaries(t *testing.T) {
 	pkgs := loadPackages(t)
 
 	for _, pkg := range pkgs {
-		ownerModule := moduleOf(pkg.PkgPath)
-
 		for _, imp := range pkg.Imports {
-			importedModule := moduleOf(imp.PkgPath)
-			if importedModule == "" || importedModule == ownerModule {
-				continue // not a module import, or importing its own module: always fine.
+			if !crossModuleViolation(pkg.PkgPath, imp.PkgPath) {
+				continue // not a module import, own module, the api boundary, or cmd/** -> <module>/module.
 			}
-
-			layer := layerOf(imp.PkgPath, importedModule)
-			if layer == "api" || layer == "" {
-				continue // the public boundary (or the module root) is always importable.
-			}
-
 			t.Errorf(
-				"boundary violation: %s imports %s directly — modules may only depend on another module's api/ package (see docs/decisions/0006-module-boundaries.md)",
+				"boundary violation: %s imports %s directly — modules may only depend on another module's api/ package (cmd/** may also import <module>/module; see docs/content/decisions/0006-module-boundaries.md)",
 				pkg.PkgPath, imp.PkgPath,
 			)
 		}
@@ -46,7 +38,7 @@ func TestModuleBoundaries(t *testing.T) {
 }
 
 // TestDomainDoesNotImportInfrastructure enforces layering within a module:
-// domain must never depend on infrastructure (see docs/modules.md "Module
+// domain must never depend on infrastructure (see docs/content/server/modules.md "Module
 // internal structure").
 func TestDomainDoesNotImportInfrastructure(t *testing.T) {
 	pkgs := loadPackages(t)
@@ -69,17 +61,17 @@ func TestDomainDoesNotImportInfrastructure(t *testing.T) {
 // (see docs/content/library-first.md). Importing one is a build-breaking
 // violation, not a style nit.
 var forbiddenDependencies = map[string]string{
-	"github.com/nats-io/":                   "no external broker until an in-process outbox+River bus is proven insufficient — deliver events via internal/platform/outbox and messaging.Publisher",
-	"github.com/go-redsync/redsync":         "no distributed locks in Redis/Valkey — use PostgreSQL advisory locks via internal/platform/lock",
-	"github.com/bsm/redislock":              "no distributed locks in Redis/Valkey — use PostgreSQL advisory locks via internal/platform/lock",
-	"github.com/golang-jwt/jwt":             "JWT/JOSE goes through lestrrat-go/jwx only (internal/platform/auth)",
-	"github.com/dgrijalva/jwt-go":           "JWT/JOSE goes through lestrrat-go/jwx only (internal/platform/auth)",
-	"github.com/gin-gonic/gin":              "router is Chi (internal/platform/httpserver)",
-	"github.com/labstack/echo":              "router is Chi (internal/platform/httpserver)",
-	"gorm.io/gorm":                          "no ORM — SQL goes through sqlc",
-	"github.com/jmoiron/sqlx":               "no ORM/query-builder — SQL goes through sqlc",
-	"github.com/SherClockHolmes/webpush-go": "pulls golang-jwt (a second JOSE library) — Web Push lives in internal/platform/push (jwx + stdlib crypto)",
-	"github.com/minio/minio-go":             "object storage goes through internal/platform/storage (aws-sdk-go-v2 S3 client, s3|minio|r2 presets)",
+	"github.com/nats-io/":           "no external broker until a consumer becomes a separate service (ADR-0014) — events go through internal/platform/events (River InsertTx); events.Publisher is the seam for a future broker adapter",
+	"github.com/go-redsync/redsync": "no distributed locks in Redis/Valkey — use PostgreSQL advisory locks via internal/platform/lock",
+	"github.com/bsm/redislock":      "no distributed locks in Redis/Valkey — use PostgreSQL advisory locks via internal/platform/lock",
+	"github.com/golang-jwt/jwt":     "JWT/JOSE goes through lestrrat-go/jwx only (internal/platform/auth)",
+	"github.com/dgrijalva/jwt-go":   "JWT/JOSE goes through lestrrat-go/jwx only (internal/platform/auth)",
+	"github.com/gin-gonic/gin":      "router is net/http ServeMux (internal/platform/httpserver)",
+	"github.com/labstack/echo":      "router is net/http ServeMux (internal/platform/httpserver)",
+	"github.com/go-chi/":            "router is net/http ServeMux (owner decision); client IP via internal/platform/clientip (realclientip-go), CORS via rs/cors",
+	"gorm.io/gorm":                  "no ORM — SQL goes through sqlc",
+	"github.com/jmoiron/sqlx":       "no ORM/query-builder — SQL goes through sqlc",
+	"github.com/minio/minio-go":     "object storage goes through internal/platform/storage (aws-sdk-go-v2 S3 client, s3|minio|r2 presets)",
 }
 
 func TestNoForbiddenDependencies(t *testing.T) {
@@ -118,7 +110,7 @@ func loadPackages(t *testing.T) []*packages.Package {
 	t.Helper()
 
 	cfg := &packages.Config{Mode: packages.NeedName | packages.NeedImports | packages.NeedDeps}
-	pkgs, err := packages.Load(cfg, "../internal/...")
+	pkgs, err := packages.Load(cfg, "../internal/...", "../cmd/...")
 	if err != nil {
 		t.Fatalf("load packages: %v", err)
 	}
@@ -184,6 +176,9 @@ func TestEveryModuleHasAPIAndMigrations(t *testing.T) {
 		if info, err := os.Stat(filepath.Join("../internal/modules", name, "api")); err != nil || !info.IsDir() {
 			t.Errorf("module %q has no api/ package", name)
 		}
+		if statelessModules[name] {
+			continue
+		}
 		if info, err := os.Stat(filepath.Join("../migrations", name)); err != nil || !info.IsDir() {
 			t.Errorf("module %q has no migrations/%s directory", name, name)
 		}
@@ -191,13 +186,16 @@ func TestEveryModuleHasAPIAndMigrations(t *testing.T) {
 }
 
 // TestOnlyPlatformPackagesImportProviderSDKs keeps vendor SDKs behind their
-// platform port: the AWS SDK only in platform/storage, the push transports
-// (oauth2) only in platform/push. Modules depend on the ports.
+// platform port: the AWS SDK only in platform/storage, the push libraries
+// (webpush-go, Firebase Admin, apns2) only in platform/push. Modules depend
+// on the ports.
 func TestOnlyPlatformPackagesImportProviderSDKs(t *testing.T) {
 	owners := map[string]string{
-		"github.com/aws/aws-sdk-go-v2": platformPrefix + "storage",
-		"github.com/aws/smithy-go":     platformPrefix + "storage",
-		"golang.org/x/oauth2":          platformPrefix + "push",
+		"github.com/aws/aws-sdk-go-v2":          platformPrefix + "storage",
+		"github.com/aws/smithy-go":              platformPrefix + "storage",
+		"github.com/SherClockHolmes/webpush-go": platformPrefix + "push",
+		"firebase.google.com/go":                platformPrefix + "push",
+		"github.com/sideshow/apns2":             platformPrefix + "push",
 	}
 	for _, pkg := range loadPackages(t) {
 		for path := range pkg.Imports {
@@ -205,6 +203,30 @@ func TestOnlyPlatformPackagesImportProviderSDKs(t *testing.T) {
 				if strings.HasPrefix(path, prefix) && !strings.HasPrefix(pkg.PkgPath, owner) {
 					t.Errorf("boundary violation: %s imports %s directly — only %s may", pkg.PkgPath, path, owner)
 				}
+			}
+		}
+	}
+}
+
+// TestDomainAndApplicationDoNotImportEvents keeps integration-event plumbing in
+// the infrastructure layer (ADR-0014): a module's domain and application code
+// state business rules and never touch the River-backed event publisher or
+// registry, so they stay testable without a database and portable to a
+// broker. Producers publish from infrastructure/postgres (inside the
+// repository's transaction), consumers subscribe from infrastructure/events.
+func TestDomainAndApplicationDoNotImportEvents(t *testing.T) {
+	const eventsPkg = platformPrefix + "events"
+	for _, pkg := range loadPackages(t) {
+		module := moduleOf(pkg.PkgPath)
+		if module == "" {
+			continue
+		}
+		if layer := layerOf(pkg.PkgPath, module); layer != "domain" && layer != "application" {
+			continue
+		}
+		for path := range pkg.Imports {
+			if path == eventsPkg || strings.HasPrefix(path, eventsPkg+"/") {
+				t.Errorf("layering violation: %s imports %s — publish and subscribe from infrastructure/ only (ADR-0014)", pkg.PkgPath, path)
 			}
 		}
 	}

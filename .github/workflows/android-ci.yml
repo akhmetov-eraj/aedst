@@ -3,9 +3,10 @@ name: android-ci
 on:
   push:
     branches: [main]
-    paths: ["apps/android/**", ".github/workflows/android-ci.yml"]
+    paths: ["apps/android/**", "apps/server/api/proto/**", "apps/server/buf.lock", ".github/workflows/android-ci.yml"]
   pull_request:
-    paths: ["apps/android/**", ".github/workflows/android-ci.yml"]
+    paths: ["apps/android/**", "apps/server/api/proto/**", "apps/server/buf.lock", ".github/workflows/android-ci.yml"]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -33,14 +34,15 @@ env:
 jobs:
   lint:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
 
       - name: Generate ConnectRPC/Protobuf client stubs
         run: make generate
@@ -48,7 +50,9 @@ jobs:
       - name: ktlint
         run: ./gradlew ktlintCheck
 
-      - name: detekt
+      # `detekt` depends on `detektDebug` (DetektConventionPlugin), so this single step also runs the type-resolved
+      # rules (InjectDispatcher, SuspendFunSwallowedCancellation, ForbiddenMethodCall) and the compose-rules.
+      - name: detekt (syntactic + type-resolved)
         run: ./gradlew detekt
 
       # lintDebug also covers the FCM wiring, which is only applied when google-services.json exists
@@ -56,22 +60,43 @@ jobs:
       - name: Copy placeholder google-services.json
         run: cp app/google-services.json.example app/google-services.json
 
+      # warningsAsErrors + abortOnError + checkDependencies + sarifReport come from LintConvention.kt (lint.xml).
       - name: Android Lint (lintDebug)
         run: ./gradlew lintDebug
+
+      - name: Upload Android Lint SARIF
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: android-lint-sarif
+          path: apps/android/**/build/reports/lint-results-debug.sarif
+          if-no-files-found: ignore
+          retention-days: 14
 
       - name: Feature module boundaries
         run: ./scripts/check-feature-boundaries.sh
 
-  test:
+      - name: Library-First policy guards
+        run: ./scripts/check-policies.sh
+
+      # The exported Room schema of the current @Database version must be committed (core/database/schemas): without it
+      # a version bump cannot be migrated or migration-tested, and the build would regenerate it silently.
+      - name: Room schema JSON exists for the @Database version
+        run: ./scripts/check-room-schemas.sh
+
+  # Negative self-tests: seeds one violation per Library-First gate (detekt rules and scopes, Android Lint, Kover floor,
+  # shell gates) and proves each gate fails on it. A gate that cannot fail is not a gate.
+  gate-self-tests:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
 
       - name: Generate ConnectRPC/Protobuf client stubs
         run: make generate
@@ -79,20 +104,109 @@ jobs:
       - name: Copy placeholder google-services.json
         run: cp app/google-services.json.example app/google-services.json
 
-      - name: Unit tests
-        run: ./gradlew testDebugUnitTest
+      - name: Gate self-tests (--full)
+        run: ./scripts/test-gates.sh --full
 
-  build:
+  test:
     runs-on: ubuntu-latest
-    needs: [lint, test]
+    timeout-minutes: 45
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
+
+      - name: Generate ConnectRPC/Protobuf client stubs
+        run: make generate
+
+      - name: Copy placeholder google-services.json
+        run: cp app/google-services.json.example app/google-services.json
+
+      # Contract test of the generated connect-kotlin clients against the server's proto descriptors
+      # (core/network ProtoContractTest). `make generate` already runs it; the explicit step keeps the dependency
+      # visible. AEDST_REQUIRE_CONTRACT=1 makes a missing descriptor file a failure instead of a skip.
+      - name: Proto descriptors for the contract test
+        run: make descriptors
+
+      - name: Unit tests (incl. proto contract test)
+        env:
+          AEDST_REQUIRE_CONTRACT: "1"
+        run: ./gradlew testDebugUnitTest
+
+      # Per-module line-coverage floors from kover-thresholds.properties (Kover reuses the test results above).
+      - name: Coverage floors (Kover)
+        run: ./gradlew koverVerifyDebug
+
+      # Roborazzi golden images. Rendering differs per OS, so goldens must be recorded on Linux: run this workflow
+      # manually (workflow_dispatch, job `record-screenshots`) and commit the artifact into core/ui/src/test/snapshots.
+      # Until goldens are committed the step is skipped explicitly (and plain testDebugUnitTest captures nothing).
+      - name: Screenshot tests (Roborazzi verify)
+        id: screenshots
+        run: |
+          if ls core/ui/src/test/snapshots/*.png >/dev/null 2>&1; then
+            ./gradlew :core:ui:verifyRoborazziDebug
+          else
+            echo "::notice title=Roborazzi skipped::No golden images in core/ui/src/test/snapshots; verifyRoborazziDebug not run. Record them with the record-screenshots job and commit them."
+          fi
+
+      - name: Upload screenshot diffs
+        if: failure() && steps.screenshots.outcome == 'failure'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: roborazzi-diff
+          path: |
+            apps/android/core/ui/src/test/snapshots/*_compare.png
+            apps/android/core/ui/src/test/snapshots/*_actual.png
+            apps/android/core/ui/build/outputs/roborazzi/
+            apps/android/core/ui/build/reports/roborazzi/
+          if-no-files-found: warn
+          retention-days: 14
+
+  # Manual: records the Roborazzi golden images on the CI platform and uploads them as an artifact to commit.
+  record-screenshots:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
+
+      - name: Generate ConnectRPC/Protobuf client stubs
+        run: make generate
+
+      - name: Copy placeholder google-services.json
+        run: cp app/google-services.json.example app/google-services.json
+
+      - name: Record goldens
+        run: ./gradlew :core:ui:recordRoborazziDebug
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: roborazzi-goldens
+          path: apps/android/core/ui/src/test/snapshots/*.png
+          if-no-files-found: error
+          retention-days: 14
+
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    needs: [lint, test]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
 
       - name: Generate ConnectRPC/Protobuf client stubs
         run: make generate
@@ -117,19 +231,45 @@ jobs:
       - name: Assemble release (R8) with the unpinned opt-out
         run: ./gradlew :app:assembleRelease -Paedst.allowUnpinnedRelease=true
 
+      # R8 regression guard: protobuf-lite ships no keep rules, so the merged configuration must contain ours.
+      - name: Verify protobuf-lite keep rule reached R8
+        run: grep -q "GeneratedMessageLite" app/build/outputs/mapping/release/configuration.txt
+
+      - name: Assemble app-tv release (R8) with the unpinned opt-out
+        run: ./gradlew :app-tv:assembleRelease -Paedst.allowUnpinnedRelease=true
+
+      - name: Verify protobuf-lite keep rule reached R8 (app-tv)
+        run: grep -q "GeneratedMessageLite" app-tv/build/outputs/mapping/release/configuration.txt
+
+      # app-tv gets the same TLS-pin gate as the phone app from the application convention plugin.
+      - name: app-tv release without pins is refused
+        run: |
+          if ./gradlew :app-tv:preReleaseBuild; then
+            echo "::error::app-tv:preReleaseBuild should fail without -Paedst.certPins"
+            exit 1
+          fi
+
+      # No baseline profile has been recorded yet (it needs a device): a warning that says so, not a silent gap. Set the
+      # repository variable AEDST_REQUIRE_BASELINE_PROFILE=1 after the first recording to make it a failure.
+      - name: Baseline profile folder exists
+        env:
+          AEDST_REQUIRE_BASELINE_PROFILE: ${{ vars.AEDST_REQUIRE_BASELINE_PROFILE }}
+        run: ./scripts/check-baseline-profile.sh
+
   # Instrumented tests: Compose UI tests with Accessibility Test Framework checks (androidTest) on an emulator.
   # Macrobenchmark and Baseline Profile generation stay manual (see apps/android/README.md, "Distribution").
   instrumented:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     needs: [lint, test]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
         with:
           distribution: temurin
           java-version: ${{ env.JAVA_VERSION }}
-      - uses: gradle/actions/setup-gradle@v4
-      - uses: bufbuild/buf-setup-action@v1
+      - uses: gradle/actions/setup-gradle@748248ddd2a24f49513d8f472f81c3a07d4d50e1 # v4.4.4
+      - uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
 
       - name: Generate ConnectRPC/Protobuf client stubs
         run: make generate
@@ -144,7 +284,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
 
       - name: androidTest (Compose + accessibility checks)
-        uses: reactivecircus/android-emulator-runner@v2
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 34
           arch: x86_64

@@ -134,6 +134,20 @@ TEST_F(NotificationsViewModelTest, WithoutAStreamTheClientPollsExactlyAsBefore) 
     viewModel->stop();
 }
 
+TEST_F(NotificationsViewModelTest, OfflineStopsPollingAndComingBackOnlinePollsAtOnce) {
+    repository->unread = 1;
+    viewModel->start();
+    ASSERT_EQ(repository->unreadCalls, 1);
+
+    viewModel->setOnline(false);
+    viewModel->pollNow(); // nothing can succeed while offline: no request is made
+    EXPECT_EQ(repository->unreadCalls, 1);
+
+    viewModel->setOnline(true);
+    EXPECT_EQ(repository->unreadCalls, 2);
+    viewModel->stop();
+}
+
 TEST_F(NotificationsViewModelTest, AHealthyStreamTakesOverFromPolling) {
     useStream();
     QSignalSpy mode(viewModel.get(), &NotificationsViewModel::deliveryModeChanged);

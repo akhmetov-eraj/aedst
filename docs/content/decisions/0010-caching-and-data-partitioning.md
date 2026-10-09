@@ -1,3 +1,8 @@
+---
+title: "ADR-0010: Caching and Data Partitioning"
+description: "Accepted. Nothing in this ADR is implemented yet; it fixes the rules and the order of escalation so that today's schema and code do not block them."
+---
+
 # ADR-0010: Caching and Data Partitioning
 
 ## Status
@@ -26,7 +31,7 @@ Rules when a cache is introduced:
   not expire together.
 - **Stampede protection** with `singleflight` (`golang.org/x/sync/singleflight`)
   around the loader.
-- **Invalidation is done by the owning module** from its own domain events (outbox);
+- **Invalidation is done by the owning module** from its own domain events (River-delivered, ADR-0014);
   a module never invalidates or reads another module's keys or tables.
 - **Never cache authorization decisions** (permissions, ownership checks, token
   validity).
@@ -44,13 +49,13 @@ Rules when a cache is introduced:
 Escalation roadmap, each step taken only when a single primary is measured to be
 insufficient for the previous one:
 1. **Native declarative partitioning** in PostgreSQL: hash by `user_id`, or range by
-   time for append-only tables (messages, outbox, notifications), managed with
+   time for append-only tables (messages, notifications), managed with
    `pg_partman`. This also makes retention a partition drop.
 2. **Read replicas** for read-mostly modules (routing at the repository layer, with
    replication lag tolerated only where the module declares it).
 3. **Module-per-database**: already prepared, because each module owns its own
    schema and never joins across schemas
-   ([database.md](/database), [ADR-0006](/decisions/0006-module-boundaries)).
+   ([database.md](/server/database), [ADR-0006](/decisions/0006-module-boundaries)).
 4. **Citus or application-level shard routing** by `user_id`, only when one primary
    per module is proven insufficient.
 

@@ -4,9 +4,9 @@ import GRDB
 
 /// Opens the app's single local SQLite database (GRDB) and applies every
 /// registered migration before handing it back. Replaces the former
-/// SwiftData `ModelContainer` factory: GRDB runs back to iOS 13 / macOS 10.15
-/// (SwiftData needs iOS 17 / macOS 14) and gives explicit, versioned schema
-/// migrations via `DatabaseMigrator`.
+/// SwiftData `ModelContainer` factory: GRDB is kept for explicit, versioned
+/// schema migrations via `DatabaseMigrator` and direct control over SQL,
+/// WAL and concurrency, not for OS reach.
 ///
 /// Concurrency: the returned `DatabasePool` / `DatabaseQueue` are `Sendable`
 /// and serialize writes internally (a pool additionally runs reads

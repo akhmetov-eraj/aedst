@@ -5,10 +5,10 @@ let package = Package(
     name: "Notifications",
     defaultLocalization: "en",
     // Push (APNs) plumbing lives here too: UserNotifications is a system framework.
-    // iOS/macOS only, like Features/Auth (Perception's `@Perception.Bindable`).
+    // Kept iOS/macOS-only: those are the only app targets; widen deliberately.
     platforms: [
-        .iOS(.v15),
-        .macOS(.v12),
+        .iOS(.v18),
+        .macOS(.v15),
     ],
     products: [
         .library(name: "Notifications", targets: ["Notifications"]),
@@ -20,8 +20,6 @@ let package = Package(
         .package(path: "../../Core/AedstNavigation"),
         .package(path: "../../Core/AedstAnalytics"),
         .package(path: "../../Core/AedstTesting"),
-        // Observation backport — see Core/AedstNavigation/Package.swift for the version-range rationale.
-        .package(url: "https://github.com/pointfreeco/swift-perception", "2.0.11"..<"2.0.12"),
     ],
     targets: [
         .target(
@@ -32,14 +30,13 @@ let package = Package(
                 "AedstDesignSystem",
                 "AedstNavigation",
                 "AedstAnalytics",
-                .product(name: "Perception", package: "swift-perception"),
             ],
             resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
         .testTarget(
             name: "NotificationsTests",
-            dependencies: ["Notifications", "AedstCore", "AedstTesting"],
+            dependencies: ["Notifications", "AedstCore", "AedstAnalytics", "AedstTesting"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]

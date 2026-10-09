@@ -13,6 +13,7 @@ import (
 	"github.com/aedst/server/internal/platform/database"
 	"github.com/aedst/server/internal/platform/idempotency"
 	"github.com/aedst/server/internal/platform/postgrestest"
+	sharederrors "github.com/aedst/server/internal/shared/errors"
 )
 
 // The advisory lock taken by Check makes concurrent same-key work run one
@@ -88,5 +89,35 @@ func TestPostgresStore_SaveGetAndPurge(t *testing.T) {
 	}
 	if n, err := idempotency.Purge(ctx, pool, time.Now().Add(time.Hour), 100); err != nil || n != 1 {
 		t.Fatalf("Purge(future cutoff) = %d, %v; want the one key deleted", n, err)
+	}
+}
+
+// A caller that waits for a key longer than the statement timeout gets a retryable
+// Conflict naming the cause, not an internal error.
+func TestPostgresStore_AcquireTimeoutIsAConflict(t *testing.T) {
+	pool := postgrestest.NewPool(t)
+	ctx := context.Background()
+	store := idempotency.NewPostgresStore()
+
+	holder, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = holder.Rollback(ctx) }()
+	if err := store.Acquire(ctx, holder, "scope", "busy"); err != nil {
+		t.Fatal(err)
+	}
+
+	waiter, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = waiter.Rollback(ctx) }()
+	if _, err := waiter.Exec(ctx, "SET LOCAL statement_timeout = '300ms'"); err != nil {
+		t.Fatal(err)
+	}
+	err = store.Acquire(ctx, waiter, "scope", "busy")
+	if sharederrors.KindOf(err) != sharederrors.KindConflict {
+		t.Fatalf("Acquire while the key is held = %v, want a Conflict", err)
 	}
 }

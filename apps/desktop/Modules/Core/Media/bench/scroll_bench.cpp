@@ -14,6 +14,7 @@
 // Needs a real window system for meaningful frame times (the offscreen platform with the software backend only
 // verifies that it runs). Build with -DAEDST_BUILD_BENCHMARKS=ON, Release.
 #include "aedst/designsystem/theme_controller.hpp"
+#include "aedst/qmlsupport/singleton_slot.hpp"
 
 #include <QAbstractListModel>
 #include <QColor>
@@ -144,7 +145,7 @@ int main(int argc, char* argv[]) {
     parser.process(app);
 
     aedst::designsystem::ThemeController theme;
-    aedst::designsystem::registerThemeController(&theme);
+    aedst::qmlsupport::SingletonSlot<aedst::designsystem::ThemeController>::provide(&theme);
 
     QQmlEngine engine;
     engine.addImageProvider(QStringLiteral("perf"), new PerfImageProvider); // owned by the engine

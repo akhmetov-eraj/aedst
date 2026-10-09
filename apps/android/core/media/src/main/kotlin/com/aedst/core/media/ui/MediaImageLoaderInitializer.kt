@@ -9,15 +9,22 @@ import okhttp3.OkHttpClient
 import javax.inject.Inject
 
 /**
- * Configures Coil's singleton [ImageLoader] to fetch through the app's [ExternalHttpClient] (shared connection pool,
- * no bearer token — media URLs are presigned object-storage GETs).
+ * Configures Coil's singleton [ImageLoader]: network images are fetched through the app's [ExternalHttpClient] (shared
+ * connection pool, no bearer token — media URLs are presigned object-storage GETs), and [LocalVideoThumbnail] models
+ * are resolved by [LocalVideoThumbnailFetcher] (the Hilt-provided `LocalThumbnailLoader`).
  */
-class MediaImageLoaderInitializer @Inject constructor(@ExternalHttpClient private val client: OkHttpClient) :
-    AppInitializer {
+class MediaImageLoaderInitializer @Inject constructor(
+    @ExternalHttpClient private val client: OkHttpClient,
+    private val videoThumbnails: LocalVideoThumbnailFetcher.Factory,
+) : AppInitializer {
     override fun initialize() {
         SingletonImageLoader.setSafe { context ->
             ImageLoader.Builder(context)
-                .components { add(OkHttpNetworkFetcherFactory(callFactory = { client })) }
+                .components {
+                    add(OkHttpNetworkFetcherFactory(callFactory = { client }))
+                    add(LocalVideoThumbnailKeyer())
+                    add(videoThumbnails)
+                }
                 .build()
         }
     }

@@ -21,7 +21,7 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Inject
 import javax.inject.Singleton
 
-class ConnectSearchRepository @Inject constructor(private val client: SearchServiceClientInterface) :
+internal class ConnectSearchRepository @Inject constructor(private val client: SearchServiceClientInterface) :
     SearchRepository {
 
     override suspend fun search(query: String, pageToken: String?): Outcome<SearchResults> = runCatchingOutcome {
@@ -40,7 +40,7 @@ class ConnectSearchRepository @Inject constructor(private val client: SearchServ
                     kind = when (hit.kind) {
                         DocumentKind.DOCUMENT_KIND_TASK -> SearchKind.TASK
                         DocumentKind.DOCUMENT_KIND_MEDIA -> SearchKind.MEDIA
-                        else -> SearchKind.OTHER
+                        DocumentKind.DOCUMENT_KIND_UNSPECIFIED, DocumentKind.UNRECOGNIZED -> SearchKind.OTHER
                     },
                     id = hit.id,
                     title = hit.title,
@@ -64,7 +64,7 @@ class ConnectSearchRepository @Inject constructor(private val client: SearchServ
 
 @Module
 @InstallIn(SingletonComponent::class)
-abstract class SearchModule {
+internal abstract class SearchModule {
     @Binds
     abstract fun bindSearchRepository(impl: ConnectSearchRepository): SearchRepository
 

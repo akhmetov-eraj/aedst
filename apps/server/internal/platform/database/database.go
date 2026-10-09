@@ -7,6 +7,7 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strconv"
 	"time"
@@ -14,6 +15,18 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+)
+
+// Pooler names the connection pooler between the server and PostgreSQL.
+type Pooler string
+
+const (
+	// PoolerNone is a direct connection (or a pooler in session mode).
+	PoolerNone Pooler = "none"
+	// PoolerPgBouncer is PgBouncer (or the CloudNativePG Pooler) in
+	// transaction-pooling mode: a server connection is only yours for one
+	// transaction, so session state does not survive.
+	PoolerPgBouncer Pooler = "pgbouncer"
 )
 
 // Config configures the pool. Kept separate from platform/config's
@@ -32,6 +45,15 @@ type Config struct {
 	IdleInTxTimeout  time.Duration
 	// ApplicationName shows up in pg_stat_activity and logs.
 	ApplicationName string
+	// Pooler declares what sits in front of Postgres. PoolerPgBouncer forces
+	// pgx onto QueryExecModeCacheDescribe whatever the DSN says: the default
+	// QueryExecModeCacheStatement creates named server-side prepared
+	// statements, which a transaction pooler may route to a different server
+	// connection ("prepared statement ... does not exist"). It also stops
+	// sending statement_timeout / idle_in_transaction_session_timeout as
+	// startup parameters (PgBouncer ignores or rejects them); set those on the
+	// role instead (ALTER ROLE ... SET).
+	Pooler Pooler
 }
 
 // NewPool creates and verifies a pgx connection pool.
@@ -56,6 +78,7 @@ func NewPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 		poolCfg.MaxConnIdleTime = cfg.MaxConnIdleTime
 	}
 	poolCfg.HealthCheckPeriod = time.Minute
+	applyPooler(poolCfg, cfg.Pooler)
 
 	if poolCfg.ConnConfig.RuntimeParams == nil {
 		poolCfg.ConnConfig.RuntimeParams = map[string]string{}
@@ -64,13 +87,14 @@ func NewPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	if cfg.ApplicationName != "" {
 		params["application_name"] = cfg.ApplicationName
 	}
-	if cfg.StatementTimeout > 0 {
+	if cfg.StatementTimeout > 0 && cfg.Pooler != PoolerPgBouncer {
 		params["statement_timeout"] = strconv.FormatInt(cfg.StatementTimeout.Milliseconds(), 10)
 	}
-	if cfg.IdleInTxTimeout > 0 {
+	if cfg.IdleInTxTimeout > 0 && cfg.Pooler != PoolerPgBouncer {
 		params["idle_in_transaction_session_timeout"] = strconv.FormatInt(cfg.IdleInTxTimeout.Milliseconds(), 10)
 	}
 
+	applyTracer(poolCfg, newTracer())
 	pool, err := pgxpool.NewWithConfig(ctx, poolCfg)
 	if err != nil {
 		return nil, fmt.Errorf("database: create pool: %w", err)
@@ -84,6 +108,46 @@ func NewPool(ctx context.Context, cfg Config) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
+// applyPooler adapts pgx to the pooler in front of Postgres.
+func applyPooler(poolCfg *pgxpool.Config, p Pooler) {
+	if p != PoolerPgBouncer {
+		return
+	}
+	poolCfg.ConnConfig.DefaultQueryExecMode = pgx.QueryExecModeCacheDescribe
+	// No named statements are created in this mode; only descriptions are
+	// cached (the description cache must be enabled for it to work).
+	poolCfg.ConnConfig.StatementCacheCapacity = 0
+	if poolCfg.ConnConfig.DescriptionCacheCapacity <= 0 {
+		poolCfg.ConnConfig.DescriptionCacheCapacity = 512
+	}
+}
+
+// DirectPool is a pool known to talk to PostgreSQL directly (or through a
+// session-mode pooler), so session state (LISTEN/NOTIFY, session advisory
+// locks) survives between statements. Code that needs it (platform/lock) takes
+// this type, which keeps it away from the transaction-pooled API pool.
+type DirectPool struct {
+	*pgxpool.Pool
+}
+
+// ErrPooledConnection is returned by NewDirectPool when asked to connect
+// through a transaction pooler.
+var ErrPooledConnection = errors.New("database: direct pool requested through a transaction pooler")
+
+// NewDirectPool is NewPool for session-scoped work. It refuses a Config that
+// declares a transaction pooler; point DSN at Postgres itself
+// (AEDST_DATABASE_DIRECT_DSN).
+func NewDirectPool(ctx context.Context, cfg Config) (*DirectPool, error) {
+	if cfg.Pooler == PoolerPgBouncer {
+		return nil, ErrPooledConnection
+	}
+	pool, err := NewPool(ctx, cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &DirectPool{Pool: pool}, nil
+}
+
 // Querier is the subset of pgx's connection interface that sqlc-generated
 // code needs. Repositories accept a Querier instead of *pgxpool.Pool
 // directly so the same repository works inside or outside a transaction.
@@ -94,7 +158,7 @@ type Querier interface {
 }
 
 // WithTx runs fn inside a transaction, committing on success and rolling back
-// on error or panic. Transactions never span modules (see docs/database.md) —
+// on error or panic. Transactions never span modules (see docs/content/server/database.md) —
 // this only wraps a single module's pool.
 func WithTx(ctx context.Context, pool *pgxpool.Pool, fn func(ctx context.Context, tx pgx.Tx) error) (err error) {
 	tx, err := pool.Begin(ctx)

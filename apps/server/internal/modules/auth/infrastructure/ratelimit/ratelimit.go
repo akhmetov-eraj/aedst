@@ -8,7 +8,7 @@ import (
 	"encoding/hex"
 	"time"
 
-	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/aedst/server/internal/platform/clientip"
 )
 
 // accountCeilingFactor scales the per-(account, address) budget up to the
@@ -42,7 +42,7 @@ func NewLoginLimiter(limiter Limiter, perMinute int) *LoginLimiter {
 // Keys use a digest so account emails never appear in Valkey.
 func (l *LoginLimiter) Allow(ctx context.Context, email string) (bool, error) {
 	account := digest(email)
-	client := chimw.GetClientIP(ctx)
+	client := clientip.FromContext(ctx)
 	if client == "" {
 		client = "unknown"
 	}

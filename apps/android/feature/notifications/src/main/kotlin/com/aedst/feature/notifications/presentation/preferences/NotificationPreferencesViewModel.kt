@@ -20,8 +20,16 @@ data class NotificationPreferencesState(
     val error: AedstError? = null,
 )
 
+sealed interface NotificationPreferencesIntent {
+    /** Applies [transform] to the current preferences: optimistically at once, reverted if the server rejects it. */
+    data class Update(val transform: (NotificationPreferences) -> NotificationPreferences) :
+        NotificationPreferencesIntent
+
+    data object ErrorShown : NotificationPreferencesIntent
+}
+
 @HiltViewModel
-class NotificationPreferencesViewModel @Inject constructor(private val repository: NotificationsRepository) :
+internal class NotificationPreferencesViewModel @Inject constructor(private val repository: NotificationsRepository) :
     ViewModel() {
 
     private val mutableState = MutableStateFlow(NotificationPreferencesState())
@@ -36,8 +44,15 @@ class NotificationPreferencesViewModel @Inject constructor(private val repositor
         }
     }
 
+    fun onIntent(intent: NotificationPreferencesIntent) {
+        when (intent) {
+            is NotificationPreferencesIntent.Update -> update(intent.transform)
+            NotificationPreferencesIntent.ErrorShown -> mutableState.update { it.copy(error = null) }
+        }
+    }
+
     /** Optimistic update; reverts to the previous value when the server rejects it. */
-    fun update(transform: (NotificationPreferences) -> NotificationPreferences) {
+    private fun update(transform: (NotificationPreferences) -> NotificationPreferences) {
         val previous = mutableState.value.preferences ?: return
         val next = transform(previous)
         mutableState.update { it.copy(preferences = next, isSaving = true) }

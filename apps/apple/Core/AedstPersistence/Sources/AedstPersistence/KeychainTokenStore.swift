@@ -10,6 +10,9 @@ import Foundation
 ///   task clears itself from *inside* the actor before its result is
 ///   published, so a late caller either joins the running refresh or starts a
 ///   fresh one — it can never observe a finished-but-stale task.
+/// - A refresh that finishes after `save` or `clearTokens` (sign-out, or a new sign-in,
+///   while the request was in flight) is discarded: it never resurrects or overwrites the
+///   newer session (`generation`).
 /// - Only a server rejection (`RefreshResult.rejected`) ends the session;
 ///   offline/5xx (`.unavailable`) keeps it.
 /// - The decoded session is cached in memory, so an authenticated request
@@ -35,6 +38,8 @@ public actor KeychainTokenStore: SessionStore {
     private var cache: StoredSession?
     private var isCacheLoaded = false
     private var refreshTask: Task<RefreshResult, Never>?
+    /// Bumped by every `save` and `clearTokens`; a refresh started under an older value is stale.
+    private var generation = 0
 
     public init(
         store: any SecureStore = Keychain(),
@@ -68,10 +73,12 @@ public actor KeychainTokenStore: SessionStore {
     }
 
     public func save(_ tokens: TokenPair, userID: String) async throws {
+        generation += 1
         try persist(StoredSession(userID: userID, tokens: tokens))
     }
 
     public func clearTokens() async {
+        generation += 1
         cache = nil
         isCacheLoaded = true
         do {
@@ -100,14 +107,22 @@ public actor KeychainTokenStore: SessionStore {
             return .rejected
         }
 
+        let startedGeneration = generation
         let result = await refreshHandler(session.tokens.refreshToken)
+        // The user signed out or signed in again while the request was in flight: the answer
+        // belongs to a session that no longer exists, so it must not touch the store.
+        guard startedGeneration == generation else { return result }
         switch result {
         case .refreshed(let tokens):
+            // The server already rotated the refresh token, so the old one is dead. Adopt the new pair in memory
+            // FIRST: if the Keychain write fails, the next request must still send the new tokens, or it would
+            // present the rotated-out refresh token, be rejected and end the session. Only a relaunch loses it.
+            let refreshed = StoredSession(userID: session.userID, tokens: tokens)
+            cache = refreshed
+            isCacheLoaded = true
             do {
-                try persist(StoredSession(userID: session.userID, tokens: tokens))
+                try write(refreshed)
             } catch {
-                // The server already rotated the refresh token; the caller can
-                // still use the new access token for this request.
                 logger.error("Refreshed tokens could not be persisted", error: error)
             }
         case .rejected:
@@ -123,9 +138,14 @@ public actor KeychainTokenStore: SessionStore {
         eventContinuation.yield(.expired)
     }
 
-    private func persist(_ session: StoredSession) throws {
+    private func write(_ session: StoredSession) throws {
         let data = try JSONEncoder().encode(session)
         try store.set(String(decoding: data, as: UTF8.self), for: Self.sessionKey)
+    }
+
+    /// Writes through to the store, and only then updates the cache (a failed write leaves the old session).
+    private func persist(_ session: StoredSession) throws {
+        try write(session)
         cache = session
         isCacheLoaded = true
     }

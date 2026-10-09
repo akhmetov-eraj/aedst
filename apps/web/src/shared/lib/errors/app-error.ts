@@ -7,6 +7,11 @@ import { Code, ConnectError } from "@connectrpc/connect";
  * reporting, error boundaries) decides by kind, never by parsing messages.
  * Server messages are diagnostic English and never shown to users; each
  * kind has a translated message under `common.errors.kinds`.
+ *
+ * The vocabulary, the Connect code mapping and the retryable/reportable
+ * flags are shared with Android, Apple and Desktop through
+ * docs/contract/behavior/error-kinds.json (replayed by
+ * src/test/contract/error-kinds.replay.test.ts).
  */
 export type AppErrorKind =
   | "unauthenticated"
@@ -19,6 +24,8 @@ export type AppErrorKind =
   | "timeout"
   | "offline"
   | "cancelled"
+  | "upgradeRequired"
+  | "storage"
   | "unknown";
 
 export type AppError = {
@@ -36,7 +43,7 @@ const KIND_BY_CODE: Partial<Record<Code, AppErrorKind>> = {
   [Code.NotFound]: "notFound",
   [Code.InvalidArgument]: "invalidInput",
   [Code.OutOfRange]: "invalidInput",
-  [Code.FailedPrecondition]: "conflict",
+  [Code.FailedPrecondition]: "invalidInput",
   [Code.AlreadyExists]: "conflict",
   [Code.Aborted]: "conflict",
   [Code.ResourceExhausted]: "rateLimited",
@@ -45,13 +52,43 @@ const KIND_BY_CODE: Partial<Record<Code, AppErrorKind>> = {
   [Code.Canceled]: "cancelled",
 };
 
+const UPGRADE_REQUIRED_REASON = "CLIENT_UPGRADE_REQUIRED";
+const ERROR_INFO_TYPE = "google.rpc.ErrorInfo";
+
+/**
+ * True when the server's client-version gate refused this build: Connect
+ * failed_precondition AND a google.rpc.ErrorInfo detail whose `reason`
+ * (field 1) is CLIENT_UPGRADE_REQUIRED. The code alone is an ordinary
+ * business error. Only this one field is read, so no google.rpc schema is
+ * pulled in.
+ */
+function isUpgradeRequired(error: ConnectError) {
+  if (error.code !== Code.FailedPrecondition) {
+    return false;
+  }
+  const decoder = new TextDecoder();
+  return error.details.some((detail) => {
+    if (!("type" in detail) || detail.type !== ERROR_INFO_TYPE) {
+      return false;
+    }
+    const bytes: Uint8Array = detail.value;
+    return (
+      bytes[0] === 0x0a &&
+      decoder.decode(bytes.subarray(2, 2 + bytes[1])) ===
+        UPGRADE_REQUIRED_REASON
+    );
+  });
+}
+
 function isOffline() {
   return typeof navigator !== "undefined" && navigator.onLine === false;
 }
 
 export function toAppError(error: unknown): AppError {
   if (error instanceof ConnectError) {
-    let kind = KIND_BY_CODE[error.code] ?? "unknown";
+    let kind: AppErrorKind = isUpgradeRequired(error)
+      ? "upgradeRequired"
+      : (KIND_BY_CODE[error.code] ?? "unknown");
     if ((kind === "unavailable" || kind === "unknown") && isOffline()) {
       kind = "offline";
     }
@@ -79,29 +116,29 @@ export function toAppError(error: unknown): AppError {
 }
 
 /**
- * Definitive answers from the server (the "4xx" family): asking again gives
- * the same answer, so they are never retried and never reported to Sentry —
- * they are control flow, not incidents.
+ * Transient failures: the same request may succeed later. Definitive answers
+ * from the server (the "4xx" family), a client cancel, a required upgrade and
+ * an unclassified bug give the same result when repeated. Same flags as
+ * error-kinds.json.
  */
-const DEFINITIVE: ReadonlySet<AppErrorKind> = new Set([
-  "unauthenticated",
-  "forbidden",
-  "notFound",
-  "invalidInput",
-  "conflict",
-  "cancelled",
+const RETRYABLE: ReadonlySet<AppErrorKind> = new Set([
+  "rateLimited",
+  "unavailable",
+  "offline",
+  "timeout",
 ]);
 
 export function isRetryable(error: AppError): boolean {
-  return !DEFINITIVE.has(error.kind);
+  return RETRYABLE.has(error.kind);
 }
 
 /**
- * Worth an incident: server faults and bugs. Expected states (offline, a
- * rate limit, a client-side cancel, definitive answers) are not.
+ * Worth an incident: bugs and storage faults. Expected states (offline, a
+ * rate limit, a client-side cancel, definitive answers) are control flow, and
+ * server faults are already captured server-side.
  */
 export function shouldReport(error: AppError): boolean {
-  return error.kind === "unknown" || error.kind === "unavailable";
+  return error.kind === "unknown" || error.kind === "storage";
 }
 
 /** The `common.errors.kinds.*` message key for a kind. */

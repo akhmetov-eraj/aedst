@@ -16,8 +16,9 @@ namespace aedst::platform {
 /// Native Windows toast notifications (Windows.UI.Notifications through C++/WinRT) with an action button and
 /// click activation. Unpackaged desktop apps need two things Windows checks before it shows a toast:
 ///  - an AppUserModelID (AUMID), set for the process here;
-///  - a Start Menu shortcut carrying that AUMID. The installer is expected to create it; if it is missing the
-///    service creates `%APPDATA%\Microsoft\Windows\Start Menu\Programs\AEDST.lnk` itself.
+///  - a Start Menu shortcut carrying that AUMID. The installer creates it and the service only VERIFIES it; when no
+///    shortcut carries the AUMID, the service writes `%APPDATA%\Microsoft\Windows\Start Menu\Programs\AEDST.lnk` as a
+///    fallback (which the uninstaller removes).
 /// Activation works while the process runs (ToastNotification.Activated, marshalled to the GUI thread). A click
 /// after the app has exited starts the app through the shortcut without the link: opening it needs the COM
 /// activator / protocol registration the installer will provide (docs/adr/0027-realtime-notifications.md).

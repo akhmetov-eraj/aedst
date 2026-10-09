@@ -39,7 +39,7 @@ fallback** (`setInsecureFallback(false)`). This is stricter than the legacy `Sec
 falls back to a `0600` key file for the first-party session until Phase 7.
 
 **Refresh.** `OidcSession` owns a single-flight refresh: any number of callers of `ensureFreshAccessToken` /
-`refreshAfterRejection` share one token request. Network failures keep the session (`ErrorCode::Network`);
+`refreshAfterRejection` share one token request. Network failures keep the session (`ErrorCode::Unavailable`, renamed from `Network` to the shared error-kinds vocabulary);
 `invalid_grant`/`invalid_token`/`invalid_client`/`unauthorized_client` end it (`sessionExpired()`, keychain
 cleared). A refresh result that arrives after `signOut()` is discarded (epoch fence) so it cannot resurrect
 the session. A rotated refresh token is persisted. Wiring the interceptor (refresh before sending, refresh

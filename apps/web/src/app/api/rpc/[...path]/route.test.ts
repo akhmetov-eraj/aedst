@@ -1,8 +1,8 @@
-import { HttpResponse, http } from "msw";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { AuthService } from "@/shared/api/connect/generated/aedst/auth/v1/auth_pb";
 import { TasksService } from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
+import { refreshSession } from "@/shared/lib/auth/refresh-session";
+import { reportError } from "@/shared/lib/errors/report-error";
 import { fakeJwt } from "@/test/jwt";
 import {
   rpcErrorHandler,
@@ -11,6 +11,16 @@ import {
 } from "@/test/mocks/connect";
 import { server } from "@/test/mocks/server";
 import { POST } from "./route";
+
+// The refresh grant itself is covered by refresh-session.test.ts; here only
+// what the proxy does with each outcome matters.
+vi.mock("@/shared/lib/auth/refresh-session", () => ({
+  refreshSession: vi.fn(),
+}));
+
+vi.mock("@/shared/lib/errors/report-error", () => ({
+  reportError: vi.fn(),
+}));
 
 const jar = new Map<string, string>();
 
@@ -29,6 +39,7 @@ function call(
 ) {
   const headers: Record<string, string> = {
     "content-type": "application/json",
+    "connect-protocol-version": "1", // the browser transport always sends it
     host: "localhost:3000",
     ...init.headers,
   };
@@ -76,8 +87,9 @@ describe("/api/rpc BFF proxy", () => {
       "aedst.auth.v1.AuthService/Register",
       "aedst.auth.v1.AuthService/RefreshToken",
       "aedst.auth.v1.AuthService/Logout",
+      "aedst.auth.v1.AuthService/GetCurrentUser",
     ])(
-      "refuses %s — tokens must never be handed to page JavaScript",
+      "refuses %s — sign-in is OpenID Connect, not an RPC through this proxy",
       async (procedure) => {
         expect((await call(procedure)).status).toBe(404);
       },
@@ -151,35 +163,95 @@ describe("/api/rpc BFF proxy", () => {
 
     it("answers 503 when the API is unreachable", async () => {
       jar.set("aedst_session", fakeJwt({ expiresInSeconds: 600 }));
-      server.use(
-        http.post(`${TEST_API_ORIGIN}/${LIST}`, () => HttpResponse.error()),
-      );
+      server.use((routes) => {
+        routes.set(`POST ${TEST_API_ORIGIN}/${LIST}`, () => {
+          throw new TypeError("fetch failed");
+        });
+      });
 
       expect((await call(LIST)).status).toBe(503);
+    });
+
+    it("reports an unreachable API to Sentry with the bff source and procedure", async () => {
+      jar.set("aedst_session", fakeJwt({ expiresInSeconds: 600 }));
+      const failure = new TypeError("fetch failed");
+      server.use((routes) => {
+        routes.set(`POST ${TEST_API_ORIGIN}/${LIST}`, () => {
+          throw failure;
+        });
+      });
+
+      await call(LIST);
+
+      expect(reportError).toHaveBeenCalledWith(failure, {
+        source: "bff",
+        procedure: LIST,
+      });
+    });
+
+    it("applies the timeout only until headers: a stream may outlive it but not go idle", async () => {
+      jar.set("aedst_session", fakeJwt({ expiresInSeconds: 600 }));
+      const encoder = new TextEncoder();
+      server.use((routes) => {
+        routes.set(`POST ${TEST_API_ORIGIN}/${LIST}`, () => {
+          const stream = new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.enqueue(encoder.encode("first"));
+            },
+          });
+          return new Response(stream, { status: 200 });
+        });
+      });
+      // Record the guard timers instead of waiting on them.
+      const timers: { ms: number; run: () => void }[] = [];
+      const realSetTimeout = globalThis.setTimeout;
+      const spy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+        run: () => void,
+        ms?: number,
+        ...rest: []
+      ) => {
+        timers.push({ ms: ms ?? 0, run });
+        return realSetTimeout(() => undefined, 0, ...rest);
+      }) as unknown as typeof setTimeout);
+      try {
+        const response = await call(LIST);
+        expect(response.status).toBe(200);
+        // The header timer (15 s) was cleared on arrival; the body is guarded
+        // by a separate, longer idle timer.
+        const idle = timers.filter((t) => t.ms === 60_000);
+        expect(idle.length).toBeGreaterThan(0);
+        const reader = response.body?.getReader();
+        const first = await reader?.read();
+        expect(new TextDecoder().decode(first?.value)).toBe("first");
+        const pending = reader?.read();
+        for (const timer of timers) {
+          timer.run();
+        }
+        await expect(pending).rejects.toBeDefined();
+      } finally {
+        spy.mockRestore();
+      }
     });
   });
 
   describe("session refresh", () => {
     const rotate = (label: string) =>
-      rpcHandler(
-        AuthService.method.refreshToken,
-        () => ({
-          tokens: {
-            accessToken: fakeJwt({ sub: label, expiresInSeconds: 900 }),
-            refreshToken: `${label}-refresh`,
-            accessTokenExpiresInSeconds: 900n,
-            refreshTokenExpiresInSeconds: 86_400n,
-          },
-        }),
-        TEST_API_ORIGIN,
-      );
+      vi.mocked(refreshSession).mockResolvedValue({
+        status: "ok",
+        tokens: {
+          accessToken: fakeJwt({ sub: label, expiresInSeconds: 900 }),
+          refreshToken: `${label}-refresh`,
+          accessMaxAgeSeconds: 900,
+          refreshMaxAgeSeconds: 86_400,
+        },
+      });
 
     it("refreshes an expired access token before calling, and sets the new cookies", async () => {
       jar.set("aedst_session", fakeJwt({ expiresInSeconds: -60 }));
       jar.set("aedst_session_refresh", "rt-expired-access");
       let seenAuth: string | null = null;
+      rotate("proactive");
       server.use(
-        rotate("proactive"),
         rpcHandler(
           TasksService.method.listTasks,
           (_input, request) => {
@@ -213,19 +285,19 @@ describe("/api/rpc BFF proxy", () => {
       const seenAuth: Array<string | null> = [];
       // First call: 401. Second (after refresh): success.
       let attempts = 0;
-      server.use(
-        rotate("retry"),
-        http.post(`${TEST_API_ORIGIN}/${LIST}`, ({ request }) => {
+      rotate("retry");
+      server.use((routes) => {
+        routes.set(`POST ${TEST_API_ORIGIN}/${LIST}`, (request) => {
           attempts += 1;
           seenAuth.push(request.headers.get("authorization"));
           return attempts === 1
-            ? HttpResponse.json(
+            ? Response.json(
                 { code: "unauthenticated", message: "expired" },
                 { status: 401 },
               )
-            : HttpResponse.json({ tasks: [] });
-        }),
-      );
+            : Response.json({ tasks: [] });
+        });
+      });
 
       const response = await call(LIST);
 
@@ -238,13 +310,8 @@ describe("/api/rpc BFF proxy", () => {
     it("ends the session (401 + cleared cookies) when the refresh token is rejected", async () => {
       jar.set("aedst_session", fakeJwt({ expiresInSeconds: -60 }));
       jar.set("aedst_session_refresh", "rt-rejected-by-server");
+      vi.mocked(refreshSession).mockResolvedValue({ status: "rejected" });
       server.use(
-        rpcErrorHandler(
-          AuthService.method.refreshToken,
-          "unauthenticated",
-          "revoked",
-          TEST_API_ORIGIN,
-        ),
         rpcErrorHandler(
           TasksService.method.listTasks,
           "unauthenticated",
@@ -257,22 +324,17 @@ describe("/api/rpc BFF proxy", () => {
 
       expect(response.status).toBe(401);
       const cleared = setCookies(response);
-      expect(cleared.length).toBe(2);
+      expect(cleared.length).toBe(3);
       for (const cookie of cleared) {
         expect(cookie).toMatch(/Max-Age=0/i);
       }
     });
 
-    it("does not sign the user out when the refresh service is merely down", async () => {
+    it("answers 401 and drops only the access cookie when the token was probably rotated by another replica", async () => {
       jar.set("aedst_session", fakeJwt({ expiresInSeconds: -60 }));
-      jar.set("aedst_session_refresh", "rt-during-outage");
+      jar.set("aedst_session_refresh", "rt-lost-rotation-race");
+      vi.mocked(refreshSession).mockResolvedValue({ status: "stale" });
       server.use(
-        rpcErrorHandler(
-          AuthService.method.refreshToken,
-          "internal",
-          "boom",
-          TEST_API_ORIGIN,
-        ),
         rpcErrorHandler(
           TasksService.method.listTasks,
           "unauthenticated",
@@ -284,7 +346,48 @@ describe("/api/rpc BFF proxy", () => {
       const response = await call(LIST);
 
       expect(response.status).toBe(401);
+      const cleared = setCookies(response);
+      expect(cleared).toHaveLength(1);
+      expect(cleared[0]).toMatch(/^aedst_session=;.*Max-Age=0/i);
+    });
+
+    it("does not sign the user out when the refresh service is merely down", async () => {
+      jar.set("aedst_session", fakeJwt({ expiresInSeconds: -60 }));
+      jar.set("aedst_session_refresh", "rt-during-outage");
+      vi.mocked(refreshSession).mockResolvedValue({ status: "unavailable" });
+      server.use(
+        rpcErrorHandler(
+          TasksService.method.listTasks,
+          "unauthenticated",
+          "no token",
+          TEST_API_ORIGIN,
+        ),
+      );
+
+      const response = await call(LIST);
+
+      // A retryable error, not a 401 (which the client treats as sign-out).
+      expect(response.status).toBe(503);
       expect(setCookies(response)).toEqual([]);
+    });
+
+    it("identifies itself to the server as web/<semver>, ignoring what the page sent", async () => {
+      jar.set("aedst_session", fakeJwt({ expiresInSeconds: 600 }));
+      let seen: string | null = null;
+      server.use(
+        rpcHandler(
+          TasksService.method.listTasks,
+          (_input, request) => {
+            seen = request.headers.get("x-aedst-client");
+            return { tasks: [] };
+          },
+          TEST_API_ORIGIN,
+        ),
+      );
+
+      await call(LIST, { headers: { "x-aedst-client": "android/9.9.9" } });
+
+      expect(seen).toMatch(/^web\/\d+\.\d+\.\d+/);
     });
   });
 });

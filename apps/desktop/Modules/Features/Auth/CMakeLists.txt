@@ -3,7 +3,7 @@ include(AedstCompilerWarnings)
 find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Core Quick)
 
 # LoginView.qml imports `Aedst.Connectivity` (Core) and `Aedst.Feature.Auth`; both are
-# registered by App at startup (qmlRegisterSingletonInstance / qmlRegisterSingletonType),
+# declared as QML_SINGLETONs (qt_add_qml_module below) and supplied by App at startup (SingletonSlot),
 # so this target needs no C++ link to Aedst::Connectivity.
 
 # BOUNDARY RULE: a feature links Core targets only — never Aedst::Feature::*.
@@ -28,8 +28,8 @@ add_library(AedstFeatureAuth STATIC
     Data/connect_auth_remote_data_source.cpp
     Data/local_token_store_adapter.hpp
     Data/local_token_store_adapter.cpp
-    Data/auth_repository_impl.hpp
-    Data/auth_repository_impl.cpp
+    Data/connect_auth_repository.hpp
+    Data/connect_auth_repository.cpp
     Data/oidc_auth_repository.hpp
     Data/oidc_auth_repository.cpp
     Presentation/login_view_model.hpp
@@ -42,6 +42,11 @@ add_library(AedstFeatureAuth STATIC
     Presentation/LoginView.qml
 )
 add_library(Aedst::Feature::Auth ALIAS AedstFeatureAuth)
+
+# Declarative QML singletons (QML_ELEMENT + QML_SINGLETON, Aedst::QmlSupport); the module URI is the import name QML uses.
+# Only App links AedstFeatureAuthplugin, so QML test executables keep registering their fakes under this URI.
+target_link_libraries(AedstFeatureAuth PUBLIC Aedst::QmlSupport)
+qt_add_qml_module(AedstFeatureAuth URI Aedst.Feature.Auth VERSION 1.0 RESOURCE_PREFIX /qt/qml)
 
 target_include_directories(AedstFeatureAuth PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
@@ -57,6 +62,7 @@ target_link_libraries(AedstFeatureAuth
         Aedst::Network
         Aedst::Contract
         Aedst::Navigation
+        Aedst::Plugin
         Qt6::Core
     PRIVATE
         Aedst::Persistence
@@ -68,7 +74,7 @@ target_link_libraries(AedstFeatureAuth
 
 # The sign-in screen is the first thing every launch renders: it is a static QML module so qmlcachegen compiles it
 # ahead of time (plain qt_add_resources would parse it at every start, docs/performance.md). The URI differs from
-# Aedst.Feature.Auth, which App registers at run time for LoginViewModel. Whoever links the feature (App, the QML tests)
+# Aedst.Feature.Auth, which declares LoginViewModel as a QML_SINGLETON. Whoever links the feature (App, the QML tests)
 # gets the plugin through the INTERFACE link below, so the resources are not dropped by the linker.
 set_source_files_properties(Presentation/LoginView.qml PROPERTIES QT_RESOURCE_ALIAS LoginView.qml)
 qt_add_qml_module(AedstFeatureAuthViews

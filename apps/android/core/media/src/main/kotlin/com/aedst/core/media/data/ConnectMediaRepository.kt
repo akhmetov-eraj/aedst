@@ -4,6 +4,7 @@ import com.aedst.core.common.Outcome
 import com.aedst.core.common.runCatchingOutcome
 import com.aedst.core.media.MediaItem
 import com.aedst.core.media.MediaPage
+import com.aedst.core.network.idempotencyHeaders
 import com.aedst.core.network.rpc
 import com.aedst.core.network.toInstant
 import com.aedst.media.v1.MediaServiceClientInterface
@@ -48,6 +49,8 @@ class ConnectMediaRepository @Inject constructor(private val client: MediaServic
         taskId: String?,
         sha256Hex: String?,
     ): UploadTarget {
+        // A fresh Idempotency-Key per call: OkHttp re-sends a POST whose connection broke, and a lost response must
+        // not leave a second pending media row behind.
         val response = rpc {
             client.createUpload(
                 createUploadRequest {
@@ -57,6 +60,7 @@ class ConnectMediaRepository @Inject constructor(private val client: MediaServic
                     taskId?.let { this.taskId = it }
                     sha256Hex?.let { this.sha256 = it }
                 },
+                idempotencyHeaders(),
             )
         }
         return UploadTarget(

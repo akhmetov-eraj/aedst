@@ -33,3 +33,4 @@ Q_DECLARE_LOGGING_CATEGORY(lcTelemetry) // aedst.telemetry Sentry, PostHog, cons
 Q_DECLARE_LOGGING_CATEGORY(lcUpdater)     // aedst.updater   update checks, feed binding, install
 Q_DECLARE_LOGGING_CATEGORY(lcNotifications) // aedst.notifications stream, polling, native notifications
 Q_DECLARE_LOGGING_CATEGORY(lcAuth)      // aedst.auth      OIDC sign-in, refresh, keychain (never tokens)
+Q_DECLARE_LOGGING_CATEGORY(lcOutbox)    // aedst.outbox    offline write queue, retries

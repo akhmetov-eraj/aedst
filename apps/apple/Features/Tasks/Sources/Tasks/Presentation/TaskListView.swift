@@ -1,5 +1,4 @@
 import AedstDesignSystem
-import Perception
 import SwiftUI
 
 /// The task list. Selecting a row calls `onSelect` with the task id; the
@@ -15,55 +14,75 @@ public struct TaskListView: View {
     }
 
     public var body: some View {
-        WithPerceptionTracking {
-            @Perception.Bindable var viewModel = viewModel
+        @Bindable var viewModel = viewModel
 
-            List {
-                if viewModel.hasLoaded, viewModel.tasks.isEmpty {
-                    Text(String(localized: "tasksEmpty", bundle: .module))
-                        .aedstFont(AedstTypography.body)
-                        .foregroundStyle(AedstColor.mutedForeground)
+        List {
+            if viewModel.hasLoaded, viewModel.tasks.isEmpty {
+                Text(String(localized: "tasksEmpty", bundle: .module))
+                    .aedstFont(AedstTypography.body)
+                    .foregroundStyle(AedstColor.mutedForeground)
+            }
+            if viewModel.unsyncedCount > 0 {
+                Text(String(localized: "tasksUnsynced \(viewModel.unsyncedCount)", bundle: .module))
+                    .aedstFont(AedstTypography.caption)
+                    .foregroundStyle(AedstColor.destructive)
+                    .accessibilityIdentifier("tasks.unsynced")
+            }
+            ForEach(viewModel.tasks) { task in
+                let isPending = viewModel.pendingIDs.contains(task.id)
+                Button {
+                    onSelect(task.id)
+                } label: {
+                    TaskRowView(task: task, isPending: isPending, isOverdue: viewModel.isOverdue(task))
                 }
-                ForEach(viewModel.tasks) { task in
-                    Button {
-                        onSelect(task.id)
-                    } label: {
-                        TaskRowView(task: task)
-                    }
-                    .buttonStyle(.plain)
-                    .task { await viewModel.loadMoreIfNeeded(after: task) }
+                .buttonStyle(.plain)
+                // Queued offline: the server does not know this task yet, so there is no detail to open.
+                .disabled(isPending)
+                .task { await viewModel.loadMoreIfNeeded(after: task) }
+            }
+            if viewModel.isLoading {
+                AedstProgressView(style: .circular)
+                    .frame(maxWidth: .infinity)
+            }
+        }
+        .refreshable { await viewModel.refresh() }
+        .navigationTitle(String(localized: "tasksTitle", bundle: .module))
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    viewModel.isComposerPresented = true
+                } label: {
+                    Label(String(localized: "tasksNew", bundle: .module), systemImage: "plus")
                 }
-                if viewModel.isLoading {
-                    AedstProgressView(style: .circular)
-                        .frame(maxWidth: .infinity)
+                .keyboardShortcut("n", modifiers: .command)
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    Task { await viewModel.refresh() }
+                } label: {
+                    Label(String(localized: "tasksRefresh", bundle: .module), systemImage: "arrow.clockwise")
                 }
+                .keyboardShortcut("r", modifiers: .command)
             }
-            .refreshable { await viewModel.refresh() }
-            .navigationTitle(String(localized: "tasksTitle", bundle: .module))
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        viewModel.isComposerPresented = true
-                    } label: {
-                        Label(String(localized: "tasksNew", bundle: .module), systemImage: "plus")
-                    }
-                }
-            }
-            .sheet(isPresented: $viewModel.isComposerPresented) {
-                TaskComposerView(viewModel: viewModel)
-            }
-            .aedstErrorPresenter($viewModel.error) {
-                Task { await viewModel.refresh() }
-            }
-            .task {
-                if !viewModel.hasLoaded { await viewModel.refresh() }
-            }
+        }
+        .aedstSheet(isPresented: $viewModel.isComposerPresented) {
+            TaskComposerView(viewModel: viewModel)
+        }
+        .aedstErrorPresenter($viewModel.error) {
+            Task { await viewModel.refresh() }
+        }
+        .task {
+            if !viewModel.hasLoaded { await viewModel.refresh() }
         }
     }
 }
 
 struct TaskRowView: View {
     let task: TaskItem
+    /// Created offline and not delivered yet.
+    var isPending = false
+    /// Computed by the view model from its injected clock.
+    var isOverdue = false
 
     var body: some View {
         HStack(spacing: AedstSpacing.md) {
@@ -74,10 +93,15 @@ struct TaskRowView: View {
                 Text(task.title)
                     .aedstFont(AedstTypography.body)
                     .strikethrough(task.status == .done)
+                if isPending {
+                    Text(String(localized: "tasksPendingSync", bundle: .module))
+                        .aedstFont(AedstTypography.caption)
+                        .foregroundStyle(AedstColor.mutedForeground)
+                }
                 if let dueDate = task.dueDate {
                     Text(TaskFormatting.due(dueDate))
                         .aedstFont(AedstTypography.caption)
-                        .foregroundStyle(task.isOverdue(at: Date()) ? AedstColor.destructive : AedstColor.mutedForeground)
+                        .foregroundStyle(isOverdue ? AedstColor.destructive : AedstColor.mutedForeground)
                 }
             }
             Spacer(minLength: 0)
@@ -86,6 +110,7 @@ struct TaskRowView: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
         .accessibilityValue(Text(TaskFormatting.status(task.status)))
+        .aedstSensitive()
     }
 }
 
@@ -94,34 +119,36 @@ private struct TaskComposerView: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        WithPerceptionTracking {
-            @Perception.Bindable var viewModel = viewModel
-            VStack(alignment: .leading, spacing: AedstSpacing.lg) {
-                Text(String(localized: "tasksNew", bundle: .module))
-                    .aedstFont(AedstTypography.title)
-                    .accessibilityAddTraits(.isHeader)
-                AedstTextField(String(localized: "tasksTitleField", bundle: .module), text: $viewModel.draftTitle)
-                Picker(String(localized: "tasksPriority", bundle: .module), selection: $viewModel.draftPriority) {
-                    ForEach(TaskItem.Priority.allCases, id: \.self) { priority in
-                        Text(TaskFormatting.priority(priority)).tag(priority)
-                    }
+        @Bindable var viewModel = viewModel
+        VStack(alignment: .leading, spacing: AedstSpacing.lg) {
+            Text(String(localized: "tasksNew", bundle: .module))
+                .aedstFont(AedstTypography.title)
+                .accessibilityAddTraits(.isHeader)
+            AedstTextField(String(localized: "tasksTitleField", bundle: .module), text: $viewModel.draftTitle)
+                .focused($titleFocused)
+                .aedstSensitive()
+            Picker(String(localized: "tasksPriority", bundle: .module), selection: $viewModel.draftPriority) {
+                ForEach(TaskItem.Priority.allCases, id: \.self) { priority in
+                    Text(TaskFormatting.priority(priority)).tag(priority)
                 }
-                .pickerStyle(.segmented)
-                HStack {
-                    AedstButton(String(localized: "tasksCancel", bundle: .module), variant: .ghost) { dismiss() }
-                    AedstButton(
-                        String(localized: "tasksCreate", bundle: .module),
-                        isLoading: viewModel.isSaving,
-                        isDisabled: !viewModel.canSaveDraft
-                    ) {
-                        Task { await viewModel.saveDraft() }
-                    }
-                }
-                Spacer()
             }
-            .padding(AedstSpacing.xxl)
-            .frame(minWidth: 320, minHeight: 280)
+            .pickerStyle(.segmented)
+            HStack {
+                AedstButton(String(localized: "tasksCancel", bundle: .module), variant: .ghost) { dismiss() }
+                AedstButton(
+                    String(localized: "tasksCreate", bundle: .module),
+                    isLoading: viewModel.isSaving,
+                    isDisabled: !viewModel.canSaveDraft
+                ) {
+                    Task { await viewModel.saveDraft() }
+                }
+            }
+            Spacer()
         }
+        .padding(AedstSpacing.xxl)
+        .frame(minWidth: 320, minHeight: 280)
+        // The sheet opens with the title field focused, so the keyboard (or VoiceOver) starts on the input.
+        .defaultFocus($titleFocused, true)
     }
 }
 
@@ -146,6 +173,6 @@ enum TaskFormatting {
 
     static func due(_ date: Date) -> String {
         let formatted = date.formatted(date: .abbreviated, time: .omitted)
-        return String(format: String(localized: "tasksDue", bundle: .module), formatted)
+        return String(localized: "tasksDue \(formatted)", bundle: .module)
     }
 }

@@ -66,6 +66,12 @@ public struct AedstTextField: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .onChange(of: errorMessage) { previous, current in
+            // A new validation message is spoken when it appears; VoiceOver does not read it on its own.
+            if let text = AedstAnnouncementPolicy.announcement(previous: previous, current: current) {
+                AedstAnnouncer.post(text)
+            }
+        }
     }
 }
 

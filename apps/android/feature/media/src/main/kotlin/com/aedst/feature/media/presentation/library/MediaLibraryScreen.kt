@@ -1,6 +1,5 @@
 package com.aedst.feature.media.presentation.library
 
-import android.net.Uri
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,10 +12,8 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -38,31 +35,31 @@ import com.aedst.core.media.ui.MediaThumbnail
 import com.aedst.core.media.ui.UploadProgressRow
 import com.aedst.core.media.ui.rememberMediaPicker
 import com.aedst.core.media.upload.UploadProgress
+import com.aedst.core.ui.adaptive.AedstAdaptiveContent
+import com.aedst.core.ui.adaptive.AedstContentWidth
+import com.aedst.core.ui.adaptive.AedstWindowSizePreviews
 import com.aedst.core.ui.components.AedstButton
 import com.aedst.core.ui.components.AedstButtonVariant
 import com.aedst.core.ui.components.AedstErrorSnackbarEffect
+import com.aedst.core.ui.components.AedstFab
 import com.aedst.core.ui.components.AedstSnackbarHost
 import com.aedst.core.ui.components.AedstTopAppBar
 import com.aedst.core.ui.components.FullScreenLoading
+import com.aedst.core.ui.theme.AedstShapesScale
+import com.aedst.core.ui.theme.AedstSpacing
+import com.aedst.core.ui.theme.AedstTheme
 import com.aedst.feature.media.R
 
 @Composable
-fun MediaLibraryRoute(onOpenMedia: (String) -> Unit, viewModel: MediaLibraryViewModel = hiltViewModel()) {
+internal fun MediaLibraryRoute(onOpenMedia: (String) -> Unit, viewModel: MediaLibraryViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val uploads by viewModel.activeUploads.collectAsStateWithLifecycle()
+    // The one place the library loads: every start (first open, and coming back from a detail screen or the picker).
     LifecycleStartEffect(viewModel) {
-        viewModel.refresh()
+        viewModel.onIntent(MediaLibraryIntent.Refresh)
         onStopOrDispose { }
     }
-    MediaLibraryScreen(
-        state = state,
-        uploads = uploads,
-        onOpenMedia = onOpenMedia,
-        onUpload = viewModel::upload,
-        onCancelUpload = viewModel::cancelUpload,
-        onLoadMore = viewModel::loadMore,
-        onErrorShown = viewModel::errorShown,
-    )
+    MediaLibraryScreen(state = state, uploads = uploads, onOpenMedia = onOpenMedia, onIntent = viewModel::onIntent)
 }
 
 @Composable
@@ -70,33 +67,54 @@ internal fun MediaLibraryScreen(
     state: MediaLibraryState,
     uploads: List<UploadProgress>,
     onOpenMedia: (String) -> Unit,
-    onUpload: (List<Uri>) -> Unit,
-    onCancelUpload: (String) -> Unit,
-    onLoadMore: () -> Unit,
-    onErrorShown: () -> Unit,
+    onIntent: (MediaLibraryIntent) -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
-    AedstErrorSnackbarEffect(state.error, snackbarHostState, onShown = onErrorShown)
-    val pickMedia = rememberMediaPicker(onPicked = onUpload)
+    AedstErrorSnackbarEffect(
+        state.error,
+        snackbarHostState,
+        onShown = { onIntent(MediaLibraryIntent.ErrorShown) },
+        onRetry = { onIntent(MediaLibraryIntent.Refresh) },
+    )
+    val pickMedia = rememberMediaPicker { uris -> onIntent(MediaLibraryIntent.Upload(uris)) }
 
     Scaffold(
         topBar = { AedstTopAppBar(title = stringResource(R.string.media_title)) },
         snackbarHost = { AedstSnackbarHost(snackbarHostState) },
         floatingActionButton = {
-            FloatingActionButton(onClick = pickMedia) {
-                Icon(Icons.Filled.AddPhotoAlternate, contentDescription = stringResource(R.string.media_upload))
+            AedstFab(onClick = pickMedia, contentDescription = stringResource(R.string.media_upload)) {
+                Icon(Icons.Filled.AddPhotoAlternate, contentDescription = null)
             }
         },
     ) { padding ->
-        when {
-            state.isLoading && state.items.isEmpty() && uploads.isEmpty() ->
-                FullScreenLoading(Modifier.padding(padding))
-            state.items.isEmpty() && uploads.isEmpty() ->
-                Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    Text(stringResource(R.string.media_empty), style = MaterialTheme.typography.bodyLarge)
-                }
-            else -> MediaGrid(state, uploads, onOpenMedia, onCancelUpload, onLoadMore, Modifier.padding(padding))
+        AedstAdaptiveContent(modifier = Modifier.padding(padding), maxWidth = AedstContentWidth.wide) {
+            LibraryContent(
+                state = state,
+                uploads = uploads,
+                onOpenMedia = onOpenMedia,
+                onCancelUpload = { onIntent(MediaLibraryIntent.CancelUpload(it)) },
+                onLoadMore = { onIntent(MediaLibraryIntent.LoadMore) },
+            )
         }
+    }
+}
+
+@Composable
+private fun LibraryContent(
+    state: MediaLibraryState,
+    uploads: List<UploadProgress>,
+    onOpenMedia: (String) -> Unit,
+    onCancelUpload: (String) -> Unit,
+    onLoadMore: () -> Unit,
+) {
+    when {
+        state.isLoading && state.items.isEmpty() && uploads.isEmpty() ->
+            FullScreenLoading()
+        state.items.isEmpty() && uploads.isEmpty() ->
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(stringResource(R.string.media_empty), style = MaterialTheme.typography.bodyLarge)
+            }
+        else -> MediaGrid(state, uploads, onOpenMedia, onCancelUpload, onLoadMore)
     }
 }
 
@@ -110,11 +128,11 @@ private fun MediaGrid(
     modifier: Modifier = Modifier,
 ) {
     LazyVerticalGrid(
-        columns = GridCells.Adaptive(minSize = 112.dp),
+        columns = GridCells.Adaptive(minSize = 112.dp), // allow-dp: grid cell width, not a spacing step
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(AedstSpacing.sm),
+        horizontalArrangement = Arrangement.spacedBy(AedstSpacing.sm),
+        verticalArrangement = Arrangement.spacedBy(AedstSpacing.sm),
     ) {
         items(uploads, key = { it.uploadId }, span = { GridItemSpan(maxLineSpan) }) { upload ->
             UploadProgressRow(upload = upload, onCancel = { onCancelUpload(upload.uploadId) })
@@ -125,7 +143,7 @@ private fun MediaGrid(
                 contentDescription = item.filename,
                 modifier = Modifier
                     .aspectRatio(1f)
-                    .clip(RoundedCornerShape(8.dp))
+                    .clip(AedstShapesScale.medium)
                     .clickable { onOpenMedia(item.id) },
             )
         }
@@ -135,10 +153,23 @@ private fun MediaGrid(
                     text = stringResource(R.string.media_load_more),
                     onClick = onLoadMore,
                     variant = AedstButtonVariant.GHOST,
-                    loading = state.isLoading,
+                    loading = state.isLoadingMore,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
+    }
+}
+
+@AedstWindowSizePreviews
+@Composable
+private fun MediaLibraryScreenPreview() {
+    AedstTheme {
+        MediaLibraryScreen(
+            state = MediaLibraryState(isLoading = false),
+            uploads = emptyList(),
+            onOpenMedia = {},
+            onIntent = {},
+        )
     }
 }

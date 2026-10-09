@@ -1,8 +1,13 @@
+---
+title: "ADR-0012: Shared platform tables for outbox, inbox and idempotency"
+description: "Partly superseded by ADR-0014: platform.outbox and platform.inbox were dropped (River InsertTx is the outbox, handlers are idempotent),..."
+---
+
 # ADR-0012: Shared platform tables for outbox, inbox and idempotency
 
 ## Status
 
-Accepted. Refines [ADR-0011](/decisions/0011-outbox-relay-and-in-process-bus) (which still describes the relay and the bus) and the "one schema per module" rule in [database.md](/database): module *business* tables stay in the module's schema; the three messaging/deduplication tables are platform-owned.
+Partly superseded by [ADR-0014](/decisions/0014-river-insert-tx-as-outbox): `platform.outbox` and `platform.inbox` were dropped (River `InsertTx` is the outbox, handlers are idempotent), `platform.idempotency_keys` remains as described. Originally: refined [ADR-0011](/decisions/0011-outbox-relay-and-in-process-bus) and the "one schema per module" rule in [database.md](/server/database): module *business* tables stay in the module's schema; the three messaging/deduplication tables are platform-owned.
 
 ## Context
 

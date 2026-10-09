@@ -1,0 +1,12 @@
+# Fixture for scripts/check-forbidden-apis.sh (CMake rules). Not configured.
+find_package(Boost REQUIRED)
+find_package(OpenSSL REQUIRED)
+
+include(FetchContent)
+FetchContent_Declare(evil
+    GIT_REPOSITORY https://example.invalid/evil.git
+    GIT_TAG v1.2.3)
+FetchContent_Declare(velopack
+    URL https://example.invalid/velopack.zip)
+FetchContent_Declare(qtkeychain
+    GIT_REPOSITORY https://example.invalid/qtkeychain.git)

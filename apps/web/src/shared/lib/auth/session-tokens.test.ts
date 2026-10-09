@@ -1,48 +1,45 @@
 import { describe, expect, it } from "vitest";
 
-import type { TokenPair } from "@/shared/api/connect/generated/aedst/auth/v1/auth_pb";
-import { sessionTokensFromPair } from "@/shared/lib/auth/session-tokens";
+import { sessionTokensFromResponse } from "@/shared/lib/auth/session-tokens";
 
-function pair(overrides: Partial<TokenPair> = {}): TokenPair {
-  return {
-    $typeName: "aedst.auth.v1.TokenPair",
-    accessToken: "access",
-    refreshToken: "refresh",
-    accessTokenExpiresInSeconds: 900n,
-    refreshTokenExpiresInSeconds: 86_400n,
-    ...overrides,
-  };
-}
-
-describe("sessionTokensFromPair", () => {
-  it("maps a complete pair to cookie lifetimes in seconds", () => {
-    expect(sessionTokensFromPair(pair())).toEqual({
+describe("sessionTokensFromResponse", () => {
+  it("maps a complete token response to cookie lifetimes in seconds", () => {
+    expect(
+      sessionTokensFromResponse({
+        access_token: "access",
+        refresh_token: "refresh",
+        expires_in: 900,
+        id_token: "id",
+      }),
+    ).toEqual({
       accessToken: "access",
       refreshToken: "refresh",
       accessMaxAgeSeconds: 900,
-      refreshMaxAgeSeconds: 86_400,
+      refreshMaxAgeSeconds: 30 * 24 * 60 * 60,
+      idToken: "id",
     });
   });
 
-  it("returns null when the response carried no tokens at all", () => {
-    expect(sessionTokensFromPair(undefined)).toBeNull();
+  it("falls back to the previous refresh token when none is rotated in", () => {
+    expect(
+      sessionTokensFromResponse({ access_token: "a", expires_in: 60 }, "old")
+        ?.refreshToken,
+    ).toBe("old");
   });
 
-  it.each([{ accessToken: "" }, { refreshToken: "" }])(
-    "returns null when a token is empty (%o) — never a signed-in session with blank credentials",
-    (overrides) => {
-      expect(sessionTokensFromPair(pair(overrides))).toBeNull();
-    },
-  );
+  it("refuses a response without an access or refresh token", () => {
+    expect(sessionTokensFromResponse({ access_token: "a" })).toBeNull();
+    expect(
+      sessionTokensFromResponse({ access_token: "", refresh_token: "r" }),
+    ).toBeNull();
+  });
 
-  it("falls back to a sane lifetime when the server sends none", () => {
-    const tokens = sessionTokensFromPair(
-      pair({
-        accessTokenExpiresInSeconds: 0n,
-        refreshTokenExpiresInSeconds: -1n,
-      }),
-    );
-    expect(tokens?.accessMaxAgeSeconds).toBe(900);
-    expect(tokens?.refreshMaxAgeSeconds).toBe(900);
+  it("uses a default lifetime when expires_in is missing or not positive", () => {
+    const base = { access_token: "a", refresh_token: "r" };
+    expect(sessionTokensFromResponse(base)?.accessMaxAgeSeconds).toBe(900);
+    expect(
+      sessionTokensFromResponse({ ...base, expires_in: 0 })
+        ?.accessMaxAgeSeconds,
+    ).toBe(900);
   });
 });

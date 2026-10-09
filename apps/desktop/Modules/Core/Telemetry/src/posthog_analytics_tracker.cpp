@@ -1,7 +1,7 @@
 #include "aedst/telemetry/posthog_analytics_tracker.hpp"
 
-#include "aedst/core/logger.hpp"
 #include "aedst/core/redaction.hpp"
+#include "aedst/logging/log_categories.hpp"
 #include "aedst/network/transport_policy.hpp"
 
 #include <QJsonArray>
@@ -16,8 +16,6 @@
 #include <utility>
 
 namespace aedst::telemetry {
-
-using core::AedstLogger;
 
 QByteArray buildBatchPayload(const QString& apiKey, const QList<PostHogEvent>& events) {
     QJsonArray batch;
@@ -78,12 +76,18 @@ PostHogAnalyticsTracker::PostHogAnalyticsTracker(PostHogConfig config, QObject* 
         if (auto valid = network::validateEndpoint(config_.host, /*allowInsecureLoopback=*/false); valid) {
             configured_ = true;
         } else {
-            AedstLogger::warn("PostHog disabled: invalid host ({})", valid.error().message);
+            qCWarning(lcTelemetry, "PostHog disabled: invalid host (%s)", valid.error().message.c_str());
         }
     }
+    // The flush timer only runs while events are waiting: it starts with the first enqueued event and stops once the
+    // queue is empty, so an idle (or consent-less) app wakes the CPU for nothing. A 30 s tick needs no precision.
     flushTimer_.setInterval(config_.flushIntervalMs);
+    flushTimer_.setTimerType(Qt::VeryCoarseTimer);
     connect(&flushTimer_, &QTimer::timeout, this, &PostHogAnalyticsTracker::flush);
-    if (configured_) {
+}
+
+void PostHogAnalyticsTracker::armFlushTimer() {
+    if (isEnabled() && !queue_.isEmpty() && !flushTimer_.isActive()) {
         flushTimer_.start();
     }
 }
@@ -101,6 +105,7 @@ void PostHogAnalyticsTracker::setConsent(bool granted) {
     consent_ = granted;
     if (!consent_) {
         queue_.clear();
+        flushTimer_.stop();
         if (!flags_.isEmpty()) {
             flags_.clear();
             emit featureFlagsChanged();
@@ -152,11 +157,18 @@ void PostHogAnalyticsTracker::reset() {
 }
 
 void PostHogAnalyticsTracker::flush() {
-    if (!isEnabled() || queue_.isEmpty() || flushInFlight_) {
+    if (!isEnabled() || queue_.isEmpty()) {
+        flushTimer_.stop(); // nothing waiting: no timer
+        return;
+    }
+    if (flushInFlight_) {
         return;
     }
     const QList<PostHogEvent> batch = queue_.mid(0, config_.maxBatchSize);
     queue_.remove(0, batch.size());
+    if (queue_.isEmpty()) {
+        flushTimer_.stop();
+    }
 
     QNetworkRequest request(endpoint(QStringLiteral("/batch/")));
     request.setHeader(QNetworkRequest::ContentTypeHeader, QStringLiteral("application/json"));
@@ -175,19 +187,22 @@ void PostHogAnalyticsTracker::flush() {
             if (!guard->queue_.isEmpty() && guard->queue_.size() >= guard->config_.maxBatchSize) {
                 guard->flush();
             }
+            guard->armFlushTimer(); // events enqueued while the batch was in flight
             return;
         }
         // 4xx other than 429 means the payload/key is wrong: retrying cannot help.
         if (status >= 400 && status < 500 && status != 429) {
-            AedstLogger::warn("PostHog rejected a batch (HTTP {}); dropping {} events", status, batch.size());
+            qCWarning(lcTelemetry, "PostHog rejected a batch (HTTP %d); dropping %lld events", status,
+                     static_cast<long long>(batch.size()));
             return;
         }
-        AedstLogger::debug("PostHog batch failed ({}); re-queued", reply->errorString().toStdString());
+        qCDebug(lcTelemetry, "PostHog batch failed (%s); re-queued", qPrintable(reply->errorString()));
         if (guard->isEnabled()) {
             guard->queue_ = batch + guard->queue_;
             while (guard->queue_.size() > guard->config_.maxQueuedEvents) {
                 guard->queue_.removeFirst();
             }
+            guard->armFlushTimer(); // retry on the next tick
         }
     });
 }
@@ -253,6 +268,7 @@ void PostHogAnalyticsTracker::enqueue(PostHogEvent event) {
     if (queue_.size() >= config_.maxBatchSize) {
         flush();
     }
+    armFlushTimer();
 }
 
 QUrl PostHogAnalyticsTracker::endpoint(const QString& path) const {

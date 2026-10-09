@@ -1,6 +1,6 @@
 // Package observability wires structured logging, tracing and metrics with
 // consistent correlation (trace_id/request_id on every log line) — see
-// docs/observability.md conventions embedded in the project brief section 24.
+// the conventions in docs/content/server/architecture.md ("Observability").
 package observability
 
 import (

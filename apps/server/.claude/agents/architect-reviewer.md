@@ -25,13 +25,14 @@ a summary to apply against the diff, not a replacement for it.
    `internal/modules/**`?
 4. **Banned dependencies** — does anything import `github.com/nats-io/*`,
    `go-redsync/redsync`, another JWT library or an ORM? Async work must go
-   through outbox + inbox + River; locks through `internal/platform/lock`
+   through River (`internal/platform/events` for integration events); locks through `internal/platform/lock`
    (Postgres advisory locks).
-5. **Outbox for integration events** — does a change publish an event that
-   another system/module cares about via a direct `messaging.Publish` call
-   inside a request handler, instead of writing an outbox row in the same
-   `database.WithTx` as the domain change? A missed outbox write means the
-   event can be silently lost on a crash between commit and publish.
+5. **Events inside the transaction** — does a change publish an event that
+   another system/module cares about outside the producing transaction (a
+   publish after commit, or a direct call from a request handler), instead of
+   `events.Publisher.Publish(ctx, tx, …)` inside the same `database.WithTx` as
+   the domain change? A publish after commit can be silently lost on a crash.
+   Is every new consumer handler idempotent (River delivers at-least-once)?
 6. **Idempotency for retryable commands** — does a new command handler that
    mutates state (especially one a client might retry, e.g. after a timeout)
    skip wrapping its write with `idempotency.Check`/`Save`?

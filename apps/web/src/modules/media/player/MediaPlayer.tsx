@@ -9,6 +9,16 @@ import {
 } from "@/shared/api/connect/generated/aedst/media/v1/media_pb";
 import { buttonVariants } from "@/shared/ui/button";
 
+/** Only http(s) links are rendered as hrefs; anything else (javascript:, data:) becomes "#". */
+function safeHttpUrl(url: string): string {
+  try {
+    const { protocol } = new URL(url);
+    return protocol === "https:" || protocol === "http:" ? url : "#";
+  } catch {
+    return "#";
+  }
+}
+
 /** Renders any media item with the right native element for its kind. */
 export function MediaPlayer({ media }: { media: Media }) {
   const t = useTranslations("media.player");
@@ -40,7 +50,7 @@ export function MediaPlayer({ media }: { media: Media }) {
     default:
       return (
         <a
-          href={media.url}
+          href={safeHttpUrl(media.url)}
           target="_blank"
           rel="noopener noreferrer"
           className={buttonVariants({ variant: "outline" })}

@@ -25,6 +25,6 @@ assert {
 docs {
   Every AdminService RPC requires the `admin` role (built-in default policy
   `/aedst.admin.v1.AdminService/*=admin`). First-party tokens carry `user`
-  only; use a Keycloak user with the `admin` realm role (task up
+  only; use a ZITADEL user with the `admin` project role (task up
   PROFILES="--profile idp") to get 200 instead of PERMISSION_DENIED.
 }

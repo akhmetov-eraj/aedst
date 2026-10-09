@@ -23,7 +23,7 @@ namespace aedst::crash::detail {
         return core::fail(core::Error::storage("cannot stat file: " + ec.message()));
     }
     if (size > maxBytes) {
-        return core::fail(core::Error::invalidArgument("file too large"));
+        return core::fail(core::Error::invalidInput("file too large"));
     }
     std::ifstream in(path, std::ios::binary);
     if (!in) {

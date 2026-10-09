@@ -1,11 +1,12 @@
-/// Marker every feature's route value conforms to. A feature module (e.g.
-/// `Auth`) defines its own `enum AuthRoute: AedstRoute { case login, signUp }`
-/// and never imports another feature to navigate to it — it pushes a route
-/// value onto the shared `Router`, and `App/Shared` (which links every
-/// feature) is the only place that registers a view builder per route type.
+/// Marker every route value conforms to. All route enums live in `AedstRoutes.swift` in this package, so any
+/// feature can push any screen onto the shared `Router` (`router.push(MediaRoute.detail(id: id))`) without
+/// importing the feature that renders it. Each feature registers the view builder for its own route type with its
+/// `*Destinations` modifier, and `App/Shared` (which links every feature) attaches those modifiers to the root
+/// `AedstNavigationStack`.
 ///
-/// This is the Swift analogue of `AedstNavGraph`/`AedstRoutes` in
-/// `apps/android/core/navigation`: the seam that keeps `feature/*` modules
-/// from depending on each other (see `docs/architecture-android.md`'s
-/// "boundary rule").
-public protocol AedstRoute: Hashable, Sendable {}
+/// This is the Swift analogue of `AedstNavGraph`/`AedstRoutes` in `apps/android/core/navigation`: the seam that
+/// keeps feature modules from depending on each other.
+///
+/// `Codable` so the whole `NavigationPath` can be saved and restored (`Router.persistedData()`, scene restoration).
+/// Route cases are a persisted format across launches: add cases, do not rename or repurpose one.
+public protocol AedstRoute: Hashable, Sendable, Codable {}

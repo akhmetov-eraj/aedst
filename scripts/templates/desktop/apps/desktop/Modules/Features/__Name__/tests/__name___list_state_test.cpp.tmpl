@@ -1,0 +1,19 @@
+#include "Data/in_memory_{{name}}_repository.hpp"
+#include "Presentation/{{name}}_list_state.hpp"
+
+#include <gtest/gtest.h>
+
+#include <memory>
+
+namespace aedst::feature::{{name}} {
+namespace {
+
+TEST({{Name}}ListStateTest, LoadsEntriesFromTheRepositoryAndStopsLoading) {
+    {{Name}}ListState state(std::make_shared<InMemory{{Name}}Repository>());
+    state.load();
+    EXPECT_FALSE(state.isLoading());
+    EXPECT_TRUE(state.entries().empty());
+}
+
+} // namespace
+} // namespace aedst::feature::{{name}}

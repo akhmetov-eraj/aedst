@@ -12,8 +12,8 @@ export function OfflineBanner() {
   return (
     <div role="status" aria-live="polite">
       {!online && (
-        <p className="bg-amber-100 px-4 py-2 text-center text-amber-950 text-sm dark:bg-amber-950 dark:text-amber-100">
-          {t("banner")}
+        <p className="bg-warning px-4 py-2 text-center text-sm text-warning-foreground">
+          {t("banner")} <span>{t("queued")}</span>
         </p>
       )}
     </div>

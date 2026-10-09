@@ -1,6 +1,7 @@
 import type { PostHog } from "posthog-js";
 
 import { clientEnv } from "@/shared/env/client";
+import { redactSensitiveParams } from "@/shared/lib/utils/sensitive-params";
 
 /**
  * Product analytics + feature flags (PostHog), behind three gates:
@@ -43,6 +44,14 @@ export type AnalyticsEvents = {
   pwa_install_prompt: { outcome: "accepted" | "dismissed" };
   admin_task_deleted: Record<string, never>;
   admin_broadcast_sent: { audience: "user" | "everyone" };
+  /** Core Web Vitals from real sessions (field data), reported by `WebVitals`. */
+  web_vital: {
+    name: "CLS" | "FCP" | "INP" | "LCP" | "TTFB";
+    /** ms, except CLS (unitless score). */
+    value: number;
+    rating: "good" | "needs-improvement" | "poor";
+    navigation_type: string;
+  };
 };
 
 /** Default values used whenever flags are unavailable (no key, no consent, offline). */
@@ -79,6 +88,27 @@ export function isTrackingBlockedByBrowser(): boolean {
   );
 }
 
+const URL_PROPERTIES = ["$current_url", "$referrer", "$initial_referrer"];
+
+/**
+ * PostHog `before_send`: strips sensitive query parameters (search text,
+ * `next`, credentials) from the URLs on every event, pageviews included.
+ */
+export function sanitizeEvent<
+  T extends { properties?: Record<string, unknown> },
+>(event: T | null): T | null {
+  const properties = event?.properties;
+  if (properties) {
+    for (const name of URL_PROPERTIES) {
+      const value = properties[name];
+      if (typeof value === "string") {
+        properties[name] = redactSensitiveParams(value);
+      }
+    }
+  }
+  return event;
+}
+
 /** PostHog's app host for a given ingestion host (eu.i.posthog.com → eu.posthog.com). */
 export function toPostHogUiHost(ingestHost: string): string {
   return ingestHost.replace(".i.posthog.com", ".posthog.com");
@@ -109,6 +139,10 @@ export function enableAnalytics(): Promise<PostHog | null> {
       mask_all_text: true,
       mask_all_element_attributes: true,
       respect_dnt: true,
+      before_send: sanitizeEvent,
+      // Session replay lives in Sentry Replay only (it is tied to errors, see
+      // docs/content/decisions.md); PostHog stays analytics + feature flags. This
+      // also keeps the recorder out of the loaded SDK.
       disable_session_recording: true,
       capture_exceptions: false,
       disable_surveys: true,

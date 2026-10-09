@@ -16,7 +16,6 @@ import (
 	"github.com/aedst/server/internal/modules/admin/domain"
 	"github.com/aedst/server/internal/platform/database"
 	platformjobs "github.com/aedst/server/internal/platform/jobs"
-	"github.com/aedst/server/internal/platform/outbox"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
 	"github.com/aedst/server/internal/shared/pagination"
@@ -24,12 +23,15 @@ import (
 )
 
 type Repository struct {
+	stats platformjobs.Stats
 	pool  *pgxpool.Pool
 	clock sharedtime.Clock
 }
 
-func NewRepository(pool *pgxpool.Pool, clock sharedtime.Clock) *Repository {
-	return &Repository{pool: pool, clock: clock}
+// NewRepository builds the admin repository. stats reads the River queue through the
+// jobs pool (never river_job through pool).
+func NewRepository(pool *pgxpool.Pool, stats platformjobs.Stats, clock sharedtime.Clock) *Repository {
+	return &Repository{pool: pool, stats: stats, clock: clock}
 }
 
 var (
@@ -98,12 +100,14 @@ func (r *Repository) Purge(ctx context.Context, cutoff time.Time, limit int) (in
 	return n, nil
 }
 
-func (r *Repository) OutboxLag(ctx context.Context) (time.Duration, error) {
-	return outbox.OldestPendingAge(ctx, r.pool, r.clock.Now())
+// JobLag is the age of the oldest River job ready to run (event deliveries
+// included); it is exposed on the wire as outbox_lag_seconds.
+func (r *Repository) JobLag(ctx context.Context) (time.Duration, error) {
+	return r.stats.OldestAvailableAge(ctx, r.clock.Now())
 }
 
 func (r *Repository) PendingJobs(ctx context.Context) (int64, error) {
-	return platformjobs.PendingCount(ctx, r.pool)
+	return r.stats.PendingCount(ctx)
 }
 
 func toPgUUID(id ids.ID) pgtype.UUID { return pgtype.UUID{Bytes: id, Valid: !id.IsNil()} }

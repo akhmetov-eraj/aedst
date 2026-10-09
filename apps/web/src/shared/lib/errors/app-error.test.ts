@@ -20,7 +20,8 @@ describe("toAppError", () => {
     [Code.NotFound, "notFound"],
     [Code.InvalidArgument, "invalidInput"],
     [Code.AlreadyExists, "conflict"],
-    [Code.FailedPrecondition, "conflict"],
+    [Code.Aborted, "conflict"],
+    [Code.FailedPrecondition, "invalidInput"],
     [Code.ResourceExhausted, "rateLimited"],
     [Code.Unavailable, "unavailable"],
     [Code.DeadlineExceeded, "timeout"],
@@ -74,11 +75,11 @@ describe("policies", () => {
     ).toBe(true);
   });
 
-  it("reports only server faults and bugs", () => {
+  it("reports only bugs and storage faults", () => {
     expect(shouldReport(toAppError(new Error("bug")))).toBe(true);
     expect(
       shouldReport(toAppError(new ConnectError("", Code.Unavailable))),
-    ).toBe(true);
+    ).toBe(false);
     expect(
       shouldReport(toAppError(new ConnectError("", Code.InvalidArgument))),
     ).toBe(false);

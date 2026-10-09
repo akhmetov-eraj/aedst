@@ -6,22 +6,23 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import com.aedst.core.common.AedstError
 import com.aedst.core.ui.theme.AedstTheme
-import com.aedst.feature.auth.domain.model.CredentialsIssue
+import com.aedst.feature.auth.R
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Instrumented run of the login screen with the Accessibility Test Framework (ATF) checks switched on: every
+ * Instrumented run of the sign-in screen with the Accessibility Test Framework (ATF) checks switched on: every
  * `perform*`/assert also validates the whole hierarchy for touch-target size, contrast, missing labels, duplicate
  * clickable bounds, etc., and fails the test on a violation. Run:
  * `./gradlew :feature:auth:connectedDebugAndroidTest`
- * (needs an emulator/device; CI runs it on the managed-device lane).
+ * (needs an emulator/device; CI runs it on the emulator lane). Texts come from the string resources (`getString`), so
+ * the test follows the device locale and a reworded button does not break it.
  */
 @OptIn(ExperimentalTestApi::class)
 @RunWith(AndroidJUnit4::class)
@@ -35,35 +36,37 @@ class LoginScreenAccessibilityTest {
         compose.enableAccessibilityChecks()
     }
 
+    private fun string(id: Int) = InstrumentationRegistry.getInstrumentation().targetContext.getString(id)
+
     private fun show(state: LoginState) {
         compose.setContent { AedstTheme { LoginScreen(state = state, onIntent = {}) } }
     }
 
     @Test
-    fun emptyForm_passesAccessibilityChecks() {
+    fun idleScreen_passesAccessibilityChecks() {
         show(LoginState())
 
-        compose.onNodeWithText("Log in").performClick()
+        compose.onNodeWithText(string(R.string.auth_login_submit)).performClick()
     }
 
     @Test
-    fun formWithFieldErrors_passesAccessibilityChecks() {
-        show(LoginState(email = "nope", emailIssue = CredentialsIssue.InvalidEmail))
+    fun failedSignIn_passesAccessibilityChecks() {
+        show(LoginState(problem = LoginProblem.Failed(AedstError.Forbidden())))
 
-        compose.onNodeWithText("Email").performTextInput("x")
+        compose.onNodeWithText("Continue").performClick()
     }
 
     @Test
-    fun formWithServerError_passesAccessibilityChecks() {
-        show(LoginState(email = "a@b.com", password = "secret", error = AedstError.Unauthorized()))
+    fun notConfigured_passesAccessibilityChecks() {
+        show(LoginState(problem = LoginProblem.NotConfigured))
 
-        compose.onNodeWithText("Log in").performClick()
+        compose.onNodeWithText(string(R.string.auth_login_not_configured)).assertExists()
     }
 
     @Test
     fun loadingState_passesAccessibilityChecks() {
-        show(LoginState(email = "a@b.com", password = "secret", isLoading = true))
+        show(LoginState(isLoading = true))
 
-        compose.onNodeWithContentDescription("Log in").assertExists()
+        compose.onNodeWithContentDescription(string(R.string.auth_login_submit)).assertExists()
     }
 }

@@ -1,6 +1,6 @@
 // Package jobs implements the tasks module's reminder enqueuing on top of
 // platform/jobs' shared River client (see
-// docs/decisions/0005-river-for-jobs.md). Not imported outside this module.
+// docs/content/decisions/0005-river-for-jobs.md). Not imported outside this module.
 package jobs
 
 import (

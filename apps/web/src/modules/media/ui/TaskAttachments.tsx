@@ -8,10 +8,9 @@ import {
 import { Delete02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { useQueryClient } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
-import { useState } from "react";
-
-import { MediaPlayer } from "@/modules/media/player/MediaPlayer";
+import { useId, useState } from "react";
 import { Thumbnail } from "@/modules/media/thumbnail/Thumbnail";
 import { Uploader } from "@/modules/media/uploader/Uploader";
 import { MediaService } from "@/shared/api/connect/client";
@@ -20,15 +19,20 @@ import {
   MediaStatus,
 } from "@/shared/api/connect/generated/aedst/media/v1/media_pb";
 import { Button } from "@/shared/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/shared/ui/dialog";
-import { Skeleton } from "@/shared/ui/skeleton";
+import { LoadingSkeleton } from "@/shared/ui/loading-skeleton";
 
 const PROCESSING_POLL_MS = 3_000;
+
+// The viewer and delete dialogs (and the Dialog/AlertDialog stack under them)
+// are needed only after a click, so they load as one chunk on demand. Once
+// requested they stay mounted, which keeps the closing animation.
+const AttachmentDialogs = dynamic(() =>
+  import("@/modules/media/ui/AttachmentDialogs").then(
+    (m) => m.AttachmentDialogs,
+  ),
+);
+
+type DialogTarget = { media: Media; open: boolean };
 
 function isSettling(media: Media) {
   return (
@@ -47,7 +51,9 @@ function isSettling(media: Media) {
 export function TaskAttachments({ taskId }: { taskId: string }) {
   const t = useTranslations("media.attachments");
   const queryClient = useQueryClient();
-  const [viewing, setViewing] = useState<Media | null>(null);
+  const headingId = useId();
+  const [viewing, setViewing] = useState<DialogTarget | null>(null);
+  const [deleting, setDeleting] = useState<DialogTarget | null>(null);
 
   const list = useQuery(
     MediaService.method.listMedia,
@@ -72,16 +78,13 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
   const media = list.data?.media ?? [];
 
   return (
-    <section
-      aria-labelledby="attachments-heading"
-      className="flex flex-col gap-3"
-    >
-      <h2 id="attachments-heading" className="font-medium text-lg">
+    <section aria-labelledby={headingId} className="flex flex-col gap-3">
+      <h2 id={headingId} className="font-medium text-lg">
         {t("title")}
       </h2>
 
       {list.isPending ? (
-        <Skeleton className="h-24 w-full" role="status" aria-busy="true" />
+        <LoadingSkeleton className="h-24 w-full" />
       ) : list.isError ? (
         <div role="alert" className="flex items-center gap-2 text-sm">
           {t("loadError")}
@@ -95,14 +98,20 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
         <ul className="grid grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] gap-3">
           {media.map((item) => (
             <li key={item.id} className="flex flex-col gap-1">
-              <button
+              <Button
                 type="button"
-                onClick={() => setViewing(item)}
-                className="rounded-md focus-visible:ring-2 focus-visible:ring-ring"
+                variant="ghost"
+                onClick={() => setViewing({ media: item, open: true })}
+                className="h-auto rounded-md p-0 focus-visible:ring-2 focus-visible:ring-ring"
                 aria-label={t("open", { name: item.filename })}
               >
-                <Thumbnail media={item} size={112} alt={item.filename} />
-              </button>
+                <Thumbnail
+                  media={item}
+                  size={112}
+                  alt={item.filename}
+                  onLoadError={() => void list.refetch()}
+                />
+              </Button>
               <div className="flex items-center justify-between gap-1">
                 <span className="truncate text-xs" title={item.filename}>
                   {isSettling(item) ? t("processing") : item.filename}
@@ -112,7 +121,7 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
                   size="icon-xs"
                   disabled={remove.isPending}
                   aria-label={t("delete", { name: item.filename })}
-                  onClick={() => remove.mutate({ id: item.id })}
+                  onClick={() => setDeleting({ media: item, open: true })}
                 >
                   <HugeiconsIcon icon={Delete02Icon} strokeWidth={2} />
                 </Button>
@@ -124,21 +133,26 @@ export function TaskAttachments({ taskId }: { taskId: string }) {
 
       <Uploader taskId={taskId} />
 
-      <Dialog
-        open={viewing !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setViewing(null);
-          }
-        }}
-      >
-        <DialogContent className="sm:max-w-4xl">
-          <DialogHeader>
-            <DialogTitle className="truncate">{viewing?.filename}</DialogTitle>
-          </DialogHeader>
-          {viewing && <MediaPlayer media={viewing} />}
-        </DialogContent>
-      </Dialog>
+      {(deleting || viewing) && (
+        <AttachmentDialogs
+          viewing={viewing}
+          deleting={deleting}
+          onViewOpenChange={(open) => {
+            if (!open && viewing) {
+              setViewing({ ...viewing, open: false });
+            }
+          }}
+          onDeleteOpenChange={(open) => {
+            if (!open && deleting) {
+              setDeleting({ ...deleting, open: false });
+            }
+          }}
+          onConfirmDelete={(media) => {
+            remove.mutate({ id: media.id });
+            setDeleting((current) => current && { ...current, open: false });
+          }}
+        />
+      )}
     </section>
   );
 }

@@ -9,7 +9,7 @@ import (
 
 // HeaderName is the HTTP/Connect header a client sends its idempotency key
 // on, matching the convention documented on every command RPC that accepts
-// one (see docs/events.md).
+// one (see docs/content/server/events.md).
 const HeaderName = "Idempotency-Key"
 
 // MaxKeyLength bounds a key: it is stored and indexed, so an unbounded header

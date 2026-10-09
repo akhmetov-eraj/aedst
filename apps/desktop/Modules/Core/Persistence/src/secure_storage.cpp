@@ -79,7 +79,7 @@ core::VoidOutcome SecureStorage::ensureKeyLocked() const {
 
 core::Outcome<std::vector<std::uint8_t>> SecureStorage::protect(std::span<const std::uint8_t> plaintext) const {
     if (plaintext.size() > kMaxPlaintextSize) {
-        return core::fail(core::Error::invalidArgument("plaintext too large for secure storage"));
+        return core::fail(core::Error::invalidInput("plaintext too large for secure storage"));
     }
 
     const std::scoped_lock lock(mutex_);

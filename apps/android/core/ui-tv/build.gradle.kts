@@ -19,4 +19,9 @@ dependencies {
     // androidx.tv.material3.Surface directly for the app's root container,
     // so the artifact needs to be on :app-tv's compile classpath too.
     api(libs.tv.material)
+
+    testImplementation(project(":core:testing"))
+    // The TV components are tested on Robolectric + the Compose test rule (JUnit 4, no Jupiter-native equivalent): the
+    // vintage engine runs them, see gradle/libs.versions.toml.
+    testRuntimeOnly(libs.junit.vintage.engine)
 }

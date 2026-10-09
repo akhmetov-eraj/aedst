@@ -11,8 +11,10 @@ target_sources(AedstTesting INTERFACE
     BASE_DIRS include
     FILES
         include/aedst/testing/fake_clock.hpp
+        include/aedst/testing/behavior_fixture.hpp
         include/aedst/testing/fake_http_server.hpp
         include/aedst/testing/stub_token_provider.hpp
+        include/aedst/testing/test_tls_material.hpp
         include/aedst/testing/test_main.hpp
 )
 
@@ -23,3 +25,9 @@ target_link_libraries(AedstTesting INTERFACE
     Qt6::Network
     GTest::gtest
 )
+
+# Cross-platform behavior fixtures (docs/contract/behavior/*.json): one repository file per behavior, replayed by the
+# Web, Android, Apple and Desktop tests. Consumers read them through aedst/testing/behavior_fixture.hpp.
+set(AEDST_BEHAVIOR_FIXTURE_DIR "${PROJECT_SOURCE_DIR}/../../docs/contract/behavior" CACHE PATH
+    "Directory holding the shared behavior fixtures (docs/contract/behavior)")
+target_compile_definitions(AedstTesting INTERFACE AEDST_BEHAVIOR_FIXTURE_DIR="${AEDST_BEHAVIOR_FIXTURE_DIR}")

@@ -159,6 +159,11 @@ func toProto(m api.Media, links api.Links) *mediav1.Media {
 			SizeBytes:   v.SizeBytes,
 		})
 	}
+	for _, d := range links.Derived {
+		out.Variants = append(out.Variants, &mediav1.Variant{
+			Kind: variantToProto(d.Kind), Url: d.URL, Width: int32(d.Width), Height: int32(d.Height),
+		})
+	}
 	return out
 }
 
@@ -240,12 +245,16 @@ func statusToProto(s api.Status) mediav1.MediaStatus {
 
 func variantToProto(v api.VariantKind) mediav1.VariantKind {
 	switch v {
-	case api.VariantThumbnail:
-		return mediav1.VariantKind_VARIANT_KIND_THUMBNAIL
-	case api.VariantPreview:
-		return mediav1.VariantKind_VARIANT_KIND_PREVIEW
-	case api.VariantOptimized:
-		return mediav1.VariantKind_VARIANT_KIND_OPTIMIZED
+	case api.VariantThumb64:
+		return mediav1.VariantKind_VARIANT_KIND_THUMB_64
+	case api.VariantAvatar256:
+		return mediav1.VariantKind_VARIANT_KIND_AVATAR_256
+	case api.VariantCard400:
+		return mediav1.VariantKind_VARIANT_KIND_CARD_400
+	case api.VariantFeed800x600:
+		return mediav1.VariantKind_VARIANT_KIND_FEED_800X600
+	case api.VariantStory1080x1350:
+		return mediav1.VariantKind_VARIANT_KIND_STORY_1080X1350
 	case api.VariantPoster:
 		return mediav1.VariantKind_VARIANT_KIND_POSTER
 	default:

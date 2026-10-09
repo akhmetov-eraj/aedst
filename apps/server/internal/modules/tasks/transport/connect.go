@@ -1,6 +1,6 @@
 // Package transport implements the tasks module's ConnectRPC handlers. It
 // depends only on modules/tasks/api — never on application/domain/
-// infrastructure directly (see docs/modules.md). It never reads a user id
+// infrastructure directly (see docs/content/server/modules.md). It never reads a user id
 // from a request; every handler derives it from platform/auth.FromContext.
 package transport
 
@@ -90,7 +90,9 @@ func (h *Handler) ListTasks(ctx context.Context, req *connect.Request[tasksv1.Li
 		Limit:         int(req.Msg.GetPageSize()),
 	}
 	// Normalize first: the cursor is bound to the effective ordering.
-	params.Normalize()
+	if err := params.Normalize(); err != nil {
+		return nil, httpserver.ToConnectError(err)
+	}
 	after, decodeErr := pagination.Decode(req.Msg.GetPageToken(), params.SortToken())
 	if decodeErr != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("invalid page_token"))
@@ -134,7 +136,7 @@ func (h *Handler) UpdateTask(ctx context.Context, req *connect.Request[tasksv1.U
 		expectedVersion = &v
 	}
 
-	task, svcErr := h.service.UpdateTask(ctx, userID, id, patch, expectedVersion)
+	task, svcErr := h.service.UpdateTask(ctx, userID, id, patch, expectedVersion, idempotencyKeyOf(ctx))
 	if svcErr != nil {
 		return nil, httpserver.ToConnectError(svcErr)
 	}
@@ -183,7 +185,7 @@ func (h *Handler) DeleteTask(ctx context.Context, req *connect.Request[tasksv1.D
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
 
-	if svcErr := h.service.DeleteTask(ctx, userID, id); svcErr != nil {
+	if svcErr := h.service.DeleteTask(ctx, userID, id, idempotencyKeyOf(ctx)); svcErr != nil {
 		return nil, httpserver.ToConnectError(svcErr)
 	}
 	return connect.NewResponse(&tasksv1.DeleteTaskResponse{}), nil
@@ -353,4 +355,10 @@ func fromProtoTimestamp(t *timestamppb.Timestamp) *time.Time {
 	}
 	tt := t.AsTime()
 	return &tt
+}
+
+// idempotencyKeyOf is the request's Idempotency-Key header ("" when absent).
+func idempotencyKeyOf(ctx context.Context) string {
+	key, _ := idempotency.KeyFromContext(ctx)
+	return key
 }

@@ -63,14 +63,14 @@ TEST_F(OidcAuthRepositoryTest, PasswordLoginIsRefused) {
                       [&](core::Outcome<Session> r) { result = std::move(r); });
     ASSERT_TRUE(result.has_value());
     ASSERT_FALSE(result->has_value());
-    EXPECT_EQ(result->error().code, core::ErrorCode::InvalidArgument);
+    EXPECT_EQ(result->error().code, core::ErrorCode::InvalidInput);
 }
 
 TEST_F(OidcAuthRepositoryTest, BrowserSignInYieldsASessionWithoutExposingTheRefreshToken) {
     const auto signedIn = signIn();
     ASSERT_TRUE(signedIn.has_value()) << signedIn.error().message;
     EXPECT_EQ(signedIn->userId, "user-1");
-    EXPECT_EQ(signedIn->accessToken, "access-1");
+    EXPECT_EQ(signedIn->accessToken.reveal(), "access-1");
     EXPECT_TRUE(signedIn->refreshToken.empty());
     EXPECT_FALSE(signedIn->isAccessTokenExpired(std::chrono::system_clock::now()));
 
@@ -88,7 +88,7 @@ TEST_F(OidcAuthRepositoryTest, RefreshReturnsTheCurrentSession) {
     repository->refreshToken([&](core::Outcome<Session> r) { refreshed = std::move(r); });
     ASSERT_TRUE(waitUntil([&] { return refreshed.has_value(); }, std::chrono::seconds{15}));
     ASSERT_TRUE(refreshed->has_value()) << refreshed->error().message;
-    EXPECT_EQ((*refreshed)->accessToken, "access-2");
+    EXPECT_EQ((*refreshed)->accessToken.reveal(), "access-2");
 }
 
 TEST_F(OidcAuthRepositoryTest, LogoutEndsTheSession) {
@@ -128,7 +128,7 @@ TEST(BrowserSignInUseCaseTest, FailsWhenTheRepositoryHasNoBrowserSupport) {
     useCase.execute(core::NoInput{}, [&](core::Outcome<Session> r) { result = std::move(r); });
     ASSERT_TRUE(result.has_value());
     ASSERT_FALSE(result->has_value());
-    EXPECT_EQ(result->error().code, core::ErrorCode::InvalidArgument);
+    EXPECT_EQ(result->error().code, core::ErrorCode::InvalidInput);
 }
 
 } // namespace

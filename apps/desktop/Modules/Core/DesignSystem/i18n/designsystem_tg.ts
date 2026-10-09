@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
+<!-- Generated from the sources (lupdate -no-obsolete equivalent); do not reorder by hand. Refresh with the update_<module>_translations target. -->
 <TS version="2.1" language="tg">
+<context>
+    <name>AedstAlert</name>
+    <message>
+        <source>Dismiss</source>
+        <translation>Пинҳон кардан</translation>
+    </message>
+</context>
 <context>
     <name>AedstAlertDialog</name>
     <message>
@@ -20,42 +28,7 @@
     </message>
 </context>
 <context>
-    <name>AedstCircularProgress</name>
-    <message>
-        <source>Loading</source>
-        <translation>Боркунӣ</translation>
-    </message>
-</context>
-<context>
     <name>AedstCalendar</name>
-    <message>
-        <source>Mo</source>
-        <translation>Дш</translation>
-    </message>
-    <message>
-        <source>Tu</source>
-        <translation>Сш</translation>
-    </message>
-    <message>
-        <source>We</source>
-        <translation>Чш</translation>
-    </message>
-    <message>
-        <source>Th</source>
-        <translation>Пш</translation>
-    </message>
-    <message>
-        <source>Fr</source>
-        <translation>Ҷм</translation>
-    </message>
-    <message>
-        <source>Sa</source>
-        <translation>Шб</translation>
-    </message>
-    <message>
-        <source>Su</source>
-        <translation>Яш</translation>
-    </message>
     <message>
         <source>Previous month</source>
         <translation>Моҳи қаблӣ</translation>
@@ -84,6 +57,24 @@
     </message>
 </context>
 <context>
+    <name>AedstCircularProgress</name>
+    <message>
+        <source>Loading</source>
+        <translation>Боркунӣ</translation>
+    </message>
+</context>
+<context>
+    <name>AedstCollapsible</name>
+    <message>
+        <source>Expanded</source>
+        <translation>Кушода</translation>
+    </message>
+    <message>
+        <source>Collapsed</source>
+        <translation>Пӯшида</translation>
+    </message>
+</context>
+<context>
     <name>AedstDialog</name>
     <message>
         <source>Close</source>
@@ -95,6 +86,28 @@
     <message>
         <source>Close</source>
         <translation>Пӯшидан</translation>
+    </message>
+</context>
+<context>
+    <name>AedstMenuBar</name>
+    <message>
+        <source>Menu</source>
+        <translation>Феҳрист</translation>
+    </message>
+</context>
+<context>
+    <name>AedstOfflineBanner</name>
+    <message>
+        <source>You're offline</source>
+        <translation>Шумо ба шабака пайваст нестед</translation>
+    </message>
+    <message>
+        <source>Check your connection. Some features are unavailable until you're back online.</source>
+        <translation>Пайвастшавиро санҷед. Баъзе имкониятҳо то пайваст шудан дастнорасанд.</translation>
+    </message>
+    <message>
+        <source>Retry</source>
+        <translation>Аз нав кӯшиш кардан</translation>
     </message>
 </context>
 <context>
@@ -111,12 +124,12 @@
         <translation>Саҳифаи қаблӣ</translation>
     </message>
     <message>
-        <source>Next page</source>
-        <translation>Саҳифаи оянда</translation>
-    </message>
-    <message>
         <source>More pages</source>
         <translation>Саҳифаҳои дигар</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>Саҳифаи оянда</translation>
     </message>
 </context>
 <context>
@@ -138,38 +151,6 @@
     <message>
         <source>Type a command or search…</source>
         <translation>Фармон нависед ё ҷустуҷӯ кунед…</translation>
-    </message>
-</context>
-<context>
-    <name>AedstTabBar</name>
-    <message>
-        <source>Tabs</source>
-        <translation>Варақҳо</translation>
-    </message>
-</context>
-<context>
-    <name>AedstMenuBar</name>
-    <message>
-        <source>Menu</source>
-        <translation>Феҳрист</translation>
-    </message>
-</context>
-<context>
-    <name>AedstToast</name>
-    <message>
-        <source>Dismiss</source>
-        <translation>Пинҳон кардан</translation>
-    </message>
-</context>
-<context>
-    <name>AedstCollapsible</name>
-    <message>
-        <source>Expanded</source>
-        <translation>Кушода</translation>
-    </message>
-    <message>
-        <source>Collapsed</source>
-        <translation>Пӯшида</translation>
     </message>
 </context>
 <context>
@@ -200,18 +181,17 @@
     </message>
 </context>
 <context>
-    <name>AedstOfflineBanner</name>
+    <name>AedstTabBar</name>
     <message>
-        <source>You're offline</source>
-        <translation>Шумо ба шабака пайваст нестед</translation>
+        <source>Tabs</source>
+        <translation>Варақҳо</translation>
     </message>
+</context>
+<context>
+    <name>AedstToast</name>
     <message>
-        <source>Check your connection. Some features are unavailable until you're back online.</source>
-        <translation>Пайвастшавиро санҷед. Баъзе имкониятҳо то пайваст шудан дастнорасанд.</translation>
-    </message>
-    <message>
-        <source>Retry</source>
-        <translation>Аз нав кӯшиш кардан</translation>
+        <source>Dismiss</source>
+        <translation>Пинҳон кардан</translation>
     </message>
 </context>
 </TS>

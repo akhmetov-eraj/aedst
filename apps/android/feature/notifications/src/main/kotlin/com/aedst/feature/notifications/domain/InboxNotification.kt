@@ -28,7 +28,7 @@ data class NotificationPreferences(
 )
 
 /** The caller's inbox and preferences (NotificationsService). */
-interface NotificationsRepository {
+internal interface NotificationsRepository {
     suspend fun list(unreadOnly: Boolean = false, pageToken: String? = null): Outcome<InboxPage>
 
     suspend fun unreadCount(): Outcome<Int>

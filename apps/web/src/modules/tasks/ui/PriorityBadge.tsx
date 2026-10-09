@@ -1,7 +1,7 @@
 import { useTranslations } from "next-intl";
 
 import {
-  PRIORITY_BADGE_CLASS,
+  PRIORITY_BADGE_VARIANT,
   PRIORITY_KEYS,
 } from "@/modules/tasks/lib/labels";
 import type { TaskPriority } from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
@@ -15,7 +15,7 @@ export function PriorityBadge({ priority }: { priority: TaskPriority }) {
     return null;
   }
   return (
-    <Badge className={PRIORITY_BADGE_CLASS[priority]}>
+    <Badge variant={PRIORITY_BADGE_VARIANT[priority]}>
       {/* Colour alone must not carry meaning, and a bare "Urgent" reads
           ambiguously in a screen reader — say what the value is *of*. */}
       <span className="sr-only">

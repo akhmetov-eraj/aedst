@@ -1,23 +1,15 @@
 <resources>
-    <string name="common_app_name">iman</string>
-    <string name="common_app_description">سجّل الدخول إلى iman.</string>
-
-    <string name="common_action_submit">إرسال</string>
-    <string name="common_action_cancel">إلغاء</string>
-    <string name="common_action_save">حفظ</string>
-    <string name="common_action_back">رجوع</string>
-    <string name="common_action_go_home">الذهاب إلى الرئيسية</string>
-    <string name="common_action_try_again">المحاولة مرة أخرى</string>
-
-    <string name="common_error_generic">حدث خطأ ما. يرجى المحاولة مرة أخرى.</string>
-    <string name="common_error_title">حدث خطأ ما</string>
-    <string name="common_error_not_found_title">الصفحة غير موجودة</string>
-    <string name="common_error_not_found_description">الصفحة التي تبحث عنها غير موجودة أو تم نقلها.</string>
-
     <string name="nav_tasks">المهام</string>
     <string name="nav_search">بحث</string>
     <string name="nav_notifications">الإشعارات</string>
     <string name="nav_media">الملفات</string>
     <string name="nav_account">الحساب</string>
     <string name="nav_admin">الإدارة</string>
+
+    <string name="update_recommended">يتوفر إصدار جديد من AEDST.</string>
+    <string name="update_recommended_action">تحديث</string>
+    <string name="update_recommended_later">ليس الآن</string>
+    <string name="outbox_failed_title">تعذّر إرسال بعض التغييرات</string>
+    <string name="outbox_failed_description">لم يتم إرسال هذه التغييرات. أعد المحاولة أو تجاهلها.</string>
+    <string name="outbox_failed_discard">تجاهل</string>
 </resources>

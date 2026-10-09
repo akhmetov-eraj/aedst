@@ -33,11 +33,16 @@
     "retry": "Такрор кардан",
     "processing": "Коркард…",
     "open": "Кушодани {name}",
-    "delete": "Нест кардани {name}"
+    "delete": "Нест кардани {name}",
+    "deleteConfirmTitle": "Ин замимаро нест кунед?",
+    "deleteConfirmDescription": "{name} ба таври доимӣ нест карда мешавад. Ин амалро бозгардонидан мумкин нест.",
+    "deleteCancelAction": "Нигоҳ доштан",
+    "deleteConfirmAction": "Нест кардан"
   },
   "player": {
     "processing": "Файл ҳанӯз коркард мешавад.",
     "failed": "Файлро коркард кардан нашуд.",
-    "open": "Кушодани {name}"
+    "open": "Кушодани {name}",
+    "imageError": "Тасвирро бор кардан нашуд. Эҳтимол, мӯҳлати истинод тамом шудааст."
   }
 }

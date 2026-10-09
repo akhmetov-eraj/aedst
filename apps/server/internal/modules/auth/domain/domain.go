@@ -1,6 +1,6 @@
 // Package domain holds the auth module's entities and domain errors. It
 // imports nothing outside the standard library and shared primitives — no
-// infrastructure, no other module (see docs/modules.md).
+// infrastructure, no other module (see docs/content/server/modules.md).
 package domain
 
 import (

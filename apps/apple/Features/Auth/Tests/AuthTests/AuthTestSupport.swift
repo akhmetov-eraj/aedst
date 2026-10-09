@@ -57,14 +57,33 @@ actor FakeAuthRemote: AuthRemoteDataSource {
 /// `AuthRepository` double recording how it was used.
 actor SpyAuthRepository: AuthRepository {
     private let loginResult: Outcome<Session>
+    private let signInResult: Outcome<Session>
+    private let mode: SignInMode
     private(set) var loginCallCount = 0
+    private(set) var signInCallCount = 0
+    private(set) var lastSignInDeviceID: String?
     private(set) var lastCredentials: Credentials?
     private(set) var lastDeviceID: String?
     var storedSession: Session?
 
-    init(loginResult: Outcome<Session>, storedSession: Session? = nil) {
+    init(
+        loginResult: Outcome<Session>,
+        storedSession: Session? = nil,
+        mode: SignInMode = .password,
+        signInResult: Outcome<Session> = .failure(.unsupported)
+    ) {
         self.loginResult = loginResult
+        self.mode = mode
+        self.signInResult = signInResult
         self.storedSession = storedSession
+    }
+
+    nonisolated var signInMode: SignInMode { mode }
+
+    func signIn(deviceID: String) async -> Outcome<Session> {
+        signInCallCount += 1
+        lastSignInDeviceID = deviceID
+        return signInResult
     }
 
     func login(with credentials: Credentials, deviceID: String) async -> Outcome<Session> {

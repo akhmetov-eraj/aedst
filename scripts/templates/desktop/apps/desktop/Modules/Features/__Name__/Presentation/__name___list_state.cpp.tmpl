@@ -1,0 +1,20 @@
+#include "Presentation/{{name}}_list_state.hpp"
+
+#include <utility>
+
+namespace aedst::feature::{{name}} {
+
+{{Name}}ListState::{{Name}}ListState(std::shared_ptr<{{Name}}Repository> repository)
+    : repository_(std::move(repository)) {}
+
+void {{Name}}ListState::load() {
+    loading_ = true;
+    repository_->list([this](core::Outcome<std::vector<{{Name}}Entry>> result) {
+        loading_ = false;
+        if (result.has_value()) {
+            entries_ = std::move(result.value());
+        }
+    });
+}
+
+} // namespace aedst::feature::{{name}}

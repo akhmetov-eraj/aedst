@@ -33,7 +33,7 @@ TEST(CreateTaskUseCaseTest, RejectsBlankTitlesWithoutCallingTheServer) {
     useCase.execute(NewTask{.title = "   \t"}, [&](core::Outcome<Task> result) { received = std::move(result); });
     ASSERT_TRUE(received.has_value());
     ASSERT_FALSE(received->has_value());
-    EXPECT_EQ(received->error().code, core::ErrorCode::InvalidArgument);
+    EXPECT_EQ(received->error().code, core::ErrorCode::InvalidInput);
 }
 
 TEST(CreateTaskUseCaseTest, TrimsAndDefaultsPriorityBeforeCreating) {

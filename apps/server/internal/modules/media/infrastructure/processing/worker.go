@@ -14,8 +14,10 @@ import (
 
 	"github.com/aedst/server/internal/modules/media/domain"
 	mediajobs "github.com/aedst/server/internal/modules/media/infrastructure/jobs"
+	platformjobs "github.com/aedst/server/internal/platform/jobs"
 	"github.com/aedst/server/internal/platform/storage"
 	"github.com/aedst/server/internal/shared/ids"
+	sharedtime "github.com/aedst/server/internal/shared/time"
 )
 
 // Store is what the processing worker needs from the repository.
@@ -28,7 +30,30 @@ type Store interface {
 // Config bounds processing.
 type Config struct {
 	MaxImagePixels int64
-	FFmpeg         FFmpeg
+	// MaxImageBytes caps what an image download may read. A retried job sees
+	// the already-sanitized original, whose size differs from the uploaded
+	// one, so images are bounded by this cap instead of the exact size.
+	MaxImageBytes int64
+	// Images sanitizes images; nil selects NewImageProcessor() (libvips when
+	// built with -tags vips, otherwise a stub returning ErrImagingUnavailable).
+	Images ImageProcessor
+	FFmpeg FFmpeg
+	// Clock stamps failures; nil selects the system clock.
+	Clock sharedtime.Clock
+}
+
+func (w *Worker) now() time.Time {
+	if w.cfg.Clock != nil {
+		return w.cfg.Clock.Now()
+	}
+	return sharedtime.Real{}.Now()
+}
+
+func (w *Worker) images() ImageProcessor {
+	if w.cfg.Images != nil {
+		return w.cfg.Images
+	}
+	return NewImageProcessor()
 }
 
 // Worker runs mediajobs.ProcessArgs on the "media" queue.
@@ -45,7 +70,9 @@ func NewWorker(store Store, objects storage.ObjectStorage, cfg Config, logger *s
 }
 
 // Timeout covers download, decode/ffmpeg and variant uploads.
-func (w *Worker) Timeout(*river.Job[mediajobs.ProcessArgs]) time.Duration { return 10 * time.Minute }
+func (w *Worker) Timeout(*river.Job[mediajobs.ProcessArgs]) time.Duration {
+	return platformjobs.MaxJobTimeout
+}
 
 func (w *Worker) Work(ctx context.Context, job *river.Job[mediajobs.ProcessArgs]) error {
 	id, err := ids.Parse(job.Args.MediaID)
@@ -66,13 +93,13 @@ func (w *Worker) Work(ctx context.Context, job *river.Job[mediajobs.ProcessArgs]
 		return nil
 	case errors.Is(err, ErrUnprocessable):
 		w.logger.InfoContext(ctx, "media: unprocessable upload", slog.String("media_id", id.String()), slog.Any("reason", err))
-		if markErr := w.store.MarkFailed(ctx, id, "the file could not be processed", time.Now()); markErr != nil {
+		if markErr := w.store.MarkFailed(ctx, id, "the file could not be processed", w.now()); markErr != nil {
 			return markErr
 		}
 		return river.JobCancel(err)
 	default:
 		if job.Attempt >= job.MaxAttempts {
-			_ = w.store.MarkFailed(ctx, id, "processing failed", time.Now())
+			_ = w.store.MarkFailed(ctx, id, "processing failed", w.now())
 		}
 		return err
 	}
@@ -90,20 +117,23 @@ func (w *Worker) process(ctx context.Context, m domain.Media) error {
 
 	switch m.Kind {
 	case domain.KindImage:
-		f, err := os.Open(path)
+		data, err := os.ReadFile(path) //nolint:gosec // G304: path is the temp file this worker downloaded into
 		if err != nil {
-			return fmt.Errorf("media: open: %w", err)
+			return fmt.Errorf("media: read: %w", err)
 		}
-		defer func() { _ = f.Close() }()
-		width, height, encoded, err := ImageVariants(f, m.ContentType, w.cfg.MaxImagePixels)
-		if err != nil {
-			return err
-		}
-		variants, err := w.storeVariants(ctx, m, encoded)
+		res, err := w.images().Sanitize(ctx, data, m.ContentType, w.cfg.MaxImagePixels)
 		if err != nil {
 			return err
 		}
-		return w.store.MarkReady(ctx, m.ID, width, height, 0, variants)
+		if res.Changed {
+			// Replace the raw upload (which may carry EXIF/GPS) with the
+			// sanitized original under the same key. Delivery variants are
+			// not pre-generated: imgproxy makes them on demand.
+			if err := w.objects.Put(ctx, m.ObjectKey, bytes.NewReader(res.Data), int64(len(res.Data)), res.ContentType); err != nil {
+				return fmt.Errorf("media: store sanitized original: %w", err)
+			}
+		}
+		return w.store.MarkReady(ctx, m.ID, res.Width, res.Height, 0, nil)
 	case domain.KindVideo:
 		probe, err := w.cfg.FFmpeg.Probe(ctx, path)
 		if err != nil {
@@ -142,13 +172,19 @@ func (w *Worker) download(ctx context.Context, m domain.Media) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("media: temp: %w", err)
 	}
-	n, copyErr := io.Copy(f, io.LimitReader(body, m.SizeBytes+1))
+	limit, strict := m.SizeBytes, true
+	if m.Kind == domain.KindImage {
+		// Image content is fully re-validated by the sanitizer, and a retry
+		// after a successful overwrite sees different bytes (see Config).
+		limit, strict = max(limit, w.cfg.MaxImageBytes), false
+	}
+	n, copyErr := io.Copy(f, io.LimitReader(body, limit+1))
 	closeErr := f.Close()
 	if copyErr != nil || closeErr != nil {
 		_ = os.Remove(f.Name())
 		return "", fmt.Errorf("media: download: %w", errors.Join(copyErr, closeErr))
 	}
-	if n != m.SizeBytes {
+	if n > limit || (strict && n != m.SizeBytes) {
 		_ = os.Remove(f.Name())
 		return "", fmt.Errorf("%w: object size changed after verification", ErrUnprocessable)
 	}

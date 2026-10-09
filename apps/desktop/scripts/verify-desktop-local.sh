@@ -21,12 +21,65 @@ need() { # need <cmd> <hint>
 }
 
 if [ "${1:-}" = "--lint" ]; then
-  bash ./scripts/check-naming.sh
-  bash ./scripts/check-format.sh
-  bash ./scripts/check-feature-boundaries.sh
-  bash ./scripts/check-proto-freshness.sh
-  bash ./scripts/check-qml-lint.sh
-  echo "lint OK"
+  # The full desktop-ci.yml `lint` job set. A step whose tool is not installed is
+  # SKIPPED (printed, counted, never reported as passed); a real failure fails the run.
+  failed=()
+  skipped=()
+  passed=()
+  # step <label> <required-binary|-> <command...>; exit 127 from a script means "its tool is missing".
+  step() {
+    local label="$1" bin="$2"
+    shift 2
+    echo "==> $label"
+    if [ "$bin" != "-" ] && ! command -v "$bin" >/dev/null 2>&1; then
+      echo "SKIPPED: $label ($bin not installed)"
+      skipped+=("$label")
+      return 0
+    fi
+    local rc=0
+    "$@" || rc=$?
+    if [ "$rc" -eq 0 ]; then
+      passed+=("$label")
+    elif [ "$rc" -eq 127 ]; then
+      echo "SKIPPED: $label (tool not found, see message above)"
+      skipped+=("$label")
+    else
+      echo "FAILED: $label (exit $rc)"
+      failed+=("$label")
+    fi
+  }
+
+  step "Qt module licenses (compliance qt)" node node ./scripts/compliance/compliance.mjs qt
+  step "clang-format" - bash ./scripts/check-format.sh
+  step "file naming" - bash ./scripts/check-naming.sh
+  step "C++ subset" - bash ./scripts/check-cxx-subset.sh
+  step "feature target boundaries" - bash ./scripts/check-feature-boundaries.sh
+  step "proto freshness" - bash ./scripts/check-proto-freshness.sh
+  # Needs the BSR; when buf.build is unreachable (offline) the step is skipped, not failed.
+  if command -v buf >/dev/null 2>&1 && command -v curl >/dev/null 2>&1 \
+    && ! curl -sS --max-time 5 -o /dev/null https://buf.build 2>/dev/null; then
+    echo "==> protovalidate pin"
+    echo "SKIPPED: protovalidate pin (buf.build unreachable)"
+    skipped+=("protovalidate pin (buf.build unreachable)")
+  else
+    step "protovalidate pin (needs buf + network)" buf bash ./scripts/check-protovalidate-pin.sh
+  fi
+  step "qmllint" - bash ./scripts/check-qml-lint.sh
+  # Advisory in CI (continue-on-error): reported, never fails the run.
+  echo "==> qmlformat (advisory)"
+  if bash ./scripts/check-qml-lint.sh --format; then
+    passed+=("qmlformat (advisory)")
+  else
+    echo "NOTE: qmlformat differences or missing tool (advisory, not a failure)"
+    skipped+=("qmlformat (advisory)")
+  fi
+
+  echo
+  echo "desktop lint summary: ${#passed[@]} passed, ${#skipped[@]} skipped, ${#failed[@]} failed"
+  for s in "${skipped[@]+"${skipped[@]}"}"; do echo "  SKIPPED: $s"; done
+  for s in "${failed[@]+"${failed[@]}"}"; do echo "  FAILED:  $s"; done
+  [ "${#failed[@]}" -eq 0 ] || exit 1
+  [ "${#skipped[@]}" -eq 0 ] || echo "NOT FULLY VERIFIED: skipped steps did not run on this machine."
   exit 0
 fi
 

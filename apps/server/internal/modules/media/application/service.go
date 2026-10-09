@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/aedst/server/internal/modules/media/domain"
+	"github.com/aedst/server/internal/platform/imgproxy"
 	"github.com/aedst/server/internal/platform/storage"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
@@ -182,7 +183,51 @@ func (s *Service) Links(ctx context.Context, m domain.Media) (Links, error) {
 		}
 		out.Variants[v.Kind] = u
 	}
+	out.Derived = s.derived(m)
 	return out, nil
+}
+
+// derivedPresets maps each delivery variant kind to its imgproxy preset.
+var derivedPresets = []struct {
+	kind   domain.VariantKind
+	preset imgproxy.Preset
+}{
+	{domain.VariantThumb64, imgproxy.Thumb64},
+	{domain.VariantAvatar256, imgproxy.Avatar256},
+	{domain.VariantCard400, imgproxy.Card400},
+	{domain.VariantFeed800x600, imgproxy.Feed800x600},
+	{domain.VariantStory1080x1350, imgproxy.Story1080x1350},
+}
+
+// derived builds the imgproxy renditions of an image's sanitized original, or
+// of a video's stored poster frame. Nothing is generated or stored here.
+func (s *Service) derived(m domain.Media) []DerivedVariant {
+	if !s.cfg.Delivery.Enabled() {
+		return nil
+	}
+	source, srcW, srcH := "", m.Width, m.Height
+	switch m.Kind {
+	case domain.KindImage:
+		source = m.ObjectKey
+	case domain.KindVideo:
+		for _, v := range m.Variants {
+			if v.Kind == domain.VariantPoster {
+				source, srcW, srcH = v.ObjectKey, v.Width, v.Height
+			}
+		}
+	}
+	if source == "" {
+		return nil
+	}
+	out := make([]DerivedVariant, 0, len(derivedPresets))
+	for _, d := range derivedPresets {
+		h := d.preset.Height
+		if h == 0 && srcW > 0 && srcH > 0 {
+			h = max(1, d.preset.Width*srcH/srcW)
+		}
+		out = append(out, DerivedVariant{Kind: d.kind, URL: s.cfg.Delivery.URL(source, d.preset), Width: d.preset.Width, Height: h})
+	}
+	return out
 }
 
 // Totals feeds the operator overview.

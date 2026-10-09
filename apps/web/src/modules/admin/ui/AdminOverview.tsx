@@ -4,6 +4,7 @@ import { useQuery } from "@connectrpc/connect-query";
 import { useLocale, useTranslations } from "next-intl";
 
 import { AdminService } from "@/shared/api/connect/client";
+import { formatBytes, formatNumber } from "@/shared/intl/format";
 import { Button } from "@/shared/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/shared/ui/card";
 import { Skeleton } from "@/shared/ui/skeleton";
@@ -29,13 +30,6 @@ export function AdminOverview() {
     {},
     { refetchInterval: 30_000, meta: { feature: "admin" } },
   );
-  const number = new Intl.NumberFormat(locale);
-  const bytes = new Intl.NumberFormat(locale, {
-    notation: "compact",
-    style: "unit",
-    unit: "byte",
-    unitDisplay: "narrow",
-  });
 
   if (overview.isError) {
     return (
@@ -49,30 +43,30 @@ export function AdminOverview() {
   }
 
   return (
-    <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {METRICS.map((metric) => {
         const value = overview.data?.[metric];
         return (
-          <Card key={metric}>
+          <Card key={metric} role="group" aria-label={t(`metrics.${metric}`)}>
             <CardHeader>
               <CardTitle className="font-normal text-muted-foreground text-sm">
-                <dt>{t(`metrics.${metric}`)}</dt>
+                <span>{t(`metrics.${metric}`)}</span>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <dd className="font-semibold text-2xl tabular-nums">
+              <p className="font-semibold text-2xl tabular-nums">
                 {value === undefined ? (
                   <Skeleton className="h-8 w-16" />
                 ) : metric === "mediaBytes" ? (
-                  bytes.format(Number(value))
+                  formatBytes(Number(value), locale)
                 ) : (
-                  number.format(value)
+                  formatNumber(value, locale)
                 )}
-              </dd>
+              </p>
             </CardContent>
           </Card>
         );
       })}
-    </dl>
+    </div>
   );
 }

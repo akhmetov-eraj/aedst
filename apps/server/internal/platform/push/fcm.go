@@ -1,61 +1,46 @@
 package push
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
 	"os"
-	"strconv"
 	"strings"
+	"time"
 
-	"golang.org/x/oauth2"
-	"golang.org/x/oauth2/jwt"
+	firebase "firebase.google.com/go/v4"
+	"firebase.google.com/go/v4/errorutils"
+	"firebase.google.com/go/v4/messaging"
+	"google.golang.org/api/option"
 )
 
-const (
-	fcmScope       = "https://www.googleapis.com/auth/firebase.messaging"
-	fcmDefaultBase = "https://fcm.googleapis.com"
-	googleTokenURL = "https://oauth2.googleapis.com/token"
-)
-
-// FCMConfig configures Firebase Cloud Messaging HTTP v1
-// (AEDST_PUSH_FCM_*). The service account needs the "Firebase Cloud
-// Messaging API Admin" role (cloudmessaging.messages.create).
+// FCMConfig configures Firebase Cloud Messaging (AEDST_PUSH_FCM_*). The
+// service account needs the "Firebase Cloud Messaging API Admin" role
+// (cloudmessaging.messages.create).
 type FCMConfig struct {
 	// CredentialsJSON is the service-account key JSON; CredentialsFile is a
-	// path to it. One of them is required.
+	// path to it. One of them is required (unless ClientOptions is set).
 	CredentialsJSON string
 	CredentialsFile string
 	// ProjectID overrides the service account's project_id.
 	ProjectID string
-	// BaseURL is for tests; empty uses https://fcm.googleapis.com.
-	BaseURL string
+	// Timeout bounds one Send including the SDK's own retries; 0 = no extra bound.
+	Timeout time.Duration
+	// ClientOptions are appended after the credentials, e.g. option.WithEndpoint
+	// and option.WithHTTPClient to point the SDK at a fake FCM in tests.
+	ClientOptions []option.ClientOption
 }
 
-// FCM sends through the FCM HTTP v1 API with a service-account OAuth token
-// (two-legged JWT bearer grant, RFC 7523, via golang.org/x/oauth2/jwt; the
-// token is cached and refreshed by oauth2.ReuseTokenSource).
+// FCM sends through the Firebase Admin SDK messaging client (OAuth, token
+// refresh and the HTTP v1 wire format are the SDK's).
 type FCM struct {
-	projectID string
-	baseURL   string
-	tokens    oauth2.TokenSource
-	client    *http.Client
+	client  *messaging.Client
+	timeout time.Duration
 }
 
-type serviceAccount struct {
-	Type         string `json:"type"`
-	ProjectID    string `json:"project_id"`
-	PrivateKeyID string `json:"private_key_id"`
-	PrivateKey   string `json:"private_key"`
-	ClientEmail  string `json:"client_email"`
-	TokenURI     string `json:"token_uri"`
-}
-
-func NewFCM(ctx context.Context, cfg FCMConfig, client *http.Client) (*FCM, error) {
+// NewFCM builds the messaging client from the service-account key.
+func NewFCM(ctx context.Context, cfg FCMConfig) (*FCM, error) {
 	raw := []byte(cfg.CredentialsJSON)
 	if len(raw) == 0 && cfg.CredentialsFile != "" {
 		var err error
@@ -63,82 +48,47 @@ func NewFCM(ctx context.Context, cfg FCMConfig, client *http.Client) (*FCM, erro
 			return nil, fmt.Errorf("push: fcm credentials: %w", err)
 		}
 	}
-	var sa serviceAccount
-	if err := json.Unmarshal(raw, &sa); err != nil {
-		return nil, fmt.Errorf("push: fcm credentials: %w", err)
-	}
-	if sa.Type != "service_account" || sa.ClientEmail == "" || sa.PrivateKey == "" {
-		return nil, errors.New("push: fcm credentials must be a service-account key JSON")
-	}
+	var opts []option.ClientOption
 	projectID := cfg.ProjectID
-	if projectID == "" {
-		projectID = sa.ProjectID
+	if len(raw) > 0 {
+		var sa struct {
+			Type      string `json:"type"`
+			ProjectID string `json:"project_id"`
+		}
+		if err := json.Unmarshal(raw, &sa); err != nil {
+			return nil, fmt.Errorf("push: fcm credentials: %w", err)
+		}
+		if sa.Type != "service_account" {
+			return nil, errors.New("push: fcm credentials must be a service-account key JSON")
+		}
+		if projectID == "" {
+			projectID = sa.ProjectID
+		}
+		opts = append(opts, option.WithAuthCredentialsJSON(option.ServiceAccount, raw))
+	} else if len(cfg.ClientOptions) == 0 {
+		return nil, errors.New("push: fcm credentials are required (AEDST_PUSH_FCM_CREDENTIALS_JSON or _FILE)")
 	}
 	if projectID == "" {
 		return nil, errors.New("push: fcm project id is unknown (set AEDST_PUSH_FCM_PROJECT_ID)")
 	}
-	tokenURL := sa.TokenURI
-	if tokenURL == "" {
-		tokenURL = googleTokenURL
+	opts = append(opts, cfg.ClientOptions...)
+	// Detach from the caller's cancellation: the client outlives startup.
+	app, err := firebase.NewApp(context.WithoutCancel(ctx), &firebase.Config{ProjectID: projectID}, opts...)
+	if err != nil {
+		return nil, fmt.Errorf("push: fcm app: %w", err)
 	}
-	jwtCfg := &jwt.Config{
-		Email:        sa.ClientEmail,
-		PrivateKey:   []byte(sa.PrivateKey),
-		PrivateKeyID: sa.PrivateKeyID,
-		Scopes:       []string{fcmScope},
-		TokenURL:     tokenURL,
+	client, err := app.Messaging(context.WithoutCancel(ctx))
+	if err != nil {
+		return nil, fmt.Errorf("push: fcm messaging client: %w", err)
 	}
-	base := cfg.BaseURL
-	if base == "" {
-		base = fcmDefaultBase
-	}
-	tokenCtx := context.WithValue(context.WithoutCancel(ctx), oauth2.HTTPClient, client)
-	return &FCM{
-		projectID: projectID,
-		baseURL:   strings.TrimRight(base, "/"),
-		tokens:    oauth2.ReuseTokenSource(nil, jwtCfg.TokenSource(tokenCtx)),
-		client:    client,
-	}, nil
-}
-
-type fcmRequest struct {
-	Message fcmMessage `json:"message"`
-}
-
-type fcmMessage struct {
-	Token        string            `json:"token"`
-	Notification *fcmNotification  `json:"notification,omitempty"`
-	Data         map[string]string `json:"data,omitempty"`
-	Android      *fcmAndroid       `json:"android,omitempty"`
-}
-
-type fcmNotification struct {
-	Title string `json:"title,omitempty"`
-	Body  string `json:"body,omitempty"`
-}
-
-type fcmAndroid struct {
-	Priority    string `json:"priority,omitempty"`
-	TTL         string `json:"ttl,omitempty"`
-	CollapseKey string `json:"collapse_key,omitempty"`
-}
-
-type fcmError struct {
-	Error struct {
-		Code    int    `json:"code"`
-		Message string `json:"message"`
-		Status  string `json:"status"`
-		Details []struct {
-			ErrorCode string `json:"errorCode"`
-		} `json:"details"`
-	} `json:"error"`
+	return &FCM{client: client, timeout: cfg.Timeout}, nil
 }
 
 func (f *FCM) Send(ctx context.Context, target Target, msg Message) error {
 	if target.Token == "" {
 		return fmt.Errorf("%w: empty fcm token", ErrInvalidToken)
 	}
-	data := map[string]string{}
+	data := make(map[string]string, len(msg.Data)+5)
 	for k, v := range msg.Data {
 		data[k] = v
 	}
@@ -147,49 +97,49 @@ func (f *FCM) Send(ctx context.Context, target Target, msg Message) error {
 	data["body"] = msg.Body
 	data["link"] = msg.Link
 	data["notification_id"] = msg.NotificationID
-	body := fcmRequest{Message: fcmMessage{
-		Token:        target.Token,
-		Notification: &fcmNotification{Title: msg.Title, Body: msg.Body},
+	// Token is the FCM registration token the clients register. SDK v4.22 marks the
+	// field deprecated in favour of Fid (a Firebase Installation ID), which is a
+	// different identifier that our clients do not send, so the field stays.
+	m := &messaging.Message{
+		Token:        target.Token, //nolint:staticcheck // registration token, not an FID (see above)
+		Notification: &messaging.Notification{Title: msg.Title, Body: msg.Body},
 		Data:         data,
-		Android:      &fcmAndroid{Priority: "HIGH", CollapseKey: msg.CollapseID},
-	}}
+		Android:      &messaging.AndroidConfig{Priority: "high", CollapseKey: msg.CollapseID},
+	}
 	if msg.TTL > 0 {
-		body.Message.Android.TTL = strconv.Itoa(int(msg.TTL.Seconds())) + "s"
+		ttl := msg.TTL.Truncate(time.Second)
+		m.Android.TTL = &ttl
 	}
-	payload, err := json.Marshal(body)
-	if err != nil {
-		return fmt.Errorf("%w: encode fcm message: %w", ErrPermanent, err)
+	if f.timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, f.timeout)
+		defer cancel()
 	}
-	token, err := f.tokens.Token()
-	if err != nil {
-		return fmt.Errorf("push: fcm oauth token: %w", err)
+	if _, err := f.client.Send(ctx, m); err != nil {
+		return classifyFCM(ctx, err)
 	}
-	url := f.baseURL + "/v1/projects/" + f.projectID + "/messages:send"
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(payload))
-	if err != nil {
-		return fmt.Errorf("push: fcm request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	token.SetAuthHeader(req)
+	return nil
+}
 
-	resp, err := f.client.Do(req)
-	if err != nil {
+// classifyFCM maps an SDK error to the package's kinds. The SDK's errors are
+// type-asserted by its helpers, so err must not be wrapped before they run.
+func classifyFCM(ctx context.Context, err error) error {
+	switch {
+	case messaging.IsUnregistered(err):
+		return fmt.Errorf("%w: fcm UNREGISTERED", ErrInvalidToken)
+	case errorutils.IsInvalidArgument(err) && strings.Contains(strings.ToLower(err.Error()), "registration token"):
+		return fmt.Errorf("%w: fcm %s", ErrInvalidToken, err.Error())
+	}
+	// The SDK has already read and closed the body when it built err; only the
+	// status code is used here, so there is nothing to close.
+	if resp := errorutils.HTTPResponse(err); resp != nil { //nolint:bodyclose // SDK-owned response, body already consumed
+		return classify("fcm", resp.StatusCode, err.Error())
+	}
+	// No HTTP response: a transport failure (timeout, refused connection,
+	// cancellation) is retryable; anything else is the SDK rejecting the
+	// message before sending it, which retrying cannot fix.
+	if ctx.Err() != nil || errorutils.IsUnavailable(err) || errorutils.IsDeadlineExceeded(err) || errorutils.IsUnknown(err) {
 		return fmt.Errorf("push: fcm: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode == http.StatusOK {
-		return nil
-	}
-	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	var fe fcmError
-	_ = json.Unmarshal(raw, &fe)
-	for _, d := range fe.Error.Details {
-		if d.ErrorCode == "UNREGISTERED" {
-			return fmt.Errorf("%w: fcm UNREGISTERED", ErrInvalidToken)
-		}
-	}
-	if resp.StatusCode == http.StatusBadRequest && strings.Contains(strings.ToLower(fe.Error.Message), "registration token") {
-		return fmt.Errorf("%w: fcm %s", ErrInvalidToken, fe.Error.Message)
-	}
-	return classify("fcm", resp.StatusCode, fe.Error.Status+" "+fe.Error.Message)
+	return fmt.Errorf("%w: fcm: %w", ErrPermanent, err)
 }

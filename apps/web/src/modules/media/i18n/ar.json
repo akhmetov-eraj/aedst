@@ -33,11 +33,16 @@
     "retry": "إعادة المحاولة",
     "processing": "جارٍ المعالجة…",
     "open": "فتح {name}",
-    "delete": "حذف {name}"
+    "delete": "حذف {name}",
+    "deleteConfirmTitle": "حذف هذا المرفق؟",
+    "deleteConfirmDescription": "سيتم حذف {name} نهائيًا. لا يمكن التراجع عن ذلك.",
+    "deleteCancelAction": "إبقاؤه",
+    "deleteConfirmAction": "حذف"
   },
   "player": {
     "processing": "لا يزال الملف قيد المعالجة.",
     "failed": "تعذّرت معالجة الملف.",
-    "open": "فتح {name}"
+    "open": "فتح {name}",
+    "imageError": "تعذّر تحميل الصورة. ربما انتهت صلاحية الرابط."
   }
 }

@@ -8,6 +8,6 @@ import javax.inject.Inject
 
 /** Exposes the shared unread count to the app shell's navigation badge. */
 @HiltViewModel
-class UnreadBadgeViewModel @Inject constructor(store: UnreadCountStore) : ViewModel() {
+internal class UnreadBadgeViewModel @Inject constructor(store: UnreadCountStore) : ViewModel() {
     val unread: StateFlow<Int> = store.count
 }

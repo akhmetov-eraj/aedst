@@ -16,7 +16,6 @@ import (
 	"github.com/aedst/server/internal/modules/tasks/infrastructure/postgres"
 	tasksjobs "github.com/aedst/server/internal/modules/tasks/jobs"
 	platformjobs "github.com/aedst/server/internal/platform/jobs"
-	"github.com/aedst/server/internal/platform/outbox"
 	"github.com/aedst/server/internal/shared/ids"
 	sharedtime "github.com/aedst/server/internal/shared/time"
 )
@@ -34,7 +33,7 @@ func TestRepository_RealRiverReminderJob(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewClient: %v", err)
 	}
-	repo := postgres.NewRepository(pool, outbox.NewWriter(outbox.NewPostgresRepository(pool, "tasks")), sharedtime.Real{},
+	repo := postgres.NewRepository(pool, newPublisher(t, pool), sharedtime.Real{},
 		postgres.WithReminders(tasksjobsinfra.NewScheduler(client, 0)))
 
 	countJobs := func() (n int) {

@@ -26,14 +26,18 @@
 #include "Presentation/search_view_model.hpp"
 #include "Presentation/task_detail_view_model.hpp"
 #include "Presentation/task_list_view_model.hpp"
+#include "aedst/capabilities/capabilities_service.hpp"
 #include "aedst/logging/log_categories.hpp"
 #include "aedst/media/media_remote_data_source.hpp"
 #include "aedst/network/access_token_claims.hpp"
+#include "aedst/network/client_identification.hpp"
 #include "aedst/network/transport_policy.hpp"
 #include "aedst/oidc/oidc_session.hpp"
 #include "aedst/oidc/refresh_token_store.hpp"
+#include "aedst/outbox/outbox_queue.hpp"
 #include "aedst/persistence/master_key_provider.hpp"
 #include "aedst/telemetry/sentry_reporter.hpp"
+#include "plugin_host.hpp"
 
 #include <QCoreApplication>
 #include <QMetaObject>
@@ -77,32 +81,36 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
 
     // --- Navigation: the only place every feature's destinations meet ---------
     deps->navGraph_ = std::make_shared<navigation::NavGraph>();
-    auth::registerAuthDestinations(*deps->navGraph_);
-    tasks::registerTasksDestinations(*deps->navGraph_);
-    search::registerSearchDestinations(*deps->navGraph_);
-    notifications::registerNotificationsDestinations(*deps->navGraph_);
-    mediafeature::registerMediaDestinations(*deps->navGraph_);
-    admin::registerAdminDestinations(*deps->navGraph_);
-    deps->router_ = std::make_unique<navigation::Router>(deps->navGraph_);
+    // Every feature is a plugin (ADR-0033): validated, capability-gated, then its routes join the graph.
+    deps->plugins_ = std::make_unique<PluginHost>();
+    deps->plugins_->addRuntimePlugins(); // no-op unless built with AEDST_ENABLE_RUNTIME_PLUGINS
+    // The plugins are activated, and the router built from their routes, after the API client exists (below): a
+    // plugin's registerServices() receives the ConnectClient and the OutboxHandlers it contributes to.
+    // App-level screens that no feature owns:
+    deps->navGraph_->registerDestination(navigation::routes::kUpgradeRequired,
+                                         QUrl(QStringLiteral("qrc:/qt/qml/Aedst/App/UpgradeRequiredView.qml")));
+
+    // --- Database thread (shared by the first-party token store and the offline outbox) ----------------------------
+    // One thread owns SQLite (ADR-0028): opening the file, the schema migration, the OS keyring probe for the master
+    // key and every row access happen there, never on the GUI thread. Completions come back through a queued call on
+    // the application object. A database that cannot be opened does not stop the app: the first-party session just
+    // cannot be stored (the error reaches the login screen) and offline writes are refused.
+    persistence::Dispatcher toGuiThread = [](std::function<void()> work) {
+        if (QCoreApplication* application = QCoreApplication::instance()) {
+            QMetaObject::invokeMethod(application, std::move(work), Qt::QueuedConnection);
+        }
+    };
+    auto worker = std::make_shared<persistence::DatabaseWorker>(config.dataDirectory / "aedst.sqlite3");
+    deps->databaseWorker_ = worker; // see the member's comment: last owner, released on the GUI thread
 
     // --- Network ---------------------------------------------------------------
     std::shared_ptr<const network::TokenProvider> tokenProvider;
     if (!useOidc) {
-        // First-party (password) login: the session is stored in SQLite on the database thread.
-        // One thread owns SQLite (ADR-0028): opening the file, the schema migration, the OS keyring probe for the
-        // master key and every row access happen there, never on the GUI thread. Completions come back through a
-        // queued call on the application object. A database that cannot be opened does not stop the app: the
-        // first-party session just cannot be stored (the error reaches the login screen).
-        persistence::Dispatcher toGuiThread = [](std::function<void()> work) {
-            if (QCoreApplication* application = QCoreApplication::instance()) {
-                QMetaObject::invokeMethod(application, std::move(work), Qt::QueuedConnection);
-            }
-        };
-        auto worker = std::make_shared<persistence::DatabaseWorker>(config.dataDirectory / "aedst.sqlite3");
+        // First-party (password) login: the session is stored in SQLite on the database thread (see above).
         // Master key lives in the OS credential store (DPAPI-wrapped file on Windows, Secret Service on Linux) with
         // a 0600 key file only as fallback; the provider is created lazily ON the database thread.
         deps->asyncTokenStore_ = std::make_shared<persistence::AsyncTokenStore>(
-            std::move(worker),
+            worker,
             [dataDirectory = config.dataDirectory]() {
                 return persistence::createPlatformMasterKeyProvider(dataDirectory);
             },
@@ -128,8 +136,36 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
     // expire, and once after an `unauthenticated` answer (single flight, shared by all callers).
     deps->authInterceptor_ = std::make_shared<network::AuthInterceptor>(
         tokenProvider, useOidc ? std::static_pointer_cast<network::TokenRefresher>(deps->oidcSession_) : nullptr);
+    // Every API request carries `X-Aedst-Client: desktop/<semver>` (ADR-0009); the server's version gate keys on it.
     deps->connectClient_ = std::make_shared<network::ConnectClient>(
-        network::ClientConfig{.baseUrl = config.apiBaseUrl}, deps->authInterceptor_);
+        network::ClientConfig{.baseUrl = config.apiBaseUrl,
+                              .clientIdentifier = network::makeClientIdentifier(config.appVersion)},
+        deps->authInterceptor_);
+
+    // --- Offline outbox + plugins ---------------------------------------------------
+    // Features contribute OutboxHandlers while their plugin registers (Tasks: task.create / task.update), so the
+    // handler set and the client are provided to the registry BEFORE the plugins are activated.
+    deps->outboxHandlers_ = std::make_shared<outbox::OutboxHandlers>();
+    deps->outbox_ = std::make_unique<outbox::OutboxService>(
+        outbox::OutboxService::Dependencies{.queue = std::make_shared<outbox::SqliteOutboxQueue>(worker, toGuiThread),
+                                            .handlers = deps->outboxHandlers_,
+                                            .clock = deps->clock_});
+    for (const auto& provided : {deps->plugins_->services().provide(deps->outboxHandlers_),
+                                 deps->plugins_->services().provide(deps->connectClient_)}) {
+        if (!provided) {
+            qCWarning(lcApp, "Could not provide a host service to the plugins: %s", provided.error().message.c_str());
+        }
+    }
+    // Capability negotiation is the plugins' capability source. Nothing is known yet at this point (the cache is read
+    // asynchronously), so built-ins activate and run-time plugins wait; each answer re-runs activation.
+    deps->createCapabilities(config.appVersion, worker, toGuiThread);
+    deps->plugins_->activate();
+    deps->plugins_->registerRoutes(*deps->navGraph_);
+    deps->router_ = std::make_unique<navigation::Router>(deps->navGraph_);
+    deps->deepLinks_ = std::make_unique<navigation::DeepLinkGate>(*deps->router_);
+    QObject::connect(deps->connectClient_.get(), &network::ConnectClient::clientUpgradeRequired,
+                     deps->outbox_.get(), [raw = deps.get()]() { raw->onUpgradeRequired(); });
+
     deps->mediaRemote_ = std::make_shared<media::ConnectMediaRemoteDataSource>(deps->connectClient_);
     const media::MediaUploadController::Dependencies upload{
         .remote = deps->mediaRemote_,
@@ -144,7 +180,7 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
     if (useOidc) {
         deps->authRepository_ = std::make_shared<auth::OidcAuthRepository>(deps->oidcSession_);
     } else {
-        deps->authRepository_ = std::make_shared<auth::AuthRepositoryImpl>(
+        deps->authRepository_ = std::make_shared<auth::ConnectAuthRepository>(
             std::make_shared<auth::ConnectAuthRemoteDataSource>(deps->connectClient_), deps->tokenAdapter_,
             deps->clock_, config.deviceId);
     }
@@ -161,6 +197,7 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
     deps->taskListViewModel_ = std::make_unique<tasks::TaskListViewModel>(
         taskRepository, std::make_shared<tasks::CreateTaskUseCase>(taskRepository), deps->errorCenter_,
         deps->analytics_, router);
+    deps->taskListViewModel_->setOutbox(deps->outbox_.get());
     deps->taskDetailViewModel_ = std::make_unique<tasks::TaskDetailViewModel>(tasks::TaskDetailViewModel::Dependencies{
         .tasks = taskRepository,
         .media = deps->mediaRemote_,
@@ -202,68 +239,9 @@ core::Outcome<std::unique_ptr<AppDependencies>> AppDependencies::create(const Ap
     return deps;
 }
 
-void AppDependencies::wireSessionLifecycle() {
-    // Signal connections use the ViewModel as context: they die with it.
-    QObject::connect(loginViewModel_.get(), &auth::LoginViewModel::loginSucceeded, loginViewModel_.get(),
-                     [this](const QString&) { onSignedIn(); });
-    QObject::connect(loginViewModel_.get(), &auth::LoginViewModel::loggedOut, loginViewModel_.get(),
-                     [this]() { onSignedOut(); });
-    // OIDC: the provider rejected the refresh token (revoked, user disabled, expired). The session is
-    // already wiped, so only the UI state has to follow.
-    if (oidcSession_) {
-        QObject::connect(oidcSession_.get(), &oidc::OidcSession::sessionExpired, loginViewModel_.get(), [this]() {
-            qCInfo(lcApp, "The identity provider ended the session; returning to login");
-            onSignedOut();
-            router_->resetTo(auth::loginRoute());
-        });
-    }
-    // Any feature hitting `unauthenticated` (refresh token revoked, session expired
-    // server-side) ends the session the same way an explicit sign-out does.
-    QObject::connect(errorCenter_.get(), &telemetry::ErrorCenter::sessionExpired, errorCenter_.get(), [this]() {
-        // isLoading: a sign-out is already running (several in-flight calls can fail at once).
-        if (session_->signedIn() && !loginViewModel_->isLoading()) {
-            qCInfo(lcApp, "Session expired; signing out");
-            loginViewModel_->logout(); // clears local tokens, emits loggedOut -> onSignedOut
-        }
-    });
-}
 
-void AppDependencies::onSignedIn() {
-    updateSessionInfo();
-    resumeSession();
-    router_->resetTo(tasks::taskListRoute());
-}
-
-void AppDependencies::resumeSession() {
-    if (const auto current = authRepository_->currentSession()) {
-        telemetry::SentryReporter::setUser(current->userId); // opaque id only
-        notificationsViewModel_->start();
-    }
-}
-
-void AppDependencies::onSignedOut() {
-    // Forget every user-specific bit of state so the next user starts clean.
-    notificationsViewModel_->stop();
-    taskListViewModel_->clear();
-    taskDetailViewModel_->clear();
-    searchViewModel_->clear();
-    mediaLibraryViewModel_->clear();
-    mediaViewerViewModel_->clear();
-    adminViewModel_->clear();
-    telemetry::SentryReporter::clearUser();
-    updateSessionInfo();
-    // LoginViewModel::logout() already reset the router to the login route.
-}
-
-void AppDependencies::updateSessionInfo() {
-    const auto current = authRepository_->currentSession();
-    bool isAdmin = false;
-    if (current) {
-        if (const auto claims = network::parseAccessTokenClaims(current->accessToken, rolesClaim_)) {
-            isAdmin = claims->hasRole(admin::kAdminRole);
-        }
-    }
-    session_->set(current.has_value(), isAdmin);
+bool AppDependencies::openDeepLink(const QString& link) {
+    return deepLinks_->submit(link);
 }
 
 navigation::Router& AppDependencies::router() noexcept {
@@ -306,6 +284,10 @@ feature::admin::AdminViewModel& AppDependencies::adminViewModel() noexcept {
     return *adminViewModel_;
 }
 
+outbox::OutboxService& AppDependencies::outbox() noexcept {
+    return *outbox_;
+}
+
 telemetry::ErrorCenter& AppDependencies::errorCenter() noexcept {
     return *errorCenter_;
 }
@@ -336,70 +318,5 @@ navigation::Route AppDependencies::initialRoute() const {
     return authRepository_->currentSession() ? tasks::taskListRoute() : auth::loginRoute();
 }
 
-void AppDependencies::restoreOidcSession() {
-    loginViewModel_->setRestoringSession(true);
-    oidcSession_->restore([this](core::Outcome<std::optional<oidc::OidcUser>> restored) {
-        loginViewModel_->setRestoringSession(false);
-        if (!restored) {
-            if (restored.error().code == core::ErrorCode::Network && oidcSession_->isSignedIn()) {
-                // Offline start: keep the identity and show the signed-in UI; requests refresh on demand.
-                qCWarning(lcApp, "Restoring the session while offline: %s", restored.error().message.c_str());
-                onSignedIn();
-                return;
-            }
-            qCWarning(lcApp, "Could not restore the session: %s", restored.error().message.c_str());
-            if (restored.error().code != core::ErrorCode::Unauthenticated) {
-                loginViewModel_->showError(QString::fromStdString(restored.error().message));
-            }
-            return;
-        }
-        if (!restored->has_value()) {
-            return; // nobody was signed in: the login screen stays
-        }
-        qCInfo(lcApp, "Session restored");
-        onSignedIn();
-    });
-}
-
-void AppDependencies::refreshSessionIfNeeded() {
-    if (oidcSession_) {
-        restoreOidcSession();
-        return;
-    }
-    restoreFirstPartySession();
-}
-
-void AppDependencies::restoreFirstPartySession() {
-    // The stored session is read from disk on the database thread; the login screen shows progress meanwhile.
-    loginViewModel_->setRestoringSession(true);
-    tokenAdapter_->preload([this](core::VoidOutcome loaded) {
-        loginViewModel_->setRestoringSession(false);
-        if (!loaded) {
-            qCWarning(lcApp, "Could not read the stored session: %s", loaded.error().message.c_str());
-            return; // stay on the login screen; signing in again recreates the session
-        }
-        if (!authRepository_->currentSession()) {
-            return; // nobody was signed in
-        }
-        onSignedIn(); // updates the session info, resumes per-user work and opens the home screen
-        refreshStoredSession();
-    });
-}
-
-void AppDependencies::refreshStoredSession() {
-    refreshToken_->execute(core::NoInput{}, [this](core::Outcome<auth::Session> result) {
-        if (result) {
-            updateSessionInfo(); // the rotated token may carry different roles
-            return;
-        }
-        if (result.error().code == core::ErrorCode::Unauthenticated) {
-            qCInfo(lcApp, "Stored session was rejected; returning to login");
-            onSignedOut();
-            router_->resetTo(auth::loginRoute());
-            return;
-        }
-        qCWarning(lcApp, "Session refresh failed, keeping stored session: %s", result.error().message.c_str());
-    });
-}
 
 } // namespace aedst::app

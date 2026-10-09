@@ -1,15 +1,24 @@
-import { type Locale, locales } from "@/app/config/i18n/locales";
-import { ADMIN_ROLE } from "@/shared/lib/auth/roles";
+import { moduleRoutes } from "@/app/config/modules/registry";
+import { type Locale, locales } from "@/shared/i18n/locales";
 import { safeRedirectPath } from "@/shared/lib/auth/safe-redirect";
 import { isAccessTokenExpired } from "@/shared/lib/auth/session-claims";
 
-/** Locale-less path prefixes that require a signed-in user. */
-const PROTECTED_PREFIXES = ["/tasks", "/search", "/notifications", "/admin"];
+/**
+ * Locale-less path prefixes that require a signed-in user, and the ones that
+ * additionally require a role (UX only — the server enforces it). Both come
+ * from the module manifests (`routes`) through the registry, not from a
+ * list kept here.
+ */
+const PROTECTED_PREFIXES = moduleRoutes
+  .filter((route) => route.access === "session")
+  .map((route) => route.path);
 
-/** Prefixes that additionally require a role (UX only — the server enforces it). */
-const ROLE_PREFIXES: ReadonlyArray<{ prefix: string; role: string }> = [
-  { prefix: "/admin", role: ADMIN_ROLE },
-];
+const ROLE_PREFIXES: ReadonlyArray<{ prefix: string; role: string }> =
+  moduleRoutes.flatMap((route) =>
+    route.access === "session" && route.requiredRole
+      ? [{ prefix: route.path, role: route.requiredRole }]
+      : [],
+  );
 
 const LOCALE_PATH = new RegExp(`^/(${locales.join("|")})(/.*)?$`);
 
@@ -66,6 +75,7 @@ export type RouteDecision =
  * unit-testable without a running proxy:
  * - a protected page without a session goes to the login page, remembering
  *   the destination in `?next=` so sign-in lands back on it;
+ * - a page of a module the server has switched off goes to the forbidden page;
  * - a role-gated page for a signed-in user without that role goes to the
  *   forbidden page (the server would refuse every call on it anyway);
  * - the login page with a session skips straight to that destination.
@@ -75,12 +85,15 @@ export function decideRoute({
   search,
   session,
   roles = [],
+  disabledPrefixes = [],
 }: {
   pathname: string;
   search: string;
   session: SessionState;
   /** Unverified roles of the active session. */
   roles?: readonly string[];
+  /** Route prefixes of modules the server has switched off (capabilities). */
+  disabledPrefixes?: readonly string[];
 }): RouteDecision {
   const parts = splitLocale(pathname);
   if (!parts) {
@@ -93,8 +106,14 @@ export function decideRoute({
     return { type: "redirect", location: `/${locale}?next=${next}` };
   }
 
+  if (disabledPrefixes.some((prefix) => matchesPrefix(rest, prefix))) {
+    return { type: "redirect", location: `/${locale}/forbidden` };
+  }
+
   const role = requiredRole(rest);
-  if (role && session === "active" && !roles.includes(role)) {
+  // Also while the session is only refreshable (IdP unavailable): the roles of the
+  // stale access token still say who may not enter, so this fails closed.
+  if (role && session !== "anonymous" && !roles.includes(role)) {
     return { type: "redirect", location: `/${locale}/forbidden` };
   }
 

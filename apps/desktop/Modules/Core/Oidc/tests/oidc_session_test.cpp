@@ -209,7 +209,7 @@ TEST_F(OidcSessionTest, NetworkFailureKeepsTheSessionForALaterRetry) {
     QSignalSpy expired(session.get(), &OidcSession::sessionExpired);
     const auto token = ensureFresh();
     ASSERT_FALSE(token.has_value());
-    EXPECT_EQ(token.error().code, core::ErrorCode::Network);
+    EXPECT_EQ(token.error().code, core::ErrorCode::Unavailable);
     EXPECT_EQ(expired.count(), 0);
     EXPECT_TRUE(session->isSignedIn());
     EXPECT_TRUE(store->hasIdentity());
@@ -225,7 +225,7 @@ TEST_F(OidcSessionTest, TemporaryServerErrorIsNotTreatedAsRevocation) {
     provider.refreshError = QStringLiteral("temporarily_unavailable");
     const auto token = ensureFresh();
     ASSERT_FALSE(token.has_value());
-    EXPECT_EQ(token.error().code, core::ErrorCode::Network);
+    EXPECT_EQ(token.error().code, core::ErrorCode::Unavailable);
     EXPECT_TRUE(session->isSignedIn());
 }
 
@@ -238,7 +238,7 @@ TEST_F(OidcSessionTest, RestoreOfflineKeepsTheStoredIdentity) {
     session->restore([&](core::Outcome<std::optional<OidcUser>> r) { restored = std::move(r); });
     ASSERT_TRUE(waitUntil([&] { return restored.has_value(); }, kLong));
     ASSERT_FALSE(restored->has_value());
-    EXPECT_EQ(restored->error().code, core::ErrorCode::Network);
+    EXPECT_EQ(restored->error().code, core::ErrorCode::Unavailable);
     EXPECT_TRUE(session->isSignedIn()); // still "signed in"; requests will retry the refresh
     EXPECT_TRUE(store->hasIdentity());
 }
@@ -311,6 +311,30 @@ TEST_F(OidcSessionTest, SignInRejectsAnIdTokenFromAnotherIssuer) {
     EXPECT_FALSE(store->hasIdentity());
 }
 
+TEST_F(OidcSessionTest, SignInSendsANonceAndAcceptsTheEchoedOne) {
+    const auto user = signIn();
+    ASSERT_TRUE(user.has_value()) << user.error().message;
+    EXPECT_GE(provider.lastNonce.size(), 32) << "a high-entropy nonce goes out with the authorization request";
+}
+
+TEST_F(OidcSessionTest, SignInRejectsAnIdTokenWithAnotherNonce) {
+    provider.nonceOverride = QStringLiteral("replayed-nonce");
+    const auto user = signIn();
+    ASSERT_FALSE(user.has_value());
+    EXPECT_EQ(user.error().code, core::ErrorCode::Unauthenticated);
+    EXPECT_NE(user.error().message.find("nonce"), std::string::npos);
+    EXPECT_FALSE(session->isSignedIn());
+    EXPECT_FALSE(store->hasIdentity());
+}
+
+TEST_F(OidcSessionTest, SignInRejectsAnIdTokenWithoutTheNonceClaim) {
+    provider.echoNonce = false;
+    const auto user = signIn();
+    ASSERT_FALSE(user.has_value());
+    EXPECT_EQ(user.error().code, core::ErrorCode::Unauthenticated);
+    EXPECT_FALSE(session->isSignedIn());
+}
+
 TEST_F(OidcSessionTest, SignInFailsWhenTheBrowserCannotBeOpened) {
     browser.followRedirects = false;
     browser.result = false;
@@ -356,7 +380,7 @@ TEST_F(OidcSessionTest, UnreachableProviderIsANetworkError) {
 
     const auto user = signIn();
     ASSERT_FALSE(user.has_value());
-    EXPECT_EQ(user.error().code, core::ErrorCode::Network);
+    EXPECT_EQ(user.error().code, core::ErrorCode::Unavailable);
 }
 
 TEST_F(OidcSessionTest, SignOutDuringARefreshDoesNotResurrectTheSession) {

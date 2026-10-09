@@ -7,7 +7,7 @@ struct NetworkErrorMappingTests {
     @Test("unauthenticated maps to unauthorized")
     func unauthenticated() {
         let error = ConnectError(code: .unauthenticated, message: "expired", exception: nil, details: [], metadata: [:])
-        #expect(NetworkErrorMapping.map(error) == .unauthorized)
+        #expect(NetworkErrorMapping.map(error) == .unauthenticated)
     }
 
     @Test("not found maps to notFound")

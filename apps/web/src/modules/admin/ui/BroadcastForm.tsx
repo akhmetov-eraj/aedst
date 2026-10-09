@@ -1,35 +1,47 @@
 "use client";
 
 import { useMutation } from "@connectrpc/connect-query";
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslations } from "next-intl";
 import { useId } from "react";
 import { useForm } from "react-hook-form";
 import { toast } from "sonner";
-import * as z from "zod/mini";
 
 import { AdminService } from "@/shared/api/connect/client";
+import { BroadcastNotificationRequestSchema } from "@/shared/api/connect/generated/aedst/admin/v1/admin_pb";
 import { track } from "@/shared/lib/analytics/analytics";
+import { protovalidateResolver } from "@/shared/lib/forms/protovalidate-resolver";
 import { useHydrated } from "@/shared/lib/hooks/use-hydrated";
 import { Button } from "@/shared/ui/button";
+import {
+  Field,
+  FieldDescription,
+  FieldError,
+  FieldLabel,
+} from "@/shared/ui/field";
+import { Form } from "@/shared/ui/form";
 import { Input } from "@/shared/ui/input";
 import { Textarea } from "@/shared/ui/textarea";
 
-// Mirrors admin.proto's BroadcastNotificationRequest constraints.
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const broadcastSchema = z.object({
-  userId: z.string().check(
-    z.trim(),
-    z.refine((value) => value === "" || UUID.test(value), "userId"),
-  ),
-  title: z.string().check(z.trim(), z.minLength(1), z.maxLength(120)),
-  body: z.string().check(z.maxLength(1000)),
-  link: z.string().check(
-    z.maxLength(500),
-    z.refine((value) => value === "" || /^\/[^/].*$/.test(value), "link"),
-  ),
+type BroadcastValues = {
+  userId: string;
+  title: string;
+  body: string;
+  link: string;
+};
+
+// Same Protovalidate rules as the server's BroadcastNotificationRequest
+// (admin.proto): uuid-or-empty user id, title 1..120, body <= 1000, local link.
+const broadcastResolver = protovalidateResolver<
+  typeof BroadcastNotificationRequestSchema,
+  BroadcastValues
+>(BroadcastNotificationRequestSchema, {
+  toMessage: (values) => ({
+    userId: values.userId.trim(),
+    title: values.title.trim(),
+    body: values.body,
+    link: values.link,
+  }),
 });
-type BroadcastValues = z.infer<typeof broadcastSchema>;
 
 /** Sends a SYSTEM notification to one user, or everyone when no user id is given. */
 export function BroadcastForm() {
@@ -37,7 +49,7 @@ export function BroadcastForm() {
   const hydrated = useHydrated();
   const ids = { user: useId(), title: useId(), body: useId(), link: useId() };
   const form = useForm<BroadcastValues>({
-    resolver: zodResolver(broadcastSchema),
+    resolver: broadcastResolver,
     defaultValues: { userId: "", title: "", body: "", link: "" },
   });
   const broadcast = useMutation(AdminService.method.broadcastNotification, {
@@ -53,7 +65,7 @@ export function BroadcastForm() {
   const errors = form.formState.errors;
 
   return (
-    <form
+    <Form
       noValidate
       className="flex max-w-xl flex-col gap-4"
       onSubmit={form.handleSubmit((values) =>
@@ -65,35 +77,63 @@ export function BroadcastForm() {
         }),
       )}
     >
-      <Field
-        id={ids.user}
-        label={t("userId")}
-        hint={t("userIdHint")}
-        error={errors.userId ? t("userIdInvalid") : undefined}
-      >
-        <Input id={ids.user} autoComplete="off" {...form.register("userId")} />
+      <Field data-invalid={Boolean(errors.userId)}>
+        <FieldLabel htmlFor={ids.user}>{t("userId")}</FieldLabel>
+        <Input
+          id={ids.user}
+          autoComplete="off"
+          aria-invalid={errors.userId ? true : undefined}
+          aria-describedby={errors.userId ? `${ids.user}-error` : undefined}
+          {...form.register("userId")}
+        />
+        <FieldDescription>{t("userIdHint")}</FieldDescription>
+        {errors.userId && (
+          <FieldError id={`${ids.user}-error`}>{t("userIdInvalid")}</FieldError>
+        )}
       </Field>
-      <Field
-        id={ids.title}
-        label={t("titleLabel")}
-        error={errors.title ? t("titleInvalid") : undefined}
-      >
-        <Input id={ids.title} {...form.register("title")} />
+      <Field data-invalid={Boolean(errors.title)}>
+        <FieldLabel htmlFor={ids.title}>{t("titleLabel")}</FieldLabel>
+        <Input
+          id={ids.title}
+          aria-invalid={errors.title ? true : undefined}
+          aria-describedby={errors.title ? `${ids.title}-error` : undefined}
+          {...form.register("title")}
+        />
+        {errors.title && (
+          <FieldError id={`${ids.title}-error`}>
+            {t(
+              errors.title.type === "string.max_len"
+                ? "titleTooLong"
+                : "titleRequired",
+            )}
+          </FieldError>
+        )}
       </Field>
-      <Field
-        id={ids.body}
-        label={t("body")}
-        error={errors.body ? t("bodyInvalid") : undefined}
-      >
-        <Textarea id={ids.body} {...form.register("body")} />
+      <Field data-invalid={Boolean(errors.body)}>
+        <FieldLabel htmlFor={ids.body}>{t("body")}</FieldLabel>
+        <Textarea
+          id={ids.body}
+          aria-invalid={errors.body ? true : undefined}
+          aria-describedby={errors.body ? `${ids.body}-error` : undefined}
+          {...form.register("body")}
+        />
+        {errors.body && (
+          <FieldError id={`${ids.body}-error`}>{t("bodyInvalid")}</FieldError>
+        )}
       </Field>
-      <Field
-        id={ids.link}
-        label={t("link")}
-        hint={t("linkHint")}
-        error={errors.link ? t("linkInvalid") : undefined}
-      >
-        <Input id={ids.link} placeholder="/tasks" {...form.register("link")} />
+      <Field data-invalid={Boolean(errors.link)}>
+        <FieldLabel htmlFor={ids.link}>{t("link")}</FieldLabel>
+        <Input
+          id={ids.link}
+          placeholder="/tasks"
+          aria-invalid={errors.link ? true : undefined}
+          aria-describedby={errors.link ? `${ids.link}-error` : undefined}
+          {...form.register("link")}
+        />
+        <FieldDescription>{t("linkHint")}</FieldDescription>
+        {errors.link && (
+          <FieldError id={`${ids.link}-error`}>{t("linkInvalid")}</FieldError>
+        )}
       </Field>
       <Button
         type="submit"
@@ -102,35 +142,6 @@ export function BroadcastForm() {
       >
         {t("send")}
       </Button>
-    </form>
-  );
-}
-
-function Field({
-  id,
-  label,
-  hint,
-  error,
-  children,
-}: {
-  id: string;
-  label: string;
-  hint?: string;
-  error?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="flex flex-col gap-1">
-      <label htmlFor={id} className="font-medium text-sm">
-        {label}
-      </label>
-      {children}
-      {hint && <p className="text-muted-foreground text-xs">{hint}</p>}
-      {error && (
-        <p role="alert" className="text-destructive text-xs">
-          {error}
-        </p>
-      )}
-    </div>
+    </Form>
   );
 }

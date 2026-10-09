@@ -6,7 +6,6 @@ package postgres
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"time"
 
@@ -22,7 +21,6 @@ import (
 	"github.com/aedst/server/internal/modules/media/domain"
 	mediajobs "github.com/aedst/server/internal/modules/media/infrastructure/jobs"
 	"github.com/aedst/server/internal/platform/database"
-	"github.com/aedst/server/internal/platform/outbox"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
 	"github.com/aedst/server/internal/shared/pagination"
@@ -35,20 +33,20 @@ type TxInserter interface {
 	InsertTx(ctx context.Context, tx pgx.Tx, args river.JobArgs, opts *river.InsertOpts) (*rivertype.JobInsertResult, error)
 }
 
-// EventWriter is satisfied by *outbox.Writer.
+// EventWriter is satisfied by events.Publisher.
 type EventWriter interface {
-	Write(ctx context.Context, tx pgx.Tx, row outbox.Row) error
+	Publish(ctx context.Context, tx pgx.Tx, eventType string, version uint32, partitionKey ids.ID, payload any) (ids.ID, error)
 }
 
 type Repository struct {
 	pool   *pgxpool.Pool
 	jobs   TxInserter
-	outbox EventWriter
+	events EventWriter
 	clock  sharedtime.Clock
 }
 
-func NewRepository(pool *pgxpool.Pool, jobs TxInserter, outboxWriter EventWriter, clock sharedtime.Clock) *Repository {
-	return &Repository{pool: pool, jobs: jobs, outbox: outboxWriter, clock: clock}
+func NewRepository(pool *pgxpool.Pool, jobs TxInserter, publisher EventWriter, clock sharedtime.Clock) *Repository {
+	return &Repository{pool: pool, jobs: jobs, events: publisher, clock: clock}
 }
 
 var _ application.Repository = (*Repository)(nil)
@@ -283,11 +281,10 @@ func (r *Repository) Totals(ctx context.Context) (int64, int64, error) {
 }
 
 func (r *Repository) writeEvent(ctx context.Context, tx pgx.Tx, eventType string, version uint32, key ids.ID, payload any) error {
-	body, err := json.Marshal(payload)
-	if err != nil {
+	if _, err := r.events.Publish(ctx, tx, eventType, version, key, payload); err != nil {
 		return sharederrors.Wrap("media.writeEvent", err)
 	}
-	return r.outbox.Write(ctx, tx, outbox.NewRow(ctx, r.clock, eventType, version, key, body))
+	return nil
 }
 
 func fromDB(row mediadb.MediaMedium) domain.Media {

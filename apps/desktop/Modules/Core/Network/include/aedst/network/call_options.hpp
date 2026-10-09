@@ -5,6 +5,8 @@
 #include <cmath>
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <string_view>
 
 namespace aedst::network {
 
@@ -31,12 +33,25 @@ struct RetryPolicy {
     }
 };
 
+/// The server accepts an Idempotency-Key of 1-128 printable ASCII characters (0x21-0x7e) and rejects anything
+/// else (apps/server/internal/platform/idempotency/interceptor.go).
+[[nodiscard]] constexpr bool isValidIdempotencyKey(std::string_view key) noexcept {
+    if (key.empty() || key.size() > 128) {
+        return false;
+    }
+    return std::ranges::all_of(key, [](char c) { return c >= 0x21 && c <= 0x7e; });
+}
+
 /// Per-call overrides; anything unset falls back to ClientConfig.
 struct CallOptions {
     /// Deadline for each attempt (also sent as `Connect-Timeout-Ms`). 0 = none.
     std::optional<std::chrono::milliseconds> timeout;
     /// Ignored for methods that are not Idempotency::Idempotent.
     std::optional<RetryPolicy> retry;
+    /// Sent as `Idempotency-Key` on every attempt of this call, so the server applies a replayed command once
+    /// (offline outbox: the outbox item id). Empty = no header. A key that fails isValidIdempotencyKey makes the
+    /// call fail with InvalidArgument without sending anything.
+    std::string idempotencyKey;
 };
 
 } // namespace aedst::network

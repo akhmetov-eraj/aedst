@@ -6,7 +6,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -19,17 +18,18 @@ import (
 	"github.com/aedst/server/internal/modules/tasks/domain"
 	"github.com/aedst/server/internal/platform/database"
 	"github.com/aedst/server/internal/platform/idempotency"
-	"github.com/aedst/server/internal/platform/outbox"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
+	"github.com/aedst/server/internal/shared/like"
 	"github.com/aedst/server/internal/shared/pagination"
 	sharedtime "github.com/aedst/server/internal/shared/time"
 )
 
 // EventWriter persists an integration event inside the caller's transaction
-// and schedules its delivery. Satisfied by *outbox.Writer.
+// and schedules its delivery (one River job per consumer). Satisfied by
+// events.Publisher.
 type EventWriter interface {
-	Write(ctx context.Context, tx pgx.Tx, row outbox.Row) error
+	Publish(ctx context.Context, tx pgx.Tx, eventType string, version uint32, partitionKey ids.ID, payload any) (ids.ID, error)
 }
 
 // ReminderEnqueuer enqueues the due-date reminder job inside the caller's
@@ -41,7 +41,7 @@ type ReminderEnqueuer interface {
 
 type Repository struct {
 	pool        *pgxpool.Pool
-	outbox      EventWriter
+	events      EventWriter
 	idempotency idempotency.Store
 	reminders   ReminderEnqueuer
 	clock       sharedtime.Clock
@@ -55,10 +55,10 @@ type Option func(*Repository)
 // WithReminders makes Create/Update enqueue due-date reminders atomically.
 func WithReminders(r ReminderEnqueuer) Option { return func(repo *Repository) { repo.reminders = r } }
 
-// NewRepository builds the tasks repository over pool. outboxWriter may be nil
+// NewRepository builds the tasks repository over pool. publisher may be nil
 // for read-only use (the reminder worker only calls FindByIDAndUserID).
-func NewRepository(pool *pgxpool.Pool, outboxWriter EventWriter, clock sharedtime.Clock, opts ...Option) *Repository {
-	r := &Repository{pool: pool, outbox: outboxWriter, idempotency: idempotency.NewPostgresStore(), clock: clock}
+func NewRepository(pool *pgxpool.Pool, publisher EventWriter, clock sharedtime.Clock, opts ...Option) *Repository {
+	r := &Repository{pool: pool, events: publisher, idempotency: idempotency.NewPostgresStore(), clock: clock}
 	for _, opt := range opts {
 		opt(r)
 	}
@@ -144,9 +144,9 @@ func (r *Repository) Create(ctx context.Context, task domain.Task, idempotencyKe
 }
 
 // Complete moves id to done and, in the same transaction, writes a
-// TaskCompleted event to the outbox (see internal/platform/outbox) — an
+// TaskCompleted event (see internal/platform/events: a River job per consumer, inserted in this transaction) — an
 // integration event another system's projection depends on (see
-// docs/events.md) must not be silently lost. The UPDATE only matches a task
+// docs/content/server/events.md) must not be silently lost. The UPDATE only matches a task
 // that is not done yet, so a repeated or concurrent Complete finds no row,
 // returns the current task and writes no second event.
 func (r *Repository) Complete(ctx context.Context, id, userID ids.ID, now time.Time) (domain.Task, error) {
@@ -189,17 +189,38 @@ func (r *Repository) Complete(ctx context.Context, id, userID ids.ID, now time.T
 	return result, nil
 }
 
+// Reopen moves a done task back to todo and, in the same transaction, publishes
+// TaskUpdated with the post-reopen snapshot, so projections (search) see the
+// transition. Like Complete, the UPDATE only matches a task that is done, so a
+// repeated or concurrent Reopen finds no row, returns the current task and
+// publishes nothing: one event per real mutation.
 func (r *Repository) Reopen(ctx context.Context, id, userID ids.ID, now time.Time) (domain.Task, error) {
-	q := tasksdb.New(r.pool)
-	row, err := q.ReopenTask(ctx, tasksdb.ReopenTaskParams{ID: toPgUUID(id), UserID: toPgUUID(userID), Now: toPgTimestamptz(now)})
-	if errors.Is(err, pgx.ErrNoRows) {
-		// Already todo, or not this user's task.
-		return r.FindByIDAndUserID(ctx, id, userID)
-	}
+	var result domain.Task
+	err := database.WithTx(ctx, r.pool, func(ctx context.Context, tx pgx.Tx) error {
+		q := tasksdb.New(tx)
+		row, err := q.ReopenTask(ctx, tasksdb.ReopenTaskParams{ID: toPgUUID(id), UserID: toPgUUID(userID), Now: toPgTimestamptz(now)})
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Already todo, or not this user's task.
+			existing, err := q.FindTaskByIDAndUserID(ctx, tasksdb.FindTaskByIDAndUserIDParams{ID: toPgUUID(id), UserID: toPgUUID(userID)})
+			if errors.Is(err, pgx.ErrNoRows) {
+				return sharederrors.NotFound("tasks.FindByIDAndUserID", "task not found")
+			}
+			if err != nil {
+				return sharederrors.Wrap("tasks.Reopen", err)
+			}
+			result = fromDB(existing)
+			return nil
+		}
+		if err != nil {
+			return sharederrors.Wrap("tasks.Reopen", err)
+		}
+		result = fromDB(row)
+		return r.writeEvent(ctx, tx, api.TaskUpdatedEventType, api.TaskUpdatedEventVersion, result.ID, api.SnapshotOf(result))
+	})
 	if err != nil {
-		return domain.Task{}, sharederrors.Wrap("tasks.Reopen", err)
+		return domain.Task{}, err
 	}
-	return fromDB(row), nil
+	return result, nil
 }
 
 func (r *Repository) FindByIDAndUserID(ctx context.Context, id, userID ids.ID) (domain.Task, error) {
@@ -300,7 +321,7 @@ func (r *Repository) List(ctx context.Context, params application.ListParams) (a
 
 	result := application.ListResult{Tasks: page.Items, Next: page.Next}
 	if params.After == nil {
-		total, err := q.CountTasks(ctx, tasksdb.CountTasksParams{UserID: toPgUUID(params.UserID), Statuses: statuses, Priorities: priorities, Search: search})
+		total, err := q.CountTasks(ctx, tasksdb.CountTasksParams{UserID: toPgUUID(params.UserID), Statuses: statuses, Priorities: priorities, Search: search, CountCap: application.MaxCountedTasks})
 		if err != nil {
 			return application.ListResult{}, sharederrors.Wrap("tasks.List.count", err)
 		}
@@ -319,12 +340,7 @@ func openCursor(asc bool) (pgtype.Timestamptz, pgtype.UUID) {
 	return pgtype.Timestamptz{InfinityModifier: pgtype.Infinity, Valid: true}, pgtype.UUID{Bytes: [16]byte{0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff}, Valid: true}
 }
 
-// likeEscaper neutralizes the LIKE metacharacters in a user-supplied search
-// term so "50%" or "a_b" match literally instead of as wildcards.
-var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-
-func escapeLike(s string) string { return likeEscaper.Replace(s) }
-
+func escapeLike(s string) string { return like.Escape(s) }
 func (r *Repository) Stats(ctx context.Context, userID ids.ID) (application.Stats, error) {
 	q := tasksdb.New(r.pool)
 	row, err := q.GetTaskStats(ctx, toPgUUID(userID))

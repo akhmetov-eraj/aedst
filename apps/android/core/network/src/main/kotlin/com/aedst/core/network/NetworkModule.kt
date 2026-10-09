@@ -92,16 +92,19 @@ object NetworkModule {
 
     @Provides
     @Singleton
-    fun provideProtocolClient(okHttpClient: OkHttpClient, authInterceptor: AuthInterceptor): ProtocolClientInterface =
-        ProtocolClient(
-            httpClient = ConnectOkHttpClient(okHttpClient),
-            ProtocolClientConfig(
-                host = BuildConfig.BASE_URL,
-                serializationStrategy = GoogleJavaLiteProtobufStrategy(),
-                networkProtocol = NetworkProtocol.CONNECT,
-                interceptors = listOf { _ -> authInterceptor },
-            ),
-        )
+    fun provideProtocolClient(
+        okHttpClient: OkHttpClient,
+        authInterceptor: AuthInterceptor,
+        upgradeInterceptor: ClientUpgradeInterceptor,
+    ): ProtocolClientInterface = ProtocolClient(
+        httpClient = ConnectOkHttpClient(okHttpClient),
+        ProtocolClientConfig(
+            host = BuildConfig.BASE_URL,
+            serializationStrategy = GoogleJavaLiteProtobufStrategy(),
+            networkProtocol = NetworkProtocol.CONNECT,
+            interceptors = listOf({ _ -> authInterceptor }, { _ -> upgradeInterceptor }),
+        ),
+    )
 }
 
 @Module

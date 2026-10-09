@@ -9,7 +9,7 @@ BrowserSignInUseCase::BrowserSignInUseCase(std::shared_ptr<AuthRepository> repos
 
 void BrowserSignInUseCase::execute(core::NoInput /*input*/, core::Completion<Session> done) {
     if (!repository_->supportsBrowserSignIn()) {
-        done(core::fail(core::Error::invalidArgument("Browser sign-in is not available")));
+        done(core::fail(core::Error::invalidInput("Browser sign-in is not available")));
         return;
     }
     repository_->signInWithBrowser(std::move(done));

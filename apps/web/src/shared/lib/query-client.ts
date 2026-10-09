@@ -1,5 +1,4 @@
 import { Code, ConnectError } from "@connectrpc/connect";
-import * as Sentry from "@sentry/nextjs";
 import {
   type Mutation,
   MutationCache,
@@ -14,6 +13,7 @@ import {
   retryDelayMs,
   toAppError,
 } from "@/shared/lib/errors/app-error";
+import { addBreadcrumb } from "@/shared/lib/errors/breadcrumbs";
 import { reportError } from "@/shared/lib/errors/report-error";
 
 export function isUnauthenticated(error: unknown): boolean {
@@ -97,7 +97,7 @@ export function makeQueryClient(callbacks: QueryClientCallbacks = {}) {
       // Every user action leaves a breadcrumb, so a Sentry event shows what
       // the user did leading up to it.
       onMutate: (_variables, mutation) => {
-        Sentry.addBreadcrumb({
+        addBreadcrumb({
           category: "mutation",
           level: "info",
           message:

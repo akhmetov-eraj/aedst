@@ -30,13 +30,14 @@ message GetOverviewRequest {}
 
 message GetOverviewResponse {
   int64 users_total = 1;
+  // tasks_* count at most 1,000,000 tasks (lower bounds beyond that).
   int64 tasks_total = 2;
   int64 tasks_done = 3;
   int64 tasks_overdue = 4;
   int64 media_total = 5;
   int64 media_bytes = 6;
   int64 push_devices = 7;
-  // Oldest unpublished outbox row age, seconds (0 when the outbox is empty).
+  // Age of the oldest ready River job (event deliveries included), seconds (0 when none waits). Field name kept for wire compatibility; it was the outbox lag before ADR-0014.
   int64 outbox_lag_seconds = 8;
   // Queued + retrying River jobs.
   int64 jobs_pending = 9;

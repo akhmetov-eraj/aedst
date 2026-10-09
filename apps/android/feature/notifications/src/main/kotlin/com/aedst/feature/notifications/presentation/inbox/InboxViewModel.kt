@@ -7,6 +7,8 @@ import com.aedst.core.common.Outcome
 import com.aedst.feature.notifications.domain.InboxNotification
 import com.aedst.feature.notifications.domain.NotificationsRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -33,36 +35,65 @@ sealed interface InboxIntent {
 }
 
 @HiltViewModel
-class InboxViewModel @Inject constructor(private val repository: NotificationsRepository) : ViewModel() {
+internal class InboxViewModel @Inject constructor(private val repository: NotificationsRepository) : ViewModel() {
+
+    // One job per operation: a newer request of the same kind cancels the older one, so a slow earlier answer never
+    // overwrites a later one (pull-to-refresh twice, refresh while a next page is loading).
+    private var refreshJob: Job? = null
+    private var loadMoreJob: Job? = null
 
     private val mutableState = MutableStateFlow(InboxState())
     val state: StateFlow<InboxState> = mutableState.asStateFlow()
 
     fun onIntent(intent: InboxIntent) {
         when (intent) {
-            InboxIntent.Refresh -> load(pageToken = null)
-            InboxIntent.LoadMore -> mutableState.value.nextPageToken?.let { load(it) }
+            InboxIntent.Refresh -> refresh()
+            InboxIntent.LoadMore -> mutableState.value.nextPageToken?.let(::loadMore)
             is InboxIntent.Open -> markRead(intent.notification)
             InboxIntent.MarkAllRead -> markAllRead()
             InboxIntent.ErrorShown -> mutableState.update { it.copy(error = null) }
         }
     }
 
-    private fun load(pageToken: String?) {
+    private fun refresh() {
+        loadMoreJob?.cancel()
+        refreshJob?.cancel()
         mutableState.update { it.copy(isLoading = true) }
-        viewModelScope.launch {
-            when (val outcome = repository.list(pageToken = pageToken)) {
+        refreshJob = viewModelScope.launch {
+            val outcome = repository.list(pageToken = null)
+            ensureActive() // a repository that finished anyway must not apply a superseded answer
+            when (outcome) {
                 is Outcome.Success -> mutableState.update {
-                    val page = outcome.value.notifications
                     it.copy(
-                        notifications = if (pageToken == null) page else it.notifications + page,
+                        notifications = outcome.value.notifications,
                         nextPageToken = outcome.value.nextPageToken,
                         isLoading = false,
                     )
                 }
                 is Outcome.Failure -> mutableState.update { it.copy(isLoading = false, error = outcome.error) }
             }
-            if (pageToken == null) repository.unreadCount()
+            repository.unreadCount()
+        }
+    }
+
+    private fun loadMore(pageToken: String) {
+        // A page requested before the inbox was reloaded would be appended to the wrong list.
+        if (refreshJob?.isActive == true) return
+        loadMoreJob?.cancel()
+        mutableState.update { it.copy(isLoading = true) }
+        loadMoreJob = viewModelScope.launch {
+            val outcome = repository.list(pageToken = pageToken)
+            ensureActive()
+            when (outcome) {
+                is Outcome.Success -> mutableState.update {
+                    it.copy(
+                        notifications = it.notifications + outcome.value.notifications,
+                        nextPageToken = outcome.value.nextPageToken,
+                        isLoading = false,
+                    )
+                }
+                is Outcome.Failure -> mutableState.update { it.copy(isLoading = false, error = outcome.error) }
+            }
         }
     }
 

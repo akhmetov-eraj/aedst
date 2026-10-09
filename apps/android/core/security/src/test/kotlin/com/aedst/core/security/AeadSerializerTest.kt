@@ -7,10 +7,10 @@ import com.google.crypto.tink.RegistryConfiguration
 import com.google.crypto.tink.aead.AeadConfig
 import com.google.crypto.tink.aead.PredefinedAeadParameters
 import kotlinx.coroutines.test.runTest
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertThrows
-import org.junit.Test
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
+import org.junit.jupiter.api.Assertions.assertThrows
+import org.junit.jupiter.api.Test
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 
@@ -53,5 +53,53 @@ class AeadSerializerTest {
         assertThrows(CorruptionException::class.java) {
             kotlinx.coroutines.runBlocking { AeadSerializer(lazyOf(newAead())).readFrom(ByteArrayInputStream(sealed)) }
         }
+    }
+
+    @Test
+    fun `a flipped ciphertext byte is reported as corruption`() = runTest {
+        val aead = newAead()
+        val sealed = seal(AeadSerializer(lazyOf(aead)), SecretEntries(mapOf("k" to "v")))
+        sealed[sealed.size - 1] = (sealed[sealed.size - 1].toInt() xor 1).toByte()
+
+        assertThrows(CorruptionException::class.java) {
+            kotlinx.coroutines.runBlocking { AeadSerializer(lazyOf(aead)).readFrom(ByteArrayInputStream(sealed)) }
+        }
+    }
+
+    @Test
+    fun `data sealed for another purpose is rejected even with the right key`() = runTest {
+        val aead = newAead()
+        val foreign = aead.encrypt("""{"entries":{"k":"v"}}""".encodeToByteArray(), "someone.else".encodeToByteArray())
+
+        assertThrows(CorruptionException::class.java) {
+            kotlinx.coroutines.runBlocking { AeadSerializer(lazyOf(aead)).readFrom(ByteArrayInputStream(foreign)) }
+        }
+    }
+
+    @Test
+    fun `authentic bytes that are not a valid store are reported as corruption`() = runTest {
+        val aead = newAead()
+        val notJson = aead.encrypt("not json".encodeToByteArray(), "aedst.secure_store.v1".encodeToByteArray())
+
+        assertThrows(CorruptionException::class.java) {
+            kotlinx.coroutines.runBlocking { AeadSerializer(lazyOf(aead)).readFrom(ByteArrayInputStream(notJson)) }
+        }
+    }
+
+    @Test
+    fun `the key is only created when the store is first used`() = runTest {
+        var created = 0
+        val serializer = AeadSerializer(
+            lazy {
+                created++
+                newAead()
+            },
+        )
+
+        serializer.readFrom(ByteArrayInputStream(ByteArray(0)))
+        assertEquals(0, created)
+
+        seal(serializer, SecretEntries(mapOf("k" to "v")))
+        assertEquals(1, created)
     }
 }

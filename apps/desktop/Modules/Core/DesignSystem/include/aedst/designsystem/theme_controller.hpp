@@ -1,6 +1,9 @@
 #pragma once
 
+#include "aedst/qmlsupport/singleton_slot.hpp"
+
 #include <QObject>
+#include <QtQml/qqmlregistration.h>
 
 namespace aedst::designsystem {
 
@@ -12,10 +15,15 @@ namespace aedst::designsystem {
 /// set explicitly.
 class ThemeController final : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
     Q_PROPERTY(bool dark READ isDark WRITE setDark NOTIFY themeChanged)
     Q_PROPERTY(bool followsSystem READ followsSystem NOTIFY themeChanged)
 
 public:
+    static ThemeController* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<ThemeController>::create(engine, script);
+    }
     explicit ThemeController(QObject* parent = nullptr);
 
     [[nodiscard]] bool isDark() const noexcept;
@@ -32,9 +40,5 @@ private:
     bool dark_{false};
     bool followsSystem_{true};
 };
-
-/// Registers `controller` as the `ThemeController` singleton in the
-/// `Aedst.Theme` QML module, which Theme.qml imports. Call before loading QML.
-void registerThemeController(ThemeController* controller);
 
 } // namespace aedst::designsystem

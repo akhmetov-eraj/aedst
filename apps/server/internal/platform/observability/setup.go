@@ -8,7 +8,6 @@ import (
 	"net/http"
 
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/contrib/exporters/autoexport"
@@ -94,7 +93,6 @@ func Setup(ctx context.Context, cfg Config) (*Telemetry, error) {
 
 	// --- metrics: one instrumentation, two outputs (OTLP push + Prometheus pull) ---
 	registry := prometheus.NewRegistry()
-	registry.MustRegister(collectors.NewGoCollector(), collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}))
 	promReader, err := otelprom.New(otelprom.WithRegisterer(registry))
 	if err != nil {
 		return nil, fmt.Errorf("observability: prometheus exporter: %w", err)

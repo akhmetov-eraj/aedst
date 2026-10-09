@@ -51,8 +51,4 @@ void ThemeController::applySystemScheme() {
     }
 }
 
-void registerThemeController(ThemeController* controller) {
-    qmlRegisterSingletonInstance<ThemeController>("Aedst.Theme", 1, 0, "ThemeController", controller);
-}
-
 } // namespace aedst::designsystem

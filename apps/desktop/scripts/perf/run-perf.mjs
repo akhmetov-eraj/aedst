@@ -99,7 +99,9 @@ async function launchOnce(exe) {
   const profile = mkdtempSync(join(tmpdir(), 'aedst-perf-'));
   const env = {
     ...process.env,
-    // An empty profile every time: no cache, no settings, no database.
+    // An empty profile every time: no cache, no settings, no database. AEDST_DATA_DIR relocates ALL of the app's state
+    // (data/, cache/, config/ settings) on every OS; the XDG/APPDATA variables below only cover Qt's own lookups.
+    AEDST_DATA_DIR: profile,
     XDG_DATA_HOME: join(profile, 'data'),
     XDG_CONFIG_HOME: join(profile, 'config'),
     XDG_CACHE_HOME: join(profile, 'cache'),
@@ -112,8 +114,10 @@ async function launchOnce(exe) {
     QT_QUICK_CONTROLS_STYLE: 'Basic',
   };
   if (!isWindows && !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY) env.QT_QPA_PLATFORM = 'offscreen';
-  const child = spawn(exe, [], { env, stdio: 'ignore' });
-  const logRoots = [join(profile, 'data'), join(profile, 'roaming'), join(profile, 'local')];
+  // --perf-exit-after-ms: the app quits by itself this long after its first frame, so a crashed harness never leaves a
+  // window behind. The harness reads the log and the RSS (3 s after the first frame) well before that.
+  const child = spawn(exe, ['--perf-exit-after-ms=20000'], { env, stdio: 'ignore' });
+  const logRoots = [profile];
   const readLog = () => {
     const stack = [...logRoots];
     while (stack.length > 0) {

@@ -25,14 +25,14 @@ struct AuthTokenRefresherTests {
 
     @Test("a server rejection ends the session (.rejected)")
     func unauthorizedIsRejected() async {
-        #expect(await makeRefresher(.failure(.unauthorized)).0.refresh(refreshToken: "x") == .rejected)
-        #expect(await makeRefresher(.failure(.validation(fields: ["refresh_token"]))).0.refresh(refreshToken: "x") == .rejected)
+        #expect(await makeRefresher(.failure(.unauthenticated)).0.refresh(refreshToken: "x") == .rejected)
+        #expect(await makeRefresher(.failure(.invalidInput(fields: ["refresh_token"]))).0.refresh(refreshToken: "x") == .rejected)
     }
 
     @Test("offline, timeouts, throttling and server errors keep the session (.unavailable)")
     func transientIsUnavailable() async {
         for error in [
-            AedstError.network(reason: "offline"),
+            AedstError.unavailable(reason: "offline"),
             .rateLimited(retryAfter: 5),
             .unknown(reason: "500"),
             .decoding(reason: "bad body"),
@@ -43,7 +43,7 @@ struct AuthTokenRefresherTests {
 
     @Test("a refresh is attempted exactly once (refresh tokens rotate; never blind-retry)")
     func noBlindRetry() async {
-        let (refresher, remote) = makeRefresher(.failure(.network(reason: "offline")))
+        let (refresher, remote) = makeRefresher(.failure(.unavailable(reason: "offline")))
 
         _ = await refresher.refresh(refreshToken: "x")
 

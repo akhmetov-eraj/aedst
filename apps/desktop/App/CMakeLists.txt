@@ -5,18 +5,34 @@ find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Core Gui Qml Quick Quic
 
 qt_add_executable(aedst-desktop WIN32
     src/main.cpp
+    src/activation.hpp
+    src/activation.cpp
+    src/app_run.hpp
+    src/app_run.cpp
     src/app_dependencies.hpp
     src/app_dependencies.cpp
+    src/app_dependencies_capabilities.cpp
+    src/app_dependencies_session.cpp
     src/app_updater.hpp
     src/app_updater.cpp
+    src/client_build.hpp
+    src/plugin_host.hpp
+    src/plugin_host.cpp
+    src/qml_singletons.hpp
+    src/qml_singletons.cpp
     src/session_info.hpp
+    src/startup_config.hpp
+    src/startup_config.cpp
     src/startup_trace.hpp
 )
 
+# The blocking upgrade screen is a navigation destination (route app/upgrade-required); the alias keeps its resource path
+# flat: qrc:/qt/qml/Aedst/App/UpgradeRequiredView.qml.
+set_source_files_properties(qml/UpgradeRequiredView.qml PROPERTIES QT_RESOURCE_ALIAS UpgradeRequiredView.qml)
 qt_add_qml_module(aedst-desktop
     URI Aedst.App
     VERSION 1.0
-    QML_FILES qml/Main.qml
+    QML_FILES qml/Main.qml qml/AppToolbar.qml qml/PrivacyDialog.qml qml/UpdateBanner.qml qml/UpgradeRequiredView.qml
 )
 
 # main.cpp must answer `aedst-desktop --version` (prints AEDST_VERSION to stdout,
@@ -95,11 +111,30 @@ if(WIN32)
     target_sources(aedst-desktop PRIVATE "${CMAKE_CURRENT_BINARY_DIR}/aedst-desktop.rc")
 endif()
 
+# Optional signed run-time plugins (ADR-0033). OFF by default: the shipped executable then contains
+# no code path that loads a library from disk.
+if(AEDST_ENABLE_RUNTIME_PLUGINS)
+    target_link_libraries(aedst-desktop PRIVATE Aedst::PluginLoader)
+    target_compile_definitions(aedst-desktop PRIVATE AEDST_RUNTIME_PLUGINS)
+endif()
+
 # COMPOSITION ROOT: the only target in the tree that links every feature.
 # It also links Core targets directly because AppDependencies constructs the
 # shared infrastructure (ConnectClient, SQLite, TokenStore, Router, theme) that
 # features receive by injection.
 target_link_libraries(aedst-desktop PRIVATE
+    # QML plugins of the declarative singleton modules (not linked by the libraries themselves, see their CMakeLists).
+    AedstNavigationplugin
+    AedstConnectivityplugin
+    AedstPlatformplugin
+    AedstTelemetryplugin
+    AedstFeatureAuthplugin
+    AedstFeatureTasksplugin
+    AedstFeatureSearchplugin
+    AedstFeatureNotificationsplugin
+    AedstFeatureMediaplugin
+    AedstFeatureAdminplugin
+    Aedst::QmlSupport
     Aedst::Feature::Auth
     Aedst::Feature::Tasks
     Aedst::Feature::Search
@@ -109,9 +144,12 @@ target_link_libraries(aedst-desktop PRIVATE
     Aedst::Core
     Aedst::Logging
     Aedst::Oidc
+    Aedst::Outbox
     Aedst::Network
     Aedst::Persistence
     Aedst::Navigation
+    Aedst::Plugin
+    Aedst::Capabilities
     Aedst::Analytics
     Aedst::DesignSystem
     Aedst::Connectivity
@@ -145,6 +183,11 @@ install(TARGETS aedst-desktop
 )
 
 if(AEDST_DEPLOY_QT)
+    # Linux: keep the bundled Qt out of /usr/lib (see cmake/AedstLinuxBundle.cmake). Sets the QT_DEPLOY_* variables the
+    # deploy script below reads, so it must come first.
+    include(AedstLinuxBundle)
+    aedst_configure_linux_bundle(aedst-desktop)
+
     # windeployqt / Qt's Linux deploy, driven by the QML imports it finds.
     qt_generate_deploy_qml_app_script(
         TARGET aedst-desktop
@@ -155,3 +198,7 @@ if(AEDST_DEPLOY_QT)
 endif()
 
 include(AedstPackaging)
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

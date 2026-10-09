@@ -1,0 +1,22 @@
+# Production: base sizing (3 instances, synchronous replica) plus its own backup
+# destination. A different path AND serverName per environment: two clusters must
+# never write WAL into one Barman server directory.
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: aedst-pg
+spec:
+  backup:
+    barmanObjectStore:
+      destinationPath: s3://aedst-pg-backups/prod # CHECK: your bucket
+      serverName: aedst-pg-prod
+      s3Credentials:
+        accessKeyId: {name: aedst-pg-backup-prod, key: ACCESS_KEY_ID}
+        secretAccessKey: {name: aedst-pg-backup-prod, key: ACCESS_SECRET_KEY}
+  postgresql:
+    parameters:
+      # Connection budget of deployments/helm/aedst-server/values-prod.yaml
+      # (database.serverMaxConnections): 20 API + 2 worker pods x 10 direct jobs
+      # connections, 3 pooler instances x 40 server connections, 40 for ZITADEL.
+      # The chart refuses a render that exceeds it. Each backend costs memory.
+      max_connections: "400"

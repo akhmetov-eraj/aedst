@@ -1,16 +1,23 @@
 #include "Navigation/search_destinations.hpp"
 
-#include "aedst/navigation/nav_graph.hpp"
+#include "aedst/navigation/route.hpp"
 
-#include <QString>
-#include <QUrl>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace aedst::feature::search {
 
-void registerSearchDestinations(navigation::NavGraph& graph) {
-    graph.registerDestination(navigation::routes::kSearch,
-                              QUrl(QString::fromUtf8(kSearchViewUrl.data(),
-                                                     static_cast<qsizetype>(kSearchViewUrl.size()))));
+std::unique_ptr<plugin::IFeaturePlugin> makeSearchPlugin() {
+    return std::make_unique<plugin::StaticFeaturePlugin>(
+        plugin::PluginDescriptor{.id = "search",
+                                 .version = "1.0.0",
+                                 .apiVersion = plugin::kPluginApiVersion,
+                                 .requiredCapabilities = {},
+                                 .featureFlag = {}},
+        std::vector<plugin::RouteContribution>{
+            {std::string(navigation::routes::kSearch), std::string(kSearchViewUrl)},
+        });
 }
 
 } // namespace aedst::feature::search

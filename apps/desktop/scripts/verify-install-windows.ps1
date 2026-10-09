@@ -32,6 +32,29 @@ if (-not (Test-Path $exe)) { Fail "$exe missing after install" }
 $uninstaller = Join-Path $InstallDir 'Uninstall.exe'
 if (-not (Test-Path $uninstaller)) { Fail "$uninstaller missing after install" }
 
+# Exploit mitigations of the shipped executable (cmake/AedstHardening.cmake). The PE optional header's DllCharacteristics
+# are read directly (no tool needed): HIGH_ENTROPY_VA 0x20, DYNAMIC_BASE 0x40, NX_COMPAT 0x100, GUARD_CF 0x4000.
+# winchecksec (https://github.com/trailofbits/winchecksec), when on PATH, adds CET/GS/SafeSEH detail to the log.
+function Get-DllCharacteristics([string]$Path) {
+  $bytes = [System.IO.File]::ReadAllBytes($Path)
+  $peOffset = [BitConverter]::ToInt32($bytes, 0x3C)
+  if ([System.Text.Encoding]::ASCII.GetString($bytes, $peOffset, 4) -ne "PE`0`0") { Fail "$Path is not a PE file" }
+  $optional = $peOffset + 24                       # signature (4) + COFF header (20)
+  return [BitConverter]::ToUInt16($bytes, $optional + 70)   # same offset for PE32 and PE32+
+}
+$flags = Get-DllCharacteristics $exe
+$required = [ordered]@{ 'HIGH_ENTROPY_VA (/HIGHENTROPYVA)' = 0x20; 'DYNAMIC_BASE (/DYNAMICBASE)' = 0x40; 'NX_COMPAT (/NXCOMPAT)' = 0x100; 'GUARD_CF (/guard:cf)' = 0x4000 }
+foreach ($name in $required.Keys) {
+  if (($flags -band $required[$name]) -eq 0) { Fail "aedst-desktop.exe lacks $name (DllCharacteristics=0x$($flags.ToString('X')))" }
+}
+Write-Host "hardening: DllCharacteristics=0x$($flags.ToString('X')) (ASLR, high-entropy ASLR, DEP, CFG)"
+$checksec = Get-Command winchecksec -ErrorAction SilentlyContinue
+if ($checksec) { & $checksec.Source $exe }
+
+# aedst:// must be registered for deep links (HKLM\Software\Classes\aedst -> the installed exe).
+$command = (Get-ItemProperty -Path 'Registry::HKEY_LOCAL_MACHINE\Software\Classes\aedst\shell\open\command' -ErrorAction SilentlyContinue).'(default)'
+if (-not $command -or $command -notmatch [regex]::Escape('aedst-desktop.exe')) { Fail "aedst:// protocol handler is not registered (got: $command)" }
+
 # --version, output redirected (GUI-subsystem exe).
 $outFile = Join-Path $env:TEMP 'aedst-version.txt'
 $run = Start-Process -FilePath $exe -ArgumentList '--version' -PassThru -RedirectStandardOutput $outFile -WindowStyle Hidden
@@ -57,6 +80,9 @@ if (Test-Path (Join-Path $InstallDir 'bin')) { Fail 'bin\ still present after un
 foreach ($sm in @("$env:ProgramData\Microsoft\Windows\Start Menu\Programs\AEDST", "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\AEDST")) {
   if (Test-Path $sm) { Fail "Start Menu folder still present: $sm" }
 }
+if (Test-Path 'Registry::HKEY_LOCAL_MACHINE\Software\Classes\aedst') { Fail 'aedst:// protocol registration still present after uninstall' }
+$runtimeShortcut = "$env:APPDATA\Microsoft\Windows\Start Menu\Programs\AEDST.lnk"
+if (Test-Path $runtimeShortcut) { Fail "per-user fallback shortcut still present after uninstall: $runtimeShortcut" }
 if (-not (Test-Path (Join-Path $userData 'verify-marker.txt'))) { Fail 'user data was deleted although the option defaults to off' }
 
 Remove-Item -Recurse -Force $userData -ErrorAction SilentlyContinue

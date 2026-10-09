@@ -1,60 +1,60 @@
-# Спека: admin/admin-service
+# Spec: admin/admin-service
 
-Тип: Command + Query
-Модуль: admin
-Статус: Реализовано
+Type: Command + Query
+Module: admin
+Status: Implemented
 
-## Контекст
+## Context
 
-Слой композиции для операторов. Собственная таблица — только журнал аудита
-`admin.audit_log`; всё остальное читается и меняется через `api/`-пакеты
-других модулей (tasks, notifications, auth, media). Роль `admin` обязательна
-для каждого RPC: встроенная политика по умолчанию
-`/aedst.admin.v1.AdminService/*=admin` (переопределяется тем же ключом в
-`AEDST_ROLE_POLICY`), исполняется `httpserver.RoleInterceptor`.
+A composition layer for operators. Its only own table is the audit log
+`admin.audit_log`; everything else is read and changed through the `api/` packages
+of other modules (tasks, notifications, auth, media). The `admin` role is required
+for every RPC: the built-in default policy
+`/aedst.admin.v1.AdminService/*=admin` (overridable with the same key in
+`AEDST_ROLE_POLICY`) is enforced by `httpserver.RoleInterceptor`.
 
-## Сценарии
+## Scenarios
 
 **Happy path**
 
-- `DeleteTask{id, reason}` → в ОДНОЙ транзакции: `tasks/api.AdminService.DeleteTaskTx`
-  (удаление + `tasks.v1.TaskDeleted` в outbox) и запись аудита.
-- `BroadcastNotification{user_id?, title, body, link}` → в одной транзакции
-  `notifications/api.Broadcaster.BroadcastTx` (уведомления + push-jobs) и запись аудита.
-- `GetOverview` — счётчики модулей + лаг outbox + ожидающие River-jobs.
-- `ListUsers` — каталог first-party пользователей (`auth/api.Directory`) + число задач.
+- `DeleteTask{id, reason}` → in ONE transaction: `tasks/api.AdminService.DeleteTaskTx`
+  (deletion + delivery of `tasks.v1.TaskDeleted` to consumers as River jobs in the same transaction) and an audit record.
+- `BroadcastNotification{user_id?, title, body, link}` → in one transaction
+  `notifications/api.Broadcaster.BroadcastTx` (notifications + push jobs) and an audit record.
+- `GetOverview` → module counters + the age of the oldest ready River job (`outbox_lag_seconds` on the wire, name kept) + pending River jobs.
+- `ListUsers` → the directory of first-party users (`auth/api.Directory`) + task count.
 
-**Граничные случаи**
+**Edge cases**
 
-- Ошибка мутации → откат, записи аудита нет.
-- First-party auth выключен → `ListUsers` = `FAILED_PRECONDITION` (каталог живёт в IdP).
-- Ссылка в broadcast только относительная (`/...`), иначе `INVALID_ARGUMENT` (open redirect).
-- Вызов без роли `admin` → `PERMISSION_DENIED` до хендлера.
+- A mutation error → rollback, no audit record.
+- First-party auth is disabled → `ListUsers` = `FAILED_PRECONDITION` (the directory lives in the IdP).
+- A broadcast link must be relative (`/...`), otherwise `INVALID_ARGUMENT` (open redirect).
+- A call without the `admin` role → `PERMISSION_DENIED` before the handler.
 
-## Ошибки
+## Errors
 
-| Условие | `sharederrors.Kind` | `connect.Code` |
-| ------- | ------------------- | -------------- |
-| Нет роли admin | — (RoleInterceptor) | PERMISSION_DENIED |
-| reason < 3 символов, плохой токен/ссылка | Validation | INVALID_ARGUMENT |
-| Задача не найдена | NotFound | NOT_FOUND |
-| Каталог пользователей недоступен | FailedPrecondition | FAILED_PRECONDITION |
+| Condition | `sharederrors.Kind` | `connect.Code` |
+| --------- | ------------------- | -------------- |
+| No admin role | — (RoleInterceptor) | PERMISSION_DENIED |
+| reason shorter than 3 characters, bad token/link | Validation | INVALID_ARGUMENT |
+| Task not found | NotFound | NOT_FOUND |
+| User directory unavailable | FailedPrecondition | FAILED_PRECONDITION |
 
 ## API
 
 `aedst.admin.v1.AdminService`.
 
-## События
+## Events
 
-Собственных нет; мутации публикуют события модулей-владельцев (`tasks.v1.TaskDeleted`).
+None of its own; mutations publish the events of the owning modules (`tasks.v1.TaskDeleted`).
 
-## Кросс-модульные зависимости
+## Cross-module dependencies
 
-Сознательное исключение из правила «транзакции не пересекают модули»: admin
-передаёт свою `pgx.Tx` в `*Tx`-методы `tasks/api` и `notifications/api`, чтобы
-запись аудита и действие фиксировались атомарно (одна БД, разные схемы).
+A deliberate exception to the rule "transactions do not cross modules": admin
+passes its own `pgx.Tx` to the `*Tx` methods of `tasks/api` and `notifications/api`, so that
+the audit record and the action are committed atomically (one database, different schemas).
 
 ## NFR
 
-- Retention аудита: `AEDST_RETENTION_AUDIT_DAYS` (365).
-- Пагинация: keyset по `(created_at, id)` для аудита, задач и пользователей.
+- Audit retention: `AEDST_RETENTION_AUDIT_DAYS` (365).
+- Pagination: keyset by `(created_at, id)` for audit, tasks and users.

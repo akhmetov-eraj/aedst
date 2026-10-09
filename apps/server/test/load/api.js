@@ -13,7 +13,7 @@
 // iteration: CreateTask -> ListTasks -> Search -> Suggest -> CompleteTask.
 // All VUs share one user, so run against a server with
 // AEDST_API_RATE_LIMIT_PER_MINUTE=0 (the per-user limit exists to stop exactly
-// this). Search results are eventually consistent (outbox relay ->
+// this). Search results are eventually consistent (River event delivery ->
 // projection), so the search checks only assert a well-formed response.
 //
 // Thresholds are the pass/fail SLOs: k6 exits non-zero when one is breached.

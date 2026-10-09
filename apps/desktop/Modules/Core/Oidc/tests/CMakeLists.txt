@@ -11,8 +11,9 @@ add_executable(AedstOidcTests
     oidc_session_test.cpp
     oidc_test_main.cpp
     refresh_token_store_test.cpp
+    session_refresh_replay_test.cpp
 )
-target_link_libraries(AedstOidcTests PRIVATE Aedst::Oidc Aedst::Testing Qt6::Network GTest::gtest)
+target_link_libraries(AedstOidcTests PRIVATE Aedst::Oidc Aedst::Contract Aedst::Testing Qt6::Network GTest::gtest)
 target_include_directories(AedstOidcTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 aedst_set_warnings(AedstOidcTests)
 

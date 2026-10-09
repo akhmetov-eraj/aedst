@@ -32,17 +32,17 @@ constexpr qint64 kMaxDocumentBytes = 1024 * 1024;
     const QJsonValue value = document.value(name);
     if (value.isUndefined() || value.isNull()) {
         if (required) {
-            return core::fail(core::Error::invalidArgument("OIDC discovery: missing " + name.toStdString()));
+            return core::fail(core::Error::invalidInput("OIDC discovery: missing " + name.toStdString()));
         }
         return QUrl{};
     }
     if (!value.isString()) {
-        return core::fail(core::Error::invalidArgument("OIDC discovery: " + name.toStdString() + " is not a string"));
+        return core::fail(core::Error::invalidInput("OIDC discovery: " + name.toStdString() + " is not a string"));
     }
     const QUrl url(value.toString());
     if (!endpointAllowed(url, config)) {
         return core::fail(
-            core::Error::invalidArgument("OIDC discovery: " + name.toStdString() + " must be an https URL"));
+            core::Error::invalidInput("OIDC discovery: " + name.toStdString() + " must be an https URL"));
     }
     return url;
 }
@@ -63,13 +63,13 @@ core::Outcome<OidcEndpoints> parseDiscoveryDocument(const QByteArray& json, cons
     QJsonParseError parseError;
     const QJsonDocument parsed = QJsonDocument::fromJson(json, &parseError);
     if (parseError.error != QJsonParseError::NoError || !parsed.isObject()) {
-        return core::fail(core::Error::invalidArgument("OIDC discovery: response is not a JSON object"));
+        return core::fail(core::Error::invalidInput("OIDC discovery: response is not a JSON object"));
     }
     const QJsonObject document = parsed.object();
 
     const QJsonValue issuer = document.value(QStringLiteral("issuer"));
     if (!issuer.isString() || normalizedIssuer(QUrl(issuer.toString())) != normalizedIssuer(config.issuer)) {
-        return core::fail(core::Error::invalidArgument("OIDC discovery: issuer does not match the configured issuer"));
+        return core::fail(core::Error::invalidInput("OIDC discovery: issuer does not match the configured issuer"));
     }
 
     const QJsonValue methods = document.value(QStringLiteral("code_challenge_methods_supported"));
@@ -79,7 +79,7 @@ core::Outcome<OidcEndpoints> parseDiscoveryDocument(const QByteArray& json, cons
             s256 = s256 || method.toString() == QLatin1String("S256");
         }
         if (!s256) {
-            return core::fail(core::Error::invalidArgument("OIDC discovery: provider does not support PKCE S256"));
+            return core::fail(core::Error::invalidInput("OIDC discovery: provider does not support PKCE S256"));
         }
     }
 
@@ -121,17 +121,17 @@ void fetchDiscovery(QNetworkAccessManager& network, const OidcConfig& config, co
     QObject::connect(reply, &QNetworkReply::finished, reply, [reply, config, done = std::move(done)]() {
         reply->deleteLater();
         if (reply->error() != QNetworkReply::NoError) {
-            done(core::fail(core::Error::network("OIDC discovery failed: " + reply->errorString().toStdString())));
+            done(core::fail(core::Error::unavailable("OIDC discovery failed: " + reply->errorString().toStdString())));
             return;
         }
         const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
         if (status != 200) {
-            done(core::fail(core::Error::network("OIDC discovery failed: HTTP " + std::to_string(status))));
+            done(core::fail(core::Error::unavailable("OIDC discovery failed: HTTP " + std::to_string(status))));
             return;
         }
         const QByteArray body = reply->read(kMaxDocumentBytes + 1);
         if (body.size() > kMaxDocumentBytes) {
-            done(core::fail(core::Error::invalidArgument("OIDC discovery: response too large")));
+            done(core::fail(core::Error::invalidInput("OIDC discovery: response too large")));
             return;
         }
         done(parseDiscoveryDocument(body, config));

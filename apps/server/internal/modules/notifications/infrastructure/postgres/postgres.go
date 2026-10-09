@@ -39,9 +39,9 @@ var (
 	_ notificationsjobs.Store = (*Repository)(nil)
 )
 
-// InsertTx stores n inside tx — the inbox transaction of the consumer that
-// applies the source event — so the notification, its push job and the
-// "event processed" marker commit together. A second insert for the same
+// InsertTx stores n inside tx — the transaction of the River delivery job of the consumer that
+// applies the source event — so the notification and its
+// push job commit together. A second insert for the same
 // source event is a no-op (UNIQUE source_event_id) and enqueues nothing.
 func (r *Repository) InsertTx(ctx context.Context, tx pgx.Tx, n domain.Notification) error {
 	_, err := notificationsdb.New(tx).InsertNotification(ctx, notificationsdb.InsertNotificationParams{
@@ -404,7 +404,7 @@ func toPgUUIDPtr(id *ids.ID) pgtype.UUID {
 }
 
 // RunTx runs fn in a transaction on the repository's pool (tests and
-// non-bus entry points that need InsertTx outside an inbox consumer).
+// non-event entry points that need InsertTx outside a delivery job).
 func (r *Repository) RunTx(ctx context.Context, fn func(ctx context.Context, tx pgx.Tx) error) error {
 	return database.WithTx(ctx, r.pool, fn)
 }

@@ -114,12 +114,18 @@ ORDER BY COALESCE(due_date, to_timestamp(-62135596800)) ASC, id ASC
 LIMIT sqlc.arg(page_limit);
 
 -- name: CountTasks :one
+-- Counts the matching tasks up to count_cap rows: counting a very large match set is
+-- O(rows) on every first page. A result equal to the cap means "at least that many".
 SELECT count(*)
-FROM tasks.tasks
-WHERE user_id = sqlc.arg(user_id)
-  AND (cardinality(sqlc.arg(statuses)::text[]::tasks.status[]) = 0 OR status = ANY (sqlc.arg(statuses)::text[]::tasks.status[]))
-  AND (cardinality(sqlc.arg(priorities)::text[]::tasks.priority[]) = 0 OR priority = ANY (sqlc.arg(priorities)::text[]::tasks.priority[]))
-  AND (sqlc.arg(search)::text = '' OR title ILIKE '%' || sqlc.arg(search) || '%' OR description ILIKE '%' || sqlc.arg(search) || '%');
+FROM (
+    SELECT 1
+    FROM tasks.tasks
+    WHERE user_id = sqlc.arg(user_id)
+      AND (cardinality(sqlc.arg(statuses)::text[]::tasks.status[]) = 0 OR status = ANY (sqlc.arg(statuses)::text[]::tasks.status[]))
+      AND (cardinality(sqlc.arg(priorities)::text[]::tasks.priority[]) = 0 OR priority = ANY (sqlc.arg(priorities)::text[]::tasks.priority[]))
+      AND (sqlc.arg(search)::text = '' OR title ILIKE '%' || sqlc.arg(search) || '%' OR description ILIKE '%' || sqlc.arg(search) || '%')
+    LIMIT sqlc.arg(count_cap)::int
+) AS capped;
 
 -- name: GetTaskStats :one
 SELECT
@@ -162,11 +168,13 @@ WHERE id = $1
 RETURNING id, user_id, version;
 
 -- name: AdminTaskStats :one
+-- Platform-wide counts over at most row_cap tasks, so the operator dashboard cannot become a
+-- full scan of an unbounded table. Above the cap the figures are lower bounds.
 SELECT
     count(*)                                                                             AS total,
     count(*) FILTER (WHERE status = 'done')                                              AS done,
     count(*) FILTER (WHERE status != 'done' AND due_date IS NOT NULL AND due_date < now()) AS overdue
-FROM tasks.tasks;
+FROM (SELECT status, due_date FROM tasks.tasks LIMIT sqlc.arg(row_cap)::int) AS capped;
 
 -- name: CountTasksByOwners :many
 SELECT user_id, count(*) AS task_count

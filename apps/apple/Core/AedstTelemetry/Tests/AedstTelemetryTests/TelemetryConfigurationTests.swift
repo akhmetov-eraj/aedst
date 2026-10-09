@@ -31,6 +31,40 @@ struct TelemetryConfigurationTests {
         #expect(config.postHogKey == "phc_123")
     }
 
+    @Test("session replay defaults to off")
+    func replayDefaultsOff() {
+        #expect(make(dsn: nil, key: "phc_123").postHogSessionReplay == false)
+    }
+
+    @Test("replay flag parsing accepts YES/true/1 and rejects everything else")
+    func replayFlagParsing() {
+        for on in ["YES", "yes", "true", "TRUE", "1", " YES "] {
+            #expect(TelemetryConfiguration.flag(on), "\(on) should enable")
+        }
+        #expect(TelemetryConfiguration.flag(true))
+        for off in ["", "NO", "false", "0", "$(AEDST_POSTHOG_SESSION_REPLAY)", "maybe"] {
+            #expect(!TelemetryConfiguration.flag(off), "\(off) should not enable")
+        }
+        #expect(!TelemetryConfiguration.flag(false))
+        #expect(!TelemetryConfiguration.flag(nil))
+    }
+
+    @Test("the memberwise initializer carries the replay flag")
+    func replayFlagStored() {
+        let config = TelemetryConfiguration(
+            sentryDSN: nil,
+            postHogKey: "phc_123",
+            postHogHost: "https://eu.i.posthog.com",
+            environment: "production",
+            release: "r",
+            dist: "1",
+            apiHost: nil,
+            tracesSampleRate: 0.2,
+            postHogSessionReplay: true
+        )
+        #expect(config.postHogSessionReplay)
+    }
+
     @Test("a disabled client is a no-op and flags fall back to the default")
     func disabledClient() {
         let client = TelemetryAnalyticsClient(configuration: make(dsn: nil, key: nil))

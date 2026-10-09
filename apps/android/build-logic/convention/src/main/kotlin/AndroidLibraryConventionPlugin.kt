@@ -16,9 +16,12 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
         with(target) {
             pluginManager.apply("com.android.library")
             pluginManager.apply("aedst.detekt")
+            configureKover()
 
             extensions.configure<LibraryExtension> {
                 compileSdk = ANDROID_COMPILE_SDK
+
+                configureLint(lint)
 
                 defaultConfig {
                     minSdk = ANDROID_MIN_SDK
@@ -43,8 +46,21 @@ class AndroidLibraryConventionPlugin : Plugin<Project> {
                 }
             }
 
+            // JUnit 6 (Jupiter) runs every unit test. Robolectric / Compose-rule tests are JUnit 4: modules that have
+            // them add `junit-vintage-engine` (testRuntimeOnly) so this same JUnit Platform task also runs those.
+            tasks.withType(org.gradle.api.tasks.testing.Test::class.java).configureEach {
+                useJUnitPlatform()
+                // Gradle 9 fails a test task whose variant has generated (Hilt/KSP) test sources but no tests; many
+                // modules legitimately have none yet.
+                failOnNoDiscoveredTests.set(false)
+            }
+
             dependencies {
                 add("coreLibraryDesugaring", versionCatalog.findLibrary("desugar-jdk-libs").get())
+
+                add("testImplementation", platform(versionCatalog.findLibrary("junit-bom").get()))
+                add("testImplementation", versionCatalog.findLibrary("junit-jupiter").get())
+                add("testRuntimeOnly", versionCatalog.findLibrary("junit-platform-launcher").get())
             }
         }
     }

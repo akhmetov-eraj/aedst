@@ -4,20 +4,23 @@ import SwiftUI
 /// How a failure is surfaced to the user. Transient, self-healing failures
 /// (offline, rate limited, a concurrent edit that a refresh resolves) are a
 /// toast that gets out of the way; anything the user must acknowledge or act
-/// on (forbidden, validation, unknown) is a modal alert.
+/// on (forbidden, invalid input, unknown) is a modal alert. A cancelled operation is user intent, not a
+/// failure: it is silent.
 public enum AedstErrorPresentation: Sendable, Equatable {
     /// Auto-dismissing banner (`AedstToastModifier`).
     case toast
     /// Native `.alert` with OK (and Retry when the caller provides one).
     case alert
+    /// Nothing is shown (the user cancelled); the binding is cleared so the error does not linger.
+    case silent
 }
 
 extension AedstError {
     /// The presentation the shared presenter uses for this error.
     public var presentation: AedstErrorPresentation {
         switch self {
-        case .network, .rateLimited, .conflict: .toast
-        case .unauthorized, .forbidden, .notFound, .validation, .decoding, .storage, .unknown: .alert
+        case .unavailable, .rateLimited, .conflict: .toast
+        case .unauthenticated, .forbidden, .notFound, .invalidInput, .decoding, .storage, .unsupported, .upgradeRequired, .cancelled, .unknown: .alert
         }
     }
 }
@@ -62,6 +65,10 @@ public struct AedstErrorPresenter: ViewModifier {
         let alertError = error?.presentation == .alert ? error : nil
 
         return content
+            .onChange(of: error) { _, newValue in
+                // A cancellation is user intent: show nothing, just drop it.
+                if newValue?.presentation == .silent { binding.wrappedValue = nil }
+            }
             .aedstToast(toast)
             .alert(AedstStrings.errorTitle, isPresented: isAlertPresented, presenting: alertError) { _ in
                 if let retry {

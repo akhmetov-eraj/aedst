@@ -38,6 +38,8 @@
   --success-foreground: oklch(0.9851 0 0);
   --warning: oklch(0.5553 0.1455 49);
   --warning-foreground: oklch(0.9851 0 0);
+  --info: oklch(0.4882 0.2172 264.38);
+  --info-foreground: oklch(0.9851 0 0);
   --destructive-foreground: oklch(0.9851 0 0);
   --aedst-elevation-none: 0px;
   --aedst-elevation-level-1: 1px;
@@ -151,5 +153,7 @@
   --success-foreground: oklch(0.2664 0.0628 152.94);
   --warning: oklch(0.8368 0.1644 84.43);
   --warning-foreground: oklch(0.2791 0.0742 45.64);
+  --info: oklch(0.7138 0.1434 254.62);
+  --info-foreground: oklch(0.2823 0.0874 267.94);
   --destructive-foreground: oklch(0.9851 0 0);
 }

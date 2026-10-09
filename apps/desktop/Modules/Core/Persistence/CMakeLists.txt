@@ -28,6 +28,7 @@ endif()
 add_library(AedstPersistence STATIC
     include/aedst/persistence/async_token_store.hpp
     include/aedst/persistence/database_worker.hpp
+    include/aedst/persistence/kv_store.hpp
     include/aedst/persistence/sqlite_connection.hpp
     include/aedst/persistence/sqlite_statement.hpp
     include/aedst/persistence/master_key_provider.hpp
@@ -38,6 +39,7 @@ add_library(AedstPersistence STATIC
     src/async_token_store.cpp
     src/database_worker.cpp
     src/key_file.cpp
+    src/kv_store.cpp
     src/master_key_provider.cpp
     src/dpapi_master_key_provider.cpp
     src/libsecret_backend.cpp

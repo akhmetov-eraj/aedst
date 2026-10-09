@@ -73,6 +73,29 @@ struct AuthorizedRequestExecutorTests {
         #expect(result == 401)
         #expect(await calls.count == 1)
     }
+
+    @Test("an unavailable refresh lets the caller re-label the failure as transient")
+    func unavailableRefreshIsRelabelled() async {
+        let provider = StubTokenProvider(accessToken: "old", refreshResults: [.unavailable])
+        let calls = CallLog(responses: [401, 200])
+
+        let result = await AuthorizedRequestExecutor(tokenProvider: provider)
+            .execute({ await calls.next() }, isUnauthenticated: { $0 == 401 }, whenRefreshUnavailable: { _ in 503 })
+
+        #expect(result == 503)
+        #expect(await calls.count == 1)
+    }
+
+    @Test("a rejected refresh does not use the transient re-labelling")
+    func rejectedRefreshKeepsOriginal() async {
+        let provider = StubTokenProvider(accessToken: "old", refreshResults: [.rejected])
+        let calls = CallLog(responses: [401])
+
+        let result = await AuthorizedRequestExecutor(tokenProvider: provider)
+            .execute({ await calls.next() }, isUnauthenticated: { $0 == 401 }, whenRefreshUnavailable: { _ in 503 })
+
+        #expect(result == 401)
+    }
 }
 
 private actor CallLog {

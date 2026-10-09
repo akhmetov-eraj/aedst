@@ -6,14 +6,21 @@ import (
 	"log/slog"
 	"net"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"connectrpc.com/connect"
-	chimw "github.com/go-chi/chi/v5/middleware"
+	"golang.org/x/time/rate"
 
 	platformauth "github.com/aedst/server/internal/platform/auth"
+	"github.com/aedst/server/internal/platform/clientip"
 	"github.com/aedst/server/internal/platform/observability"
+)
+
+// opaqueWarn lets one "opaque token" warning through per minute (rate.Sometimes: the first
+// call runs, later ones only after the interval).
+var (
+	opaqueWarn = rate.Sometimes{Interval: time.Minute}
+	idpWarn    = rate.Sometimes{Interval: time.Minute}
 )
 
 // AuthInterceptor verifies the bearer access token on every RPC except the
@@ -24,22 +31,48 @@ import (
 // be the first-party TokenService, an OIDC resource-server verifier, or a
 // MultiVerifier of both. Applied per-RPC (not per-route) so a service can mix
 // public and authenticated procedures.
-func AuthInterceptor(verifier platformauth.Verifier, publicProcedures map[string]bool, logger *slog.Logger) connect.UnaryInterceptorFunc {
+func AuthInterceptor(verifier platformauth.Verifier, publicProcedures map[string]bool, logger *slog.Logger, opts ...AuthOption) connect.UnaryInterceptorFunc {
+	cfg := authConfig{warn: failOpenWarner(logger)}
+	for _, o := range opts {
+		o(&cfg)
+	}
+	throttle := failureThrottle{cfg}
 	return func(next connect.UnaryFunc) connect.UnaryFunc {
 		return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
 			if publicProcedures[req.Spec().Procedure] {
 				return next(ctx, req)
 			}
 
+			if err := throttle.refuse(ctx, req); err != nil {
+				return nil, err
+			}
 			raw := bearerToken(req.Header().Get("Authorization"))
 			if raw == "" {
+				throttle.record(ctx, req)
 				return nil, connect.NewError(connect.CodeUnauthenticated, errMissingToken)
 			}
 
 			claims, err := verifier.VerifyAccessToken(ctx, raw)
 			if err != nil {
 				// The reason stays server-side; clients only learn "invalid".
+				if errors.Is(err, platformauth.ErrOpaqueToken) {
+					// A misconfigured IdP rejects every request: surface it at
+					// warn level, at most once a minute.
+					opaqueWarn.Do(func() {
+						logger.WarnContext(ctx, "auth: opaque (non-JWT) access token rejected; configure the identity provider to issue JWT access tokens", slog.Any("error", err))
+					})
+				}
+				if errors.Is(err, platformauth.ErrOIDCUnavailable) {
+					// The identity provider cannot be reached (discovery or JWKS): this is
+					// our dependency failing, not the caller's credential. Say so (retryable),
+					// and do not charge it to the caller's failed-authentication budget.
+					idpWarn.Do(func() {
+						logger.WarnContext(ctx, "auth: identity provider unavailable (logged at most once per minute)", slog.Any("error", err))
+					})
+					return nil, withRetryAfter(connect.NewError(connect.CodeUnavailable, errors.New("authentication temporarily unavailable")))
+				}
 				logger.DebugContext(ctx, "auth: token rejected", slog.Any("error", err))
+				throttle.record(ctx, req)
 				return nil, connect.NewError(connect.CodeUnauthenticated, errInvalidToken)
 			}
 
@@ -89,7 +122,7 @@ func RateLimitInterceptor(limiter RateLimiter, procedures map[string]bool, perMi
 				return next(ctx, req)
 			}
 
-			client := chimw.GetClientIP(ctx) // set by the router; spoof-resistant
+			client := clientip.FromContext(ctx) // set by the router; spoof-resistant
 			if client == "" {
 				client = clientHost(req.Peer().Addr)
 			}
@@ -175,13 +208,10 @@ const failOpenWarnEvery = 30 * time.Second
 // bury the logs (and cost more than the outage itself) while adding nothing
 // after the first.
 func failOpenWarner(logger *slog.Logger) func(ctx context.Context, err error) {
-	var last atomic.Int64 // unix nanos of the last emitted warning
+	warn := rate.Sometimes{Interval: failOpenWarnEvery}
 	return func(ctx context.Context, err error) {
-		now := time.Now().UnixNano()
-		prev := last.Load()
-		if now-prev < int64(failOpenWarnEvery) || !last.CompareAndSwap(prev, now) {
-			return
-		}
-		logger.WarnContext(ctx, "rate limiter unavailable, failing open (logged at most once per 30s)", slog.Any("error", err))
+		warn.Do(func() {
+			logger.WarnContext(ctx, "rate limiter unavailable, failing open (logged at most once per 30s)", slog.Any("error", err))
+		})
 	}
 }

@@ -4,21 +4,20 @@
 #
 #   server   go get -u ./... + go mod tidy               (apps/server)
 #   web      pnpm update --latest                        (apps/web, docs, packages/*)
-#   android  ben-manes versions + version-catalog-update (apps/android)
-#            + Gradle wrapper → latest release
+#   android  Gradle wrapper → latest release (catalog versions: Renovate only)
 #   apple    swift package update inside Tuist/          (apps/apple; macOS only)
 #   desktop  vcpkg x-update-baseline                     (apps/desktop)
 #   tools    mise upgrade --bump                         (mise.toml)
 #
 # "Stable" means: Go modules — the proxy's latest release (no pre-releases);
 # npm — the `latest` dist-tag, filtered by pnpm's minimumReleaseAge;
-# Gradle — rejectVersionIf filters alpha/beta/rc/... (apps/android/build.gradle.kts);
+# Gradle — Renovate (renovate.json) never proposes alpha/beta/rc/... and only the wrapper is bumped here;
 # SwiftPM — highest release tag inside each package's `from:` range (majors
 # stay manual on purpose); vcpkg — the newest port versions in the registry.
 #
 # Continuous updates are Renovate's job (renovate.json). This script is the
 # on-demand "bump everything now" path; it never commits. Review the diff,
-# then run `task check` / `task test`, and update docs/content/stack.mdx and
+# then run `task check` / `task test`, and update docs/content/<platform>/stack.md and
 # docs/content/library-first.md when a version in them moved.
 #
 # Usage:
@@ -116,16 +115,17 @@ update_web() {
 }
 
 update_android() {
+  # Library versions in gradle/libs.versions.toml are Renovate's job (renovate.json: stable only, grouped
+  # toolchain PRs); the in-repo ben-manes/version-catalog-update plugins were removed. Only the wrapper is bumped here.
   local gradlew="$ROOT/apps/android/gradlew"
   [[ -x "$gradlew" || -f "$gradlew" ]] || { skip android "apps/android/gradlew missing"; return 0; }
   have java || { skip android "JDK 21 not installed (mise install java)"; return 0; }
-  log "android: version catalog + Gradle wrapper"
+  log "android: Gradle wrapper (catalog versions: Renovate)"
   cd "$ROOT/apps/android"
   if [[ $CHECK_ONLY -eq 1 ]]; then
-    bash ./gradlew dependencyUpdates --no-configuration-cache
+    bash ./gradlew --version | grep -E '^Gradle '
     return 0
   fi
-  bash ./gradlew versionCatalogUpdate --no-configuration-cache
   bash ./gradlew wrapper --gradle-version latest --distribution-type bin
   # Run twice: the second run uses the new wrapper and checksums it.
   bash ./gradlew wrapper --gradle-version latest --distribution-type bin
@@ -211,4 +211,4 @@ if [[ ${#FAILED[@]} -gt 0 ]]; then
   warn "failed: ${FAILED[*]}"
   exit 1
 fi
-log "done — review 'git diff', then update docs/content/stack.mdx"
+log "done — review 'git diff', then update docs/content/<platform>/stack.md"

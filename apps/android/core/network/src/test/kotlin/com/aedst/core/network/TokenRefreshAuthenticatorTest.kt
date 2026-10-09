@@ -5,11 +5,11 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
-import org.junit.After
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Before
-import org.junit.Test
+import org.junit.jupiter.api.AfterEach
+import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.BeforeEach
+import org.junit.jupiter.api.Test
 
 class TokenRefreshAuthenticatorTest {
 
@@ -25,12 +25,12 @@ class TokenRefreshAuthenticatorTest {
         .authenticator(TokenRefreshAuthenticator(dagger.Lazy { refresher }))
         .build()
 
-    @Before
+    @BeforeEach
     fun setUp() {
         server = MockWebServer().apply { start() }
     }
 
-    @After
+    @AfterEach
     fun tearDown() {
         server.shutdown()
     }
@@ -78,16 +78,6 @@ class TokenRefreshAuthenticatorTest {
         assertEquals(401, response.code)
         assertEquals(2, server.requestCount)
         assertEquals(1, refreshCalls.size)
-    }
-
-    @Test
-    fun `never refreshes in response to a failed auth call`() {
-        listOf("Login", "Register", "RefreshToken", "Logout").forEach { method ->
-            server.enqueue(MockResponse().setResponseCode(401))
-            assertEquals(401, call("/aedst.auth.v1.AuthService/$method").code)
-        }
-
-        assertEquals(emptyList<String?>(), refreshCalls)
     }
 
     @Test

@@ -1,35 +1,39 @@
+"use client";
+
 import { File01Icon, Video01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import { useState } from "react";
 
-import {
-  buildSrcSet,
-  imageVariants,
-  pickThumbnailUrl,
-} from "@/modules/media/thumbnail/variants";
+import { pickThumbnailUrl } from "@/modules/media/thumbnail/variants";
 import {
   type Media,
   MediaKind,
 } from "@/shared/api/connect/generated/aedst/media/v1/media_pb";
 
 /**
- * Responsive thumbnail from the server's variants: `srcset` + `sizes` let the
- * browser choose the rendition for the slot and screen density. A plain
- * `<img>` rather than `next/image`: the variants are already resized by the
- * media pipeline, and presigned object-storage URLs expire, so routing them
- * through the Next image optimizer would only add a cache of dead links.
+ * Square thumbnail from the server's imgproxy presets (ADR-0015):
+ * `thumb_64` up to 32 px, `avatar_256` up to 128 px, `card_400` above
+ * (see `presetForSize`); video items use their poster. A plain `<img>`
+ * rather than `next/image`: the delivery URLs are already resized and
+ * signed with an expiry, so the Next image optimizer would only cache dead
+ * links.
  */
 export function Thumbnail({
   media,
   size = 96,
   alt,
+  onLoadError,
 }: {
   media: Media;
   /** Rendered CSS width/height in px. */
   size?: number;
   alt: string;
+  /** Called once when the image fails to load (e.g. its signed URL expired). */
+  onLoadError?: () => void;
 }) {
+  const [failed, setFailed] = useState(false);
   const src = pickThumbnailUrl(media, size);
-  if (!src) {
+  if (!src || failed) {
     return (
       <span
         className="flex items-center justify-center rounded-md bg-muted text-muted-foreground"
@@ -40,19 +44,20 @@ export function Thumbnail({
       </span>
     );
   }
-  const variants = imageVariants(media);
   return (
     <span className="relative inline-flex">
-      {/* biome-ignore lint/performance/noImgElement: presigned, pre-resized variants with srcset; next/image would cache expiring URLs */}
+      {/* biome-ignore lint/performance/noImgElement: signed, pre-resized imgproxy URLs; next/image would cache expiring URLs */}
       <img
         src={src}
-        srcSet={variants.length > 1 ? buildSrcSet(variants) : undefined}
-        sizes={`${size}px`}
         alt={alt}
         width={size}
         height={size}
         loading="lazy"
         decoding="async"
+        onError={() => {
+          setFailed(true);
+          onLoadError?.();
+        }}
         className="rounded-md bg-muted object-cover"
         style={{ width: size, height: size }}
       />

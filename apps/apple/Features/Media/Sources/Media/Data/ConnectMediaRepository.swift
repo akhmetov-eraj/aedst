@@ -37,11 +37,24 @@ public struct ConnectMediaRepository: MediaRepository {
     }
 
     public func completeUpload(id: String) async -> Outcome<MediaItem> {
+        await completeUpload(id: id, idempotencyKey: nil)
+    }
+
+    /// `idempotencyKey` is sent as `Idempotency-Key` (the outbox row id when delivered from the outbox).
+    public func completeUpload(id: String, idempotencyKey: String?) async -> Outcome<MediaItem> {
         var request = Aedst_Media_V1_CompleteUploadRequest()
         request.id = id
         let client = self.client
-        let response = await executor.executeUnary { await client.completeUpload(request: request, headers: [:]) }
-        return response.result.map { MediaItem($0.media) }.mapError { NetworkErrorMapping.map($0) }
+        let headers = IdempotencyKey.headers(for: idempotencyKey)
+        let response = await executor.executeUnary { await client.completeUpload(request: request, headers: headers) }
+        switch response.result {
+        case .success(let message):
+            // An absent message is a default `Media` with an empty id; never hand that to the UI as an item.
+            guard message.hasMedia else { return .failure(.decoding(reason: "CompleteUploadResponse without media")) }
+            return .success(MediaItem(message.media))
+        case .failure(let error):
+            return .failure(NetworkErrorMapping.map(error))
+        }
     }
 
     public func get(id: String) async -> Outcome<MediaItem> {
@@ -49,7 +62,13 @@ public struct ConnectMediaRepository: MediaRepository {
         request.id = id
         let client = self.client
         let response = await executor.executeUnary { await client.getMedia(request: request, headers: [:]) }
-        return response.result.map { MediaItem($0.media) }.mapError { NetworkErrorMapping.map($0) }
+        switch response.result {
+        case .success(let message):
+            guard message.hasMedia else { return .failure(.decoding(reason: "GetMediaResponse without media")) }
+            return .success(MediaItem(message.media))
+        case .failure(let error):
+            return .failure(NetworkErrorMapping.map(error))
+        }
     }
 
     public func list(taskID: String?, pageToken: String?) async -> Outcome<Page<MediaItem>> {
@@ -111,12 +130,16 @@ extension MediaItem {
 extension MediaVariant {
     init?(_ proto: Aedst_Media_V1_Variant) {
         guard let url = URL(string: proto.url) else { return nil }
+        // Matched on the wire number so the mapping does not depend on
+        // swift-protobuf's spelling of digit-containing case names.
         let kind: Kind
-        switch proto.kind {
-        case .thumbnail: kind = .thumbnail
-        case .preview: kind = .preview
-        case .optimized: kind = .optimized
-        case .poster: kind = .poster
+        switch proto.kind.rawValue {
+        case 4: kind = .poster
+        case 5: kind = .thumb64
+        case 6: kind = .avatar256
+        case 7: kind = .card400
+        case 8: kind = .feed800x600
+        case 9: kind = .story1080x1350
         default: kind = .other
         }
         self.init(kind: kind, url: url, width: Int(proto.width), height: Int(proto.height))

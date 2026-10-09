@@ -8,12 +8,15 @@
 // Every provider is optional and disabled when unconfigured; Send to a
 // disabled provider returns ErrDisabled so the caller can skip the device.
 //
-// Why no third-party push libraries: the maintained Web Push library
-// (SherClockHolmes/webpush-go) depends on golang-jwt, a second JOSE library
-// that the stack forbids; FCM and APNs are each one authenticated HTTPS POST.
-// VAPID and APNs provider tokens are signed with the project's single JOSE
-// library (lestrrat-go/jwx v4); the RFC 8291 payload encryption uses only the
-// standard library (crypto/ecdh, crypto/hkdf, AES-GCM).
+// Providers are maintained libraries, not hand-written protocol code (owner
+// decision, docs/content/decisions.md "Push providers via libraries"):
+// Web Push + VAPID through SherClockHolmes/webpush-go, FCM through the
+// Firebase Admin Go messaging client and APNs through sideshow/apns2 with
+// token-based auth. This package only adapts them to Sender, applies the
+// payload contract below and maps provider failures to ErrInvalidToken,
+// ErrPermanent or a transient error. Custom push code (RFC 8291 encryption,
+// VAPID or APNs JWTs, OAuth token exchange) is rejected: see "Explicit
+// rejections" in docs/content/library-first.md.
 package push
 
 import (
@@ -24,6 +27,8 @@ import (
 	"time"
 
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
+
+	"github.com/aedst/server/internal/platform/resilience"
 )
 
 // Platform is a push channel.
@@ -139,12 +144,23 @@ func (d *Dispatcher) Enabled() []Platform {
 	return out
 }
 
-// NewHTTPClient is the client every provider uses: traced, HTTP/2 when the
-// server offers it (APNs requires it), bounded by timeout.
-func NewHTTPClient(timeout time.Duration) *http.Client {
+// NewHTTPClient is the client of one push provider: traced, HTTP/2 when the
+// server offers it (APNs requires it), bounded by timeout, and behind a circuit
+// breaker and a rate limiter of its own (resilience.WrapRoundTripper). One breaker per
+// provider means a provider outage fails its sends fast and cannot stall the
+// others or the River workers waiting on it. The breaker trips on transport
+// failures (dial, TLS, timeout), not on provider error responses.
+func NewHTTPClient(timeout time.Duration, provider string) *http.Client {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ForceAttemptHTTP2 = true
-	return &http.Client{Timeout: timeout, Transport: otelhttp.NewTransport(transport)}
+	var rt http.RoundTripper = otelhttp.NewTransport(transport)
+	rt = resilience.WrapRoundTripper(rt, resilience.Config{
+		BreakerName:  "push-" + provider,
+		Timeout:      timeout,
+		MaxRequests:  3,
+		RateLimitRPS: providerRateLimitRPS,
+	})
+	return &http.Client{Timeout: timeout, Transport: rt}
 }
 
 // classify maps a provider's HTTP status to the package's error kinds for
@@ -161,3 +177,7 @@ func classify(provider string, status int, detail string) error {
 		return fmt.Errorf("%w: %s %d %s", ErrPermanent, provider, status, detail)
 	}
 }
+
+// providerRateLimitRPS shapes the request rate to one provider (a fan-out of a
+// broadcast waits in line rather than hammering the provider's quota).
+const providerRateLimitRPS = 200

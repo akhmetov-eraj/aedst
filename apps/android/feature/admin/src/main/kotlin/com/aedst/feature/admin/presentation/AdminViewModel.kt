@@ -11,6 +11,9 @@ import com.aedst.feature.admin.domain.AdminTaskRow
 import com.aedst.feature.admin.domain.AdminUserRow
 import com.aedst.feature.admin.domain.AuditRow
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -47,15 +50,17 @@ sealed interface AdminIntent {
 }
 
 @HiltViewModel
-class AdminViewModel @Inject constructor(
-    sessionState: SessionState,
-    private val repository: AdminRepository,
-) : ViewModel() {
+internal class AdminViewModel @Inject constructor(sessionState: SessionState, private val repository: AdminRepository) :
+    ViewModel() {
 
     /** UI gate only — the server authorises every AdminService call independently. */
     val isAdmin: StateFlow<Boolean> = sessionState.currentUser
         .map { it?.isAdmin == true }
         .stateIn(viewModelScope, SharingStarted.Eagerly, sessionState.currentUser.value?.isAdmin == true)
+
+    // One job per operation: switching tab or searching again cancels the load still running for the old tab/query,
+    // so a slow answer for the previous tab can never overwrite the current one.
+    private var loadJob: Job? = null
 
     private val mutableState = MutableStateFlow(AdminState())
     val state: StateFlow<AdminState> = mutableState.asStateFlow()
@@ -81,8 +86,9 @@ class AdminViewModel @Inject constructor(
 
     private fun load(tab: AdminTab) {
         val query = mutableState.value.query
+        loadJob?.cancel()
         mutableState.update { it.copy(isLoading = true) }
-        viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             val failure: AedstError? = when (tab) {
                 AdminTab.OVERVIEW -> repository.overview().applyTo(onSuccess = { v -> copy(overview = v) })
                 AdminTab.USERS -> repository.users(query).applyTo(onSuccess = { v -> copy(users = v.items) })
@@ -108,12 +114,15 @@ class AdminViewModel @Inject constructor(
     }
 
     /** Applies a successful result to state; returns the error otherwise. */
-    private fun <T> Outcome<T>.applyTo(onSuccess: AdminState.(T) -> AdminState): AedstError? = when (this) {
-        is Outcome.Success -> {
-            mutableState.update { it.onSuccess(value) }
-            null
+    private suspend fun <T> Outcome<T>.applyTo(onSuccess: AdminState.(T) -> AdminState): AedstError? {
+        currentCoroutineContext().ensureActive() // a superseded load must not write its answer
+        return when (this) {
+            is Outcome.Success -> {
+                mutableState.update { it.onSuccess(value) }
+                null
+            }
+            is Outcome.Failure -> error
         }
-        is Outcome.Failure -> error
     }
 
     companion object {

@@ -10,6 +10,10 @@
 // server. The procedures live in ./handlers.mjs, which the contract test
 // (src/test/contract/) checks against the generated protobuf descriptors.
 //
+// It also plays the identity provider (./oidc.mjs, issuer /oidc): the web
+// app signs in with OpenID Connect Authorization Code + PKCE against it, and
+// the API tokens it issues are real RS256 JWTs.
+//
 // Test-only control endpoints live under `/__test/*` so each test can seed an
 // isolated user (parallel-safe) and force token expiry/revocation, and
 // `/__storage/<id>` plays object storage for presigned uploads.
@@ -22,6 +26,7 @@ import {
   services,
   storeObject,
 } from "./handlers.mjs";
+import { handleOidc } from "./oidc.mjs";
 
 const PORT = Number(process.env.MOCK_API_PORT ?? 8181);
 const STORAGE_PREFIX = "/__storage/";
@@ -100,6 +105,9 @@ createServer(async (req, res) => {
         url.pathname.slice(STORAGE_PREFIX.length),
       );
     }
+    if (url.pathname.startsWith("/oidc/")) {
+      return await handleOidc(req, res, url);
+    }
     if (req.method !== "POST") {
       throw new RpcError(405, "unimplemented", "POST only");
     }
@@ -108,6 +116,16 @@ createServer(async (req, res) => {
     const controlHandler = control[url.pathname];
     if (controlHandler) {
       return send(res, 200, controlHandler(body));
+    }
+
+    // apps/server mounts services with WithRequireConnectProtocolHeader
+    // (modulekit/mount.go): a unary call without the header is refused.
+    if (req.headers["connect-protocol-version"] !== "1") {
+      throw new RpcError(
+        400,
+        "invalid_argument",
+        'missing required header: set Connect-Protocol-Version to "1"',
+      );
     }
 
     const [, service, method] = url.pathname.split("/");

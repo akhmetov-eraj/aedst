@@ -1,31 +1,39 @@
 import { create } from "@bufbuild/protobuf";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-
 import { ImageViewer } from "@/modules/media/image/ImageViewer";
 import { Thumbnail } from "@/modules/media/thumbnail/Thumbnail";
-
 import {
-  buildSrcSet,
-  imageVariants,
+  pickAvatarUrl,
+  pickFeedUrl,
+  pickImageUrl,
+  pickStoryUrl,
   pickThumbnailUrl,
   playbackSources,
   posterUrl,
+  presetForSize,
 } from "@/modules/media/thumbnail/variants";
 import {
   MediaKind,
   MediaSchema,
   VariantKind,
 } from "@/shared/api/connect/generated/aedst/media/v1/media_pb";
+import { renderWithProviders } from "@/test/render";
 
 const image = create(MediaSchema, {
   kind: MediaKind.IMAGE,
   url: "https://s3/original.jpg",
   contentType: "image/jpeg",
   variants: [
-    { kind: VariantKind.OPTIMIZED, url: "https://s3/1600.webp", width: 1600 },
-    { kind: VariantKind.THUMBNAIL, url: "https://s3/320.webp", width: 320 },
-    { kind: VariantKind.PREVIEW, url: "https://s3/800.webp", width: 800 },
+    {
+      kind: VariantKind.STORY_1080X1350,
+      url: "https://img/story",
+      width: 1080,
+    },
+    { kind: VariantKind.THUMB_64, url: "https://img/t64", width: 64 },
+    { kind: VariantKind.AVATAR_256, url: "https://img/a256", width: 256 },
+    { kind: VariantKind.CARD_400, url: "https://img/c400", width: 400 },
+    { kind: VariantKind.FEED_800X600, url: "https://img/f800", width: 800 },
   ],
 });
 
@@ -33,40 +41,30 @@ const video = create(MediaSchema, {
   kind: MediaKind.VIDEO,
   url: "https://s3/original.mov",
   contentType: "video/quicktime",
-  variants: [
-    { kind: VariantKind.POSTER, url: "https://s3/poster.jpg", width: 1280 },
-    {
-      kind: VariantKind.OPTIMIZED,
-      url: "https://s3/720.mp4",
-      contentType: "video/mp4",
-    },
-  ],
+  variants: [{ kind: VariantKind.POSTER, url: "https://s3/poster.jpg" }],
 });
 
 describe("variants", () => {
-  it("orders image renditions by width and builds a srcset", () => {
-    expect(imageVariants(image).map((v) => v.width)).toEqual([320, 800, 1600]);
-    expect(buildSrcSet(imageVariants(image))).toBe(
-      "https://s3/320.webp 320w, https://s3/800.webp 800w, https://s3/1600.webp 1600w",
-    );
+  it("selects the preset for each UI context", () => {
+    expect(pickAvatarUrl(image)).toBe("https://img/a256");
+    expect(pickFeedUrl(image)).toBe("https://img/f800");
+    expect(pickStoryUrl(image)).toBe("https://img/story");
+    expect(pickImageUrl(image, "card_400")).toBe("https://img/c400");
+    expect(presetForSize(24)).toBe("thumb_64");
+    expect(presetForSize(112)).toBe("avatar_256");
+    expect(presetForSize(200)).toBe("card_400");
+    expect(pickThumbnailUrl(image, 24)).toBe("https://img/t64");
+    expect(pickThumbnailUrl(image, 112)).toBe("https://img/a256");
   });
 
-  it("picks the smallest rendition that is sharp at 2x", () => {
-    expect(pickThumbnailUrl(image, 120)).toBe("https://s3/320.webp");
-    expect(pickThumbnailUrl(image, 300)).toBe("https://s3/800.webp");
-    expect(pickThumbnailUrl(image, 2000)).toBe("https://s3/1600.webp");
-  });
-
-  it("uses the poster for video thumbnails and plays the optimized rendition first", () => {
-    expect(pickThumbnailUrl(video, 120)).toBe("https://s3/poster.jpg");
-    expect(posterUrl(video)).toBe("https://s3/poster.jpg");
-    expect(playbackSources(video)).toEqual([
-      { url: "https://s3/720.mp4", type: "video/mp4" },
-      { url: "https://s3/original.mov", type: "video/quicktime" },
-    ]);
-  });
-
-  it("falls back to the original image, or nothing", () => {
+  it("uses the nearest preset the server returned, then the original", () => {
+    const only = create(MediaSchema, {
+      kind: MediaKind.IMAGE,
+      url: "https://s3/o.png",
+      variants: [{ kind: VariantKind.CARD_400, url: "https://img/c400" }],
+    });
+    expect(pickAvatarUrl(only)).toBe("https://img/c400");
+    expect(pickStoryUrl(only)).toBe("https://img/c400");
     const bare = create(MediaSchema, {
       kind: MediaKind.IMAGE,
       url: "https://s3/o.png",
@@ -76,6 +74,19 @@ describe("variants", () => {
       pickThumbnailUrl(create(MediaSchema, { kind: MediaKind.DOCUMENT }), 100),
     ).toBe("");
   });
+
+  it("uses the poster for video and plays the original", () => {
+    expect(pickThumbnailUrl(video, 120)).toBe("https://s3/poster.jpg");
+    expect(posterUrl(video)).toBe("https://s3/poster.jpg");
+    expect(playbackSources(video)).toEqual([
+      { url: "https://s3/original.mov", type: "video/quicktime" },
+    ]);
+    const derived = create(MediaSchema, {
+      kind: MediaKind.VIDEO,
+      variants: [{ kind: VariantKind.FEED_800X600, url: "https://img/f800" }],
+    });
+    expect(posterUrl(derived)).toBe("https://img/f800");
+  });
 });
 
 describe("viewer and thumbnail components", () => {
@@ -84,7 +95,7 @@ describe("viewer and thumbnail components", () => {
       kind: MediaKind.IMAGE,
       url: "https://s3/o.png",
     });
-    render(<ImageViewer media={original} alt="o" />);
+    renderWithProviders(<ImageViewer media={original} alt="o" />);
     expect(screen.getByRole("img", { name: "o" })).toHaveAttribute(
       "src",
       "https://s3/o.png",

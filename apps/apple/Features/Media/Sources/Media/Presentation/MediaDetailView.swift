@@ -1,12 +1,11 @@
 import AedstCore
 import AedstDesignSystem
 import AedstMedia
-import Perception
 import SwiftUI
 
 /// One media item: always re-fetched on open, so presigned URLs are fresh.
 @MainActor
-@Perceptible
+@Observable
 public final class MediaDetailViewModel {
     public let mediaID: String
     public private(set) var item: MediaItem?
@@ -56,46 +55,48 @@ public struct MediaDetailView: View {
     }
 
     public var body: some View {
-        WithPerceptionTracking {
-            @Perception.Bindable var viewModel = viewModel
+        @Bindable var viewModel = viewModel
 
-            VStack(spacing: AedstSpacing.md) {
-                if let item = viewModel.item {
-                    content(for: item)
-                    Text(item.filename)
-                        .aedstFont(AedstTypography.caption)
-                        .foregroundStyle(AedstColor.mutedForeground)
-                } else {
-                    AedstSkeleton()
-                }
+        VStack(spacing: AedstSpacing.md) {
+            if let item = viewModel.item {
+                // Explicit mask: AVPlayer video frames are not covered by the recorder's
+                // text/image heuristics, and file names and failure reasons are user data.
+                content(for: item)
+                    .aedstSensitive()
+                Text(item.filename)
+                    .aedstFont(AedstTypography.caption)
+                    .foregroundStyle(AedstColor.mutedForeground)
+                    .aedstSensitive()
+            } else {
+                AedstSkeleton()
             }
-            .padding(AedstSpacing.lg)
-            .navigationTitle(viewModel.item?.filename ?? String(localized: "mediaTitle", bundle: .module))
-            .toolbar {
-                ToolbarItem(placement: .destructiveAction) {
-                    Button(role: .destructive) {
-                        isConfirmingDelete = true
-                    } label: {
-                        Label(String(localized: "mediaDelete", bundle: .module), systemImage: "trash")
-                    }
-                }
-            }
-            .confirmationDialog(
-                String(localized: "mediaDeleteConfirm", bundle: .module),
-                isPresented: $isConfirmingDelete,
-                titleVisibility: .visible
-            ) {
-                Button(String(localized: "mediaDelete", bundle: .module), role: .destructive) {
-                    Task {
-                        if await viewModel.delete() { onDeleted() }
-                    }
-                }
-            }
-            .aedstErrorPresenter($viewModel.error) {
-                Task { await viewModel.load() }
-            }
-            .task { await viewModel.load() }
         }
+        .padding(AedstSpacing.lg)
+        .navigationTitle(viewModel.item?.filename ?? String(localized: "mediaTitle", bundle: .module))
+        .toolbar {
+            ToolbarItem(placement: .destructiveAction) {
+                Button(role: .destructive) {
+                    isConfirmingDelete = true
+                } label: {
+                    Label(String(localized: "mediaDelete", bundle: .module), systemImage: "trash")
+                }
+            }
+        }
+        .confirmationDialog(
+            String(localized: "mediaDeleteConfirm", bundle: .module),
+            isPresented: $isConfirmingDelete,
+            titleVisibility: .visible
+        ) {
+            Button(String(localized: "mediaDelete", bundle: .module), role: .destructive) {
+                Task {
+                    if await viewModel.delete() { onDeleted() }
+                }
+            }
+        }
+        .aedstErrorPresenter($viewModel.error) {
+            Task { await viewModel.load() }
+        }
+        .task { await viewModel.load() }
     }
 
     @ViewBuilder
@@ -105,10 +106,12 @@ public struct MediaDetailView: View {
             if item.kind == .video, let url = item.playbackURL {
                 AedstVideoPlayer(url: url)
                     .aspectRatio(16 / 9, contentMode: .fit)
-            } else if item.kind == .image, let url = item.variant(.preview)?.url ?? item.url {
+            } else if item.kind == .image, let url = item.url ?? item.imageVariant(.card400)?.url {
+                // Presets are fixed boxes (most crop): the uncropped detail view shows the
+                // sanitized original, falling back to `card400` only without a URL.
                 AedstRemoteImage(
                     url: url,
-                    cacheKey: "\(item.id)/\(item.variant(.preview) == nil ? "original" : "preview")",
+                    cacheKey: "\(item.id)/\(item.url == nil ? "card400" : "original")",
                     maxPointSize: 1_600,
                     contentMode: .fit,
                     accessibilityLabel: item.filename

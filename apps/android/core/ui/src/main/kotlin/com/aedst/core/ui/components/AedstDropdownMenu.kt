@@ -12,7 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import com.aedst.core.ui.theme.AedstTheme
 
-/** A single selectable entry in [AedstDropdownMenu] / [AedstContextMenu]. */
+/** A single selectable entry in [AedstDropdownMenu]. */
 data class AedstDropdownMenuOption<T>(
     val value: T,
     val label: String,

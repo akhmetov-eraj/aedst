@@ -667,7 +667,8 @@ type ListTasksResponse struct {
 	// just this page — what the UI shows next to "Tasks". Populated on the
 	// FIRST page only (request page_token empty) and 0 on every later page:
 	// counting the matching set is O(rows) and would otherwise be paid on every
-	// page. Clients should keep the value from the first response.
+	// page. Clients should keep the value from the first response. Capped at
+	// 10,000: a larger match set reports 10000, meaning "at least 10000".
 	TotalCount    int32 `protobuf:"varint,3,opt,name=total_count,json=totalCount,proto3" json:"total_count,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -1271,20 +1272,18 @@ const file_aedst_tasks_v1_tasks_proto_rawDesc = "" +
 	"\x0eGetTaskRequest\x12\x18\n" +
 	"\x02id\x18\x01 \x01(\tB\b\xbaH\x05r\x03\xb0\x01\x01R\x02id\";\n" +
 	"\x0fGetTaskResponse\x12(\n" +
-	"\x04task\x18\x01 \x01(\v2\x14.aedst.tasks.v1.TaskR\x04task\"\x8b\x03\n" +
-	"\x10ListTasksRequest\x12E\n" +
-	"\bstatuses\x18\x01 \x03(\x0e2\x1a.aedst.tasks.v1.TaskStatusB\r\xbaH\n" +
-	"\x92\x01\a\"\x05\x82\x01\x02\x10\x01R\bstatuses\x12K\n" +
+	"\x04task\x18\x01 \x01(\v2\x14.aedst.tasks.v1.TaskR\x04task\"\x9b\x03\n" +
+	"\x10ListTasksRequest\x12G\n" +
+	"\bstatuses\x18\x01 \x03(\x0e2\x1a.aedst.tasks.v1.TaskStatusB\x0f\xbaH\f\x92\x01\t\"\a\x82\x01\x04\x10\x01 \x00R\bstatuses\x12M\n" +
 	"\n" +
-	"priorities\x18\x02 \x03(\x0e2\x1c.aedst.tasks.v1.TaskPriorityB\r\xbaH\n" +
-	"\x92\x01\a\"\x05\x82\x01\x02\x10\x01R\n" +
+	"priorities\x18\x02 \x03(\x0e2\x1c.aedst.tasks.v1.TaskPriorityB\x0f\xbaH\f\x92\x01\t\"\a\x82\x01\x04\x10\x01 \x00R\n" +
 	"priorities\x12 \n" +
 	"\x06search\x18\x03 \x01(\tB\b\xbaH\x05r\x03\x18\xc8\x01R\x06search\x126\n" +
 	"\asort_by\x18\x04 \x01(\x0e2\x1d.aedst.tasks.v1.TaskSortFieldR\x06sortBy\x12D\n" +
-	"\x0esort_direction\x18\x05 \x01(\x0e2\x1d.aedst.tasks.v1.SortDirectionR\rsortDirection\x12$\n" +
-	"\tpage_size\x18\x06 \x01(\x05B\a\xbaH\x04\x1a\x02(\x00R\bpageSize\x12\x1d\n" +
+	"\x0esort_direction\x18\x05 \x01(\x0e2\x1d.aedst.tasks.v1.SortDirectionR\rsortDirection\x12&\n" +
+	"\tpage_size\x18\x06 \x01(\x05B\t\xbaH\x06\x1a\x04\x18d(\x00R\bpageSize\x12'\n" +
 	"\n" +
-	"page_token\x18\a \x01(\tR\tpageToken\"\x88\x01\n" +
+	"page_token\x18\a \x01(\tB\b\xbaH\x05r\x03\x18\x80\x04R\tpageToken\"\x88\x01\n" +
 	"\x11ListTasksResponse\x12*\n" +
 	"\x05tasks\x18\x01 \x03(\v2\x14.aedst.tasks.v1.TaskR\x05tasks\x12&\n" +
 	"\x0fnext_page_token\x18\x02 \x01(\tR\rnextPageToken\x12\x1f\n" +

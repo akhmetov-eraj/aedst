@@ -17,6 +17,7 @@
  * style attributes that a nonce cannot cover, and style injection is a far
  * weaker primitive than script injection.
  */
+
 export function generateNonce(): string {
   return btoa(crypto.randomUUID());
 }
@@ -69,6 +70,24 @@ export function sentryCspReportUri(dsn: string | undefined): string | null {
   }
 }
 
+/** Name of the Reporting API endpoint (`Reporting-Endpoints` header, CSP `report-to`). */
+const CSP_REPORTING_ENDPOINT = "csp-endpoint";
+
+/**
+ * `report-uri` (all engines) next to `report-to` (Reporting API, Chromium): a
+ * browser that understands `report-to` ignores `report-uri`, the rest fall back.
+ */
+function reportDirectives(reportUri: string | null | undefined): string[] {
+  return reportUri
+    ? [`report-uri ${reportUri}`, `report-to ${CSP_REPORTING_ENDPOINT}`]
+    : [];
+}
+
+/** Value of the `Reporting-Endpoints` response header. */
+export function buildReportingEndpoints(reportUri: string): string {
+  return `${CSP_REPORTING_ENDPOINT}="${reportUri}"`;
+}
+
 export function buildContentSecurityPolicy({
   nonce,
   isDev,
@@ -112,7 +131,7 @@ export function buildContentSecurityPolicy({
     "form-action 'self'",
     "frame-ancestors 'none'",
     ...(upgradeInsecureRequests ? ["upgrade-insecure-requests"] : []),
-    ...(reportUri ? [`report-uri ${reportUri}`] : []),
+    ...reportDirectives(reportUri),
   ].join("; ");
 }
 
@@ -129,6 +148,20 @@ export function buildTrustedTypesReportOnlyPolicy(
 ): string {
   return [
     "require-trusted-types-for 'script'",
-    ...(reportUri ? [`report-uri ${reportUri}`] : []),
+    ...reportDirectives(reportUri),
   ].join("; ");
+}
+
+/**
+ * Policy for routes that never render a document (`/api/*` JSON responses
+ * and redirects): nothing may load, nothing may frame them. Static, so no
+ * nonce; still set by `proxy.ts` like every other CSP.
+ */
+export function buildApiContentSecurityPolicy(): string {
+  return "default-src 'none'; frame-ancestors 'none'";
+}
+
+/** Policy for the service worker script (`/serwist/*`): our own code only. */
+export function buildServiceWorkerContentSecurityPolicy(): string {
+  return "default-src 'self'; script-src 'self'";
 }

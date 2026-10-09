@@ -1,16 +1,24 @@
 "use client";
 
-import { zodResolver } from "@hookform/resolvers/zod";
 import { useTranslations } from "next-intl";
-import { useForm } from "react-hook-form";
-import * as z from "zod/mini";
+import { useId } from "react";
+import { Controller, useForm } from "react-hook-form";
 
 import { PRIORITY_KEYS } from "@/modules/tasks/lib/labels";
-import { TaskPriority } from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
+import {
+  CreateTaskRequestSchema,
+  TaskPriority,
+} from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
+import {
+  type AppErrorKind,
+  errorMessageKey,
+} from "@/shared/lib/errors/app-error";
+import { protovalidateResolver } from "@/shared/lib/forms/protovalidate-resolver";
 import { useHydrated } from "@/shared/lib/hooks/use-hydrated";
 import { Button } from "@/shared/ui/button";
+import { Field, FieldError, FieldLabel } from "@/shared/ui/field";
+import { Form } from "@/shared/ui/form";
 import { Input } from "@/shared/ui/input";
-import { Label } from "@/shared/ui/label";
 import {
   Select,
   SelectContent,
@@ -20,23 +28,37 @@ import {
 } from "@/shared/ui/select";
 import { Textarea } from "@/shared/ui/textarea";
 
-// Mirrors apps/server's CreateTaskRequest/UpdateTaskRequest protovalidate
-// constraints (tasks.proto) — client-side validation is UX, the server's is
-// the actual guarantee; see docs/content/architecture.md's forms guidance.
-const taskFormSchema = z.object({
-  title: z.string().check(z.trim(), z.minLength(1), z.maxLength(200)),
-  description: z.string().check(z.maxLength(4000)),
-  priority: z.union([
-    z.literal(TaskPriority.LOW),
-    z.literal(TaskPriority.MEDIUM),
-    z.literal(TaskPriority.HIGH),
-    z.literal(TaskPriority.URGENT),
-  ]),
-  dueDate: z.string(), // yyyy-mm-dd from <input type="date">, or "".
+export type SettablePriority =
+  | TaskPriority.LOW
+  | TaskPriority.MEDIUM
+  | TaskPriority.HIGH
+  | TaskPriority.URGENT;
+
+export type TaskFormValues = {
+  title: string;
+  description: string;
+  priority: SettablePriority;
+  dueDate: string; // yyyy-mm-dd from <input type="date">, or "".
+};
+
+// Validated with the server's own Protovalidate rules for CreateTaskRequest
+// (tasks.proto, embedded in the generated descriptor), so the constraints live
+// in one place. dueDate has no proto rules; update uses the same field rules.
+const taskFormResolver = protovalidateResolver<
+  typeof CreateTaskRequestSchema,
+  TaskFormValues
+>(CreateTaskRequestSchema, {
+  toMessage: (values) => ({
+    title: values.title.trim(),
+    description: values.description,
+    priority: values.priority,
+  }),
 });
 
-export type TaskFormValues = z.infer<typeof taskFormSchema>;
-export type SettablePriority = TaskFormValues["priority"];
+/** Protovalidate rule id of the title violation -> message key. */
+function titleErrorKey(ruleId: string) {
+  return ruleId === "string.max_len" ? "titleTooLong" : "titleRequired";
+}
 
 const PRIORITY_OPTIONS: SettablePriority[] = [
   TaskPriority.LOW,
@@ -50,26 +72,35 @@ export function TaskForm({
   defaultValues,
   onSubmit,
   isSubmitting,
-  submitError,
+  submitErrorKind,
+  onCancel,
 }: {
   mode: "create" | "edit";
   defaultValues?: Partial<TaskFormValues>;
   onSubmit: (values: TaskFormValues) => void;
   isSubmitting: boolean;
-  submitError?: string;
+  /** Classified failure of the last submit; the server text is never shown. */
+  submitErrorKind?: AppErrorKind;
+  /** Shows a Cancel button (edit mode) that leaves the form without saving. */
+  onCancel?: () => void;
 }) {
+  const id = useId();
+  const titleId = `${id}-title`;
+  const descriptionId = `${id}-description`;
+  const priorityId = `${id}-priority`;
+  const dueDateId = `${id}-dueDate`;
   const hydrated = useHydrated();
   const t = useTranslations("tasks.form");
   const tPriority = useTranslations("tasks.priority");
+  const tErrors = useTranslations("common.errors");
 
   const {
     register,
     handleSubmit,
-    watch,
-    setValue,
+    control,
     formState: { errors },
   } = useForm<TaskFormValues>({
-    resolver: zodResolver(taskFormSchema),
+    resolver: taskFormResolver,
     defaultValues: {
       title: "",
       description: "",
@@ -79,99 +110,110 @@ export function TaskForm({
     },
   });
 
-  const priority = watch("priority");
-
   function priorityLabel(value: SettablePriority) {
     const key = PRIORITY_KEYS[value];
     return key ? tPriority(key) : "";
   }
 
   return (
-    <form
-      onSubmit={handleSubmit(onSubmit)}
+    <Form
+      onSubmit={handleSubmit((values) =>
+        onSubmit({ ...values, title: values.title.trim() }),
+      )}
       method="post"
       className="flex max-w-lg flex-col gap-4"
       noValidate
     >
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="title">{t("titleLabel")}</Label>
+      <Field>
+        <FieldLabel htmlFor={titleId}>{t("titleLabel")}</FieldLabel>
         <Input
-          id="title"
+          id={titleId}
           aria-invalid={errors.title ? true : undefined}
-          aria-describedby={errors.title ? "title-error" : undefined}
+          aria-describedby={errors.title ? `${titleId}-error` : undefined}
           {...register("title")}
         />
         {errors.title && (
-          <p id="title-error" className="text-destructive text-sm">
-            {t("titleRequired")}
-          </p>
+          <FieldError id={`${titleId}-error`}>
+            {t(titleErrorKey(errors.title.type))}
+          </FieldError>
         )}
-      </div>
+      </Field>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="description">{t("descriptionLabel")}</Label>
+      <Field>
+        <FieldLabel htmlFor={descriptionId}>{t("descriptionLabel")}</FieldLabel>
         <Textarea
-          id="description"
+          id={descriptionId}
           rows={4}
           aria-invalid={errors.description ? true : undefined}
           aria-describedby={
-            errors.description ? "description-error" : undefined
+            errors.description ? `${descriptionId}-error` : undefined
           }
           {...register("description")}
         />
         {errors.description && (
-          <p id="description-error" className="text-destructive text-sm">
+          <FieldError id={`${descriptionId}-error`}>
             {t("descriptionTooLong")}
-          </p>
+          </FieldError>
         )}
-      </div>
+      </Field>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="priority">{t("priorityLabel")}</Label>
-        <Select
-          items={PRIORITY_OPTIONS.map((value) => ({
-            value: String(value),
-            label: priorityLabel(value),
-          }))}
-          value={String(priority)}
-          onValueChange={(value) =>
-            setValue("priority", Number(value) as SettablePriority)
-          }
-        >
-          <SelectTrigger id="priority">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {PRIORITY_OPTIONS.map((value) => (
-              <SelectItem key={value} value={String(value)}>
-                {priorityLabel(value)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      <Field>
+        <FieldLabel htmlFor={priorityId}>{t("priorityLabel")}</FieldLabel>
+        <Controller
+          control={control}
+          name="priority"
+          render={({ field }) => (
+            <Select
+              items={PRIORITY_OPTIONS.map((value) => ({
+                value: String(value),
+                label: priorityLabel(value),
+              }))}
+              value={String(field.value)}
+              onValueChange={(value) =>
+                field.onChange(Number(value) as SettablePriority)
+              }
+            >
+              <SelectTrigger id={priorityId} onBlur={field.onBlur}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {PRIORITY_OPTIONS.map((value) => (
+                  <SelectItem key={value} value={String(value)}>
+                    {priorityLabel(value)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        />
+      </Field>
 
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="dueDate">
+      <Field>
+        <FieldLabel htmlFor={dueDateId}>
           {t("dueDateLabel")}{" "}
           <span className="text-muted-foreground">
             ({t("dueDateOptional")})
           </span>
-        </Label>
-        <Input id="dueDate" type="date" {...register("dueDate")} />
-      </div>
+        </FieldLabel>
+        <Input id={dueDateId} type="date" {...register("dueDate")} />
+      </Field>
 
       <div className="flex items-center gap-2">
         <Button type="submit" disabled={!hydrated || isSubmitting}>
           {mode === "create" ? t("create") : t("save")}
         </Button>
+        {onCancel && (
+          <Button type="button" variant="outline" onClick={onCancel}>
+            {t("cancel")}
+          </Button>
+        )}
       </div>
 
-      {submitError && (
+      {submitErrorKind && (
         <p role="alert" className="text-destructive text-sm">
-          {t("error", { message: submitError })}
+          {t("error", { message: tErrors(errorMessageKey(submitErrorKind)) })}
         </p>
       )}
-    </form>
+    </Form>
   );
 }

@@ -40,11 +40,11 @@ bool hasControlChars(const std::string& text) {
 core::Outcome<std::string> readString(const QJsonObject& object, const char* key, std::size_t maxLength) {
     const QJsonValue value = object.value(QString::fromLatin1(key));
     if (!value.isString()) {
-        return fail(Error::invalidArgument(std::string{"manifest: missing or non-string field '"} + key + "'"));
+        return fail(Error::invalidInput(std::string{"manifest: missing or non-string field '"} + key + "'"));
     }
     std::string text = value.toString().toStdString();
     if (text.empty() || text.size() > maxLength || hasControlChars(text)) {
-        return fail(Error::invalidArgument(std::string{"manifest: invalid field '"} + key + "'"));
+        return fail(Error::invalidInput(std::string{"manifest: invalid field '"} + key + "'"));
     }
     return text;
 }
@@ -53,15 +53,15 @@ core::Outcome<std::int64_t> readInteger(const QJsonObject& object, const char* k
                                         std::int64_t maximum) {
     const QJsonValue value = object.value(QString::fromLatin1(key));
     if (!value.isDouble()) {
-        return fail(Error::invalidArgument(std::string{"manifest: missing or non-numeric field '"} + key + "'"));
+        return fail(Error::invalidInput(std::string{"manifest: missing or non-numeric field '"} + key + "'"));
     }
     const double number = value.toDouble();
     if (!std::isfinite(number) || std::trunc(number) != number || std::fabs(number) > kMaxSafeInteger) {
-        return fail(Error::invalidArgument(std::string{"manifest: field '"} + key + "' is not an integer"));
+        return fail(Error::invalidInput(std::string{"manifest: field '"} + key + "' is not an integer"));
     }
     const auto integer = static_cast<std::int64_t>(number);
     if (integer < minimum || integer > maximum) {
-        return fail(Error::invalidArgument(std::string{"manifest: field '"} + key + "' is out of range"));
+        return fail(Error::invalidInput(std::string{"manifest: field '"} + key + "' is out of range"));
     }
     return integer;
 }
@@ -95,26 +95,26 @@ bool isLowerHex64(const std::string& text) {
 
 core::Outcome<ArtifactInfo> parseArtifact(const QJsonValue& value) {
     if (!value.isObject()) {
-        return fail(Error::invalidArgument("manifest: artifact is not an object"));
+        return fail(Error::invalidInput("manifest: artifact is not an object"));
     }
     const QJsonObject object = value.toObject();
     ArtifactInfo artifact;
 
     auto platform = readString(object, "platform", 16);
     if (!platform || !isToken(*platform, 16, false)) {
-        return fail(Error::invalidArgument("manifest: invalid artifact platform"));
+        return fail(Error::invalidInput("manifest: invalid artifact platform"));
     }
     auto arch = readString(object, "arch", 16);
     if (!arch || !isToken(*arch, 16, false)) {
-        return fail(Error::invalidArgument("manifest: invalid artifact arch"));
+        return fail(Error::invalidInput("manifest: invalid artifact arch"));
     }
     auto url = readString(object, "url", kMaxFieldLength);
     if (!url || !isSecureHttpsUrl(*url)) {
-        return fail(Error::invalidArgument("manifest: artifact url must be a valid https URL"));
+        return fail(Error::invalidInput("manifest: artifact url must be a valid https URL"));
     }
     auto sha256 = readString(object, "sha256", 64);
     if (!sha256 || !isLowerHex64(*sha256)) {
-        return fail(Error::invalidArgument("manifest: artifact sha256 must be 64 lowercase hex characters"));
+        return fail(Error::invalidInput("manifest: artifact sha256 must be 64 lowercase hex characters"));
     }
     auto size = readInteger(object, "size", 1, static_cast<std::int64_t>(kMaxArtifactBytes));
     if (!size) {
@@ -142,7 +142,7 @@ core::Outcome<UpdateManifest> parseManifest(std::string_view json) {
     const QJsonDocument document = QJsonDocument::fromJson(
         QByteArray::fromRawData(json.data(), static_cast<qsizetype>(json.size())), &parseError);
     if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
-        return fail(Error::invalidArgument("manifest: not a JSON object"));
+        return fail(Error::invalidInput("manifest: not a JSON object"));
     }
     const QJsonObject root = document.object();
     UpdateManifest manifest;
@@ -152,15 +152,15 @@ core::Outcome<UpdateManifest> parseManifest(std::string_view json) {
         return fail(version.error());
     }
     if (!parseSemVer(*version)) {
-        return fail(Error::invalidArgument("manifest: version is not valid semver"));
+        return fail(Error::invalidInput("manifest: version is not valid semver"));
     }
     auto channel = readString(root, "channel", 32);
     if (!channel || !isToken(*channel, 32, true)) {
-        return fail(Error::invalidArgument("manifest: invalid channel"));
+        return fail(Error::invalidInput("manifest: invalid channel"));
     }
     auto notes = readString(root, "releaseNotesUrl", kMaxFieldLength);
     if (!notes || !isSecureHttpsUrl(*notes)) {
-        return fail(Error::invalidArgument("manifest: releaseNotesUrl must be a valid https URL"));
+        return fail(Error::invalidInput("manifest: releaseNotesUrl must be a valid https URL"));
     }
     auto publishedAt = readInteger(root, "publishedAt", 1, static_cast<std::int64_t>(kMaxSafeInteger));
     if (!publishedAt) {
@@ -169,7 +169,7 @@ core::Outcome<UpdateManifest> parseManifest(std::string_view json) {
     if (root.contains(QStringLiteral("minSupportedVersion"))) {
         auto minimum = readString(root, "minSupportedVersion", 64);
         if (!minimum || !parseSemVer(*minimum)) {
-            return fail(Error::invalidArgument("manifest: minSupportedVersion is not valid semver"));
+            return fail(Error::invalidInput("manifest: minSupportedVersion is not valid semver"));
         }
         manifest.minSupportedVersion = std::move(*minimum);
     }
@@ -177,18 +177,18 @@ core::Outcome<UpdateManifest> parseManifest(std::string_view json) {
     if (root.contains(QStringLiteral("rollback"))) {
         const QJsonValue rollback = root.value(QStringLiteral("rollback"));
         if (!rollback.isBool()) {
-            return fail(Error::invalidArgument("manifest: rollback must be a boolean"));
+            return fail(Error::invalidInput("manifest: rollback must be a boolean"));
         }
         manifest.rollback = rollback.toBool();
     }
 
     const QJsonValue artifactsValue = root.value(QStringLiteral("artifacts"));
     if (!artifactsValue.isArray()) {
-        return fail(Error::invalidArgument("manifest: artifacts must be an array"));
+        return fail(Error::invalidInput("manifest: artifacts must be an array"));
     }
     const QJsonArray artifacts = artifactsValue.toArray();
     if (artifacts.isEmpty() || static_cast<std::size_t>(artifacts.size()) > kMaxManifestArtifacts) {
-        return fail(Error::invalidArgument("manifest: artifacts must have 1..32 entries"));
+        return fail(Error::invalidInput("manifest: artifacts must have 1..32 entries"));
     }
     for (const QJsonValue& entry : artifacts) {
         auto artifact = parseArtifact(entry);
@@ -196,7 +196,7 @@ core::Outcome<UpdateManifest> parseManifest(std::string_view json) {
             return fail(artifact.error());
         }
         if (findArtifact(manifest, artifact->platform, artifact->arch) != nullptr) {
-            return fail(Error::invalidArgument("manifest: duplicate platform/arch artifact"));
+            return fail(Error::invalidInput("manifest: duplicate platform/arch artifact"));
         }
         manifest.artifacts.push_back(std::move(*artifact));
     }

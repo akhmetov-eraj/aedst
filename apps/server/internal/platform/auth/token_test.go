@@ -70,7 +70,7 @@ func TestTokenService_KeyRotation(t *testing.T) {
 
 	// After rotation, the new signing key is primary but the old key is still
 	// accepted for verification, so tokens issued before rotation stay valid
-	// until they expire (see docs/decisions — zero-downtime key rotation).
+	// until they expire (zero-downtime key rotation, AEDST_JWT_PREVIOUS_SIGNING_KEY).
 	rotatedService := newTestService(t, newKey, oldKey)
 
 	if _, err := rotatedService.VerifyAccessToken(context.Background(), pair.AccessToken); err != nil {

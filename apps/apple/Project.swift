@@ -7,14 +7,14 @@ import ProjectDescription
 //
 // One project, two platform-specific app targets (`App_iOS`, `App_macOS`)
 // sharing every line of business logic through the local Swift packages under
-// Core/ and Features/, composed in App/Shared — see docs/architecture-apple.md.
+// Core/ and Features/, composed in App/Shared — see docs/content/apple/architecture.md.
 
 // Minimum OS versions: the single place these are declared for the app targets
 // (they were duplicated in project.yml and Config/*.xcconfig before). Each
 // local package's `platforms:` in its Package.swift must not exceed these.
 // Reasoning table: README.md "Minimum OS versions".
-private let iOSDeploymentTarget = "15.0"
-private let macOSDeploymentTarget = "12.0"
+private let iOSDeploymentTarget = "18.0"
+private let macOSDeploymentTarget = "15.0"
 
 private let bundleIdentifierPrefix = "com.aedst.apple"
 
@@ -52,11 +52,12 @@ private func makeAppTarget(
     )
 }
 
-private func makeScheme(named name: String) -> Scheme {
+private func makeScheme(named name: String, testAction: TestAction? = nil) -> Scheme {
     .scheme(
         name: name,
         shared: true,
         buildAction: .buildAction(targets: [.target(name)]),
+        testAction: testAction,
         runAction: .runAction(configuration: .debug),
         archiveAction: .archiveAction(configuration: .release)
     )
@@ -99,13 +100,30 @@ let project = Project(
             resources: [
                 "App/macOS/Assets.xcassets",
                 "App/macOS/PrivacyInfo.xcprivacy",
+                // Localized Info.plist strings; the .lproj folders also declare the app's languages to macOS.
+                "App/macOS/Resources/**",
             ],
             entitlements: .file(path: "App/macOS/AEDST.entitlements"),
             additionalSettings: ["COMBINE_HIDPI_IMAGES": "YES"]
         ),
+        // XCUITest (XCTest — Swift Testing cannot drive XCUIApplication). Launches App_iOS
+        // with `-aedst-ui-testing` (DEBUG-only hermetic mode, see AppLaunchMode) and runs
+        // the accessibility audit.
+        .target(
+            name: "App_iOS_UITests",
+            destinations: [.iPhone, .iPad],
+            product: .uiTests,
+            bundleId: "\(bundleIdentifierPrefix).ios.uitests",
+            deploymentTargets: .iOS(iOSDeploymentTarget),
+            infoPlist: .default,
+            sources: ["App/UITests/**"],
+            dependencies: [
+                .target(name: "App_iOS"),
+            ]
+        ),
     ],
     schemes: [
-        makeScheme(named: "App_iOS"),
+        makeScheme(named: "App_iOS", testAction: .targets(["App_iOS_UITests"])),
         makeScheme(named: "App_macOS"),
     ]
 )

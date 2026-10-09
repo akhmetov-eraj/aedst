@@ -90,6 +90,7 @@ TEST(MethodTableTest, EveryEntryMatchesTheGeneratedDescriptors) {
     expectMatchesDescriptor(kAdminDeleteTask);
     expectMatchesDescriptor(kAdminBroadcastNotification);
     expectMatchesDescriptor(kAdminListAuditLog);
+    expectMatchesDescriptor(kCapabilitiesGetCapabilities);
 }
 
 /// Protos whose services the desktop client never calls: device attestation exists for iOS (App Attest) and
@@ -157,7 +158,10 @@ TEST(MethodTableTest, PublicProceduresMatchTheServersPublicEdge) {
     EXPECT_EQ(kAuthLogout.info.auth, AuthRequirement::Public);
     EXPECT_EQ(kAuthGetCurrentUser.info.auth, AuthRequirement::Required);
     EXPECT_EQ(kTasksCreateTask.info.auth, AuthRequirement::Required);
-    // Only the four auth RPCs are public; everything added since needs a bearer token.
+    // Capability negotiation runs before sign-in: no token, and a read-only call that is safe to retry.
+    EXPECT_EQ(kCapabilitiesGetCapabilities.info.auth, AuthRequirement::Public);
+    EXPECT_EQ(kCapabilitiesGetCapabilities.info.idempotency, network::Idempotency::Idempotent);
+    // Only the four auth RPCs and capability negotiation are public; everything else needs a bearer token.
     EXPECT_EQ(kSearchSearch.info.auth, AuthRequirement::Required);
     EXPECT_EQ(kMediaCreateUpload.info.auth, AuthRequirement::Required);
     EXPECT_EQ(kNotificationsGetUnreadCount.info.auth, AuthRequirement::Required);

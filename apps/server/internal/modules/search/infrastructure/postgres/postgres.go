@@ -5,7 +5,6 @@ package postgres
 import (
 	"context"
 	"math"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -17,6 +16,7 @@ import (
 	"github.com/aedst/server/internal/modules/search/domain"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
+	"github.com/aedst/server/internal/shared/like"
 )
 
 // headlineOptions makes ts_headline wrap matches in the private-use markers
@@ -74,11 +74,9 @@ func (r *Repository) CountMatches(ctx context.Context, p application.SearchParam
 	return int(n), nil
 }
 
-var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
-
 func (r *Repository) Suggest(ctx context.Context, ownerID ids.ID, prefix string, limit int) ([]string, error) {
 	out, err := searchdb.New(r.pool).SuggestTitles(ctx, searchdb.SuggestTitlesParams{
-		PrefixPattern: likeEscaper.Replace(prefix) + "%",
+		PrefixPattern: like.Escape(prefix) + "%",
 		Prefix:        prefix,
 		OwnerID:       toPgUUID(ownerID),
 		RowLimit:      int32(limit),
@@ -89,7 +87,7 @@ func (r *Repository) Suggest(ctx context.Context, ownerID ids.ID, prefix string,
 	return out, nil
 }
 
-// Upsert stores d inside tx (the consumer's inbox transaction) if it is newer
+// Upsert stores d inside tx (the consumer's delivery transaction) if it is newer
 // than what is stored.
 func (r *Repository) Upsert(ctx context.Context, tx pgx.Tx, d domain.Document) error {
 	_, err := searchdb.New(tx).UpsertDocument(ctx, searchdb.UpsertDocumentParams{
@@ -124,7 +122,7 @@ func (r *Repository) Tombstone(ctx context.Context, tx pgx.Tx, kind domain.Kind,
 }
 
 // PurgeTombstones deletes up to limit tombstones older than cutoff. The
-// cutoff must exceed the outbox redelivery window, or a late old snapshot
+// cutoff must exceed the event redelivery window (River's retry backoff), or a late old snapshot
 // could resurrect a deleted document (retention is configured accordingly).
 func (r *Repository) PurgeTombstones(ctx context.Context, cutoff time.Time, limit int) (int64, error) {
 	n, err := searchdb.New(r.pool).PurgeTombstones(ctx, searchdb.PurgeTombstonesParams{

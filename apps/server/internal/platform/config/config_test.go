@@ -3,6 +3,7 @@ package config_test
 import (
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/aedst/server/internal/platform/config"
 )
@@ -11,9 +12,10 @@ func validConfig() config.Config {
 	return config.Config{
 		Env:       config.EnvDevelopment,
 		HTTP:      config.HTTPConfig{RequestTimeout: 30, MaxRequestBytes: 1 << 20, AllowedOrigins: []string{"http://localhost:3000"}},
-		DB:        config.DatabaseConfig{DSN: "postgres://x", MaxConns: 20, MinConns: 2, JobsMaxConns: 10},
-		Outbox:    config.OutboxConfig{RelayIntervalMs: 500, BatchSize: 100, Concurrency: 4, RetentionHours: 168},
-		Retention: config.RetentionConfig{IntervalMinutes: 60, IdempotencyHours: 48, InboxHours: 336, SessionHours: 720},
+		DB:        config.DatabaseConfig{DSN: "postgres://x?sslmode=verify-full", MaxConns: 20, MinConns: 2, JobsMaxConns: 10},
+		Valkey:    config.ValkeyConfig{TLS: true},
+		Jobs:      config.JobsConfig{CompletedRetentionHours: 24, CancelledRetentionHours: 24, DiscardedRetentionHours: 168},
+		Retention: config.RetentionConfig{IntervalMinutes: 60, IdempotencyHours: 48, TombstoneHours: 336, SessionHours: 720, NotificationDays: 90, AuditDays: 365},
 		Auth: config.AuthConfig{
 			FirstPartyEnabled:     true,
 			JWTSigningKey:         strings.Repeat("k", 40),
@@ -35,11 +37,22 @@ func TestConfig_Validate(t *testing.T) {
 		{"dev key in production", func(c *config.Config) { c.Env = config.EnvProduction; c.Auth.JWTSigningKey = config.DevSigningKey }, "development placeholder"},
 		{"wildcard cors in production", func(c *config.Config) { c.Env = config.EnvProduction; c.HTTP.AllowedOrigins = []string{"*"} }, "CORS"},
 		{"min conns above max", func(c *config.Config) { c.DB.MinConns = 50 }, "MIN_CONNS"},
-		{"jobs pool of one would deadlock the relay", func(c *config.Config) { c.DB.JobsMaxConns = 1 }, "JOBS_MAX_CONNS"},
-		{"outbox batch must be positive", func(c *config.Config) { c.Outbox.BatchSize = 0 }, "AEDST_OUTBOX"},
-		{"outbox concurrency must be positive", func(c *config.Config) { c.Outbox.Concurrency = 0 }, "AEDST_OUTBOX"},
+		{"jobs pool of one would stall event delivery", func(c *config.Config) { c.DB.JobsMaxConns = 1 }, "JOBS_MAX_CONNS"},
+		{"pooler none needs nothing else", func(c *config.Config) { c.DB.Pooler = config.PoolerNone }, ""},
+		{"pooler unset behaves as none", func(c *config.Config) { c.DB.Pooler = "" }, ""},
+		{"unknown pooler", func(c *config.Config) { c.DB.Pooler = "pgcat" }, "AEDST_DATABASE_POOLER"},
+		{"pgbouncer without direct dsn or poll-only", func(c *config.Config) { c.DB.Pooler = config.PoolerPgBouncer }, "AEDST_DATABASE_DIRECT_DSN"},
+		{"pgbouncer with direct dsn", func(c *config.Config) {
+			c.DB.Pooler = config.PoolerPgBouncer
+			c.DB.DirectDSN = "postgres://direct"
+		}, ""},
+		{"pgbouncer with river poll-only", func(c *config.Config) {
+			c.DB.Pooler = config.PoolerPgBouncer
+			c.Jobs.PollOnly = true
+		}, ""},
+		{"completed job retention must be positive", func(c *config.Config) { c.Jobs.CompletedRetentionHours = 0 }, "AEDST_JOBS_COMPLETED_RETENTION_HOURS"},
+		{"discarded job retention must be positive", func(c *config.Config) { c.Jobs.DiscardedRetentionHours = 0 }, "AEDST_JOBS_DISCARDED_RETENTION_HOURS"},
 		{"retention values must be positive", func(c *config.Config) { c.Retention.SessionHours = 0 }, "AEDST_RETENTION"},
-		{"inbox must outlive the outbox", func(c *config.Config) { c.Retention.InboxHours = 24 }, "INBOX_HOURS"},
 		{"negative api rate limit", func(c *config.Config) { c.HTTP.APIRateLimitPerMinute = -1 }, "AEDST_API_RATE_LIMIT"},
 		{"valid min client versions", func(c *config.Config) {
 			c.Client.MinVersions = map[string]string{"android": "1.2.0", "web": "2.0.0-rc.1"}
@@ -47,6 +60,28 @@ func TestConfig_Validate(t *testing.T) {
 		{"unknown client platform", func(c *config.Config) { c.Client.MinVersions = map[string]string{"toaster": "1.0.0"} }, "unknown platform"},
 		{"malformed client version", func(c *config.Config) { c.Client.MinVersions = map[string]string{"android": "latest"} }, "semantic version"},
 		{"no auth at all", func(c *config.Config) { c.Auth.FirstPartyEnabled = false }, "no authentication"},
+		{"first party in production needs a sunset", func(c *config.Config) {
+			c.Env = config.EnvProduction
+			c.Auth.JWTSigningKey = strings.Repeat("z", 40)
+		}, "FIRST_PARTY_SUNSET"},
+		{"first party in production with future sunset", func(c *config.Config) {
+			c.Env = config.EnvProduction
+			c.Auth.JWTSigningKey = strings.Repeat("z", 40)
+			c.Auth.FirstPartySunset = "2999-01-01"
+		}, ""},
+		{"first party in production with passed sunset refuses to start", func(c *config.Config) {
+			c.Env = config.EnvProduction
+			c.Auth.JWTSigningKey = strings.Repeat("z", 40)
+			c.Auth.FirstPartySunset = "2020-01-01T00:00:00Z"
+		}, "has passed"},
+		{"first party in development needs no sunset", func(*config.Config) {}, ""},
+		{"first party in development with passed sunset still validates", func(c *config.Config) { c.Auth.FirstPartySunset = "2020-01-01" }, ""},
+		{"malformed sunset", func(c *config.Config) { c.Auth.FirstPartySunset = "next spring" }, "RFC 3339"},
+		{"sunset ignored when first party is off", func(c *config.Config) {
+			c.Env = config.EnvProduction
+			c.Auth.FirstPartyEnabled = false
+			c.OIDC = config.OIDCConfig{Issuer: "https://idp.example", Audience: "api", Algorithms: []string{"RS256"}}
+		}, ""},
 		{"oidc without audience", func(c *config.Config) { c.OIDC.Issuer = "https://idp.example" }, "AUDIENCE"},
 		{"oidc http in production", func(c *config.Config) {
 			c.Env = config.EnvProduction
@@ -78,9 +113,10 @@ func TestConfig_Validate(t *testing.T) {
 
 // AEDST_MIN_CLIENT_VERSIONS is a comma-separated platform=version list; this
 // pins the wire format the Helm chart and .env.example document.
-func TestLoad_ParsesMinClientVersionsAndOutboxDefaults(t *testing.T) {
+func TestLoad_ParsesMinClientVersionsAndJobRetentionDefaults(t *testing.T) {
 	t.Setenv("AEDST_DATABASE_URL", "postgres://x")
 	t.Setenv("AEDST_JWT_SIGNING_KEY", strings.Repeat("k", 40))
+	t.Setenv("AEDST_AUTH_FIRST_PARTY_ENABLED", "true")
 	t.Setenv("AEDST_MIN_CLIENT_VERSIONS", "web=1.0.0, android=1.2.0")
 
 	cfg, err := config.Load()
@@ -90,17 +126,40 @@ func TestLoad_ParsesMinClientVersionsAndOutboxDefaults(t *testing.T) {
 	if got := cfg.Client.MinVersions; len(got) != 2 || got["web"] != "1.0.0" || got["android"] != "1.2.0" {
 		t.Errorf("MinVersions = %v, want web=1.0.0 android=1.2.0", got)
 	}
-	if o := cfg.Outbox; o.RelayIntervalMs != 500 || o.BatchSize != 100 || o.Concurrency != 4 || o.RetentionHours != 168 {
-		t.Errorf("Outbox defaults = %+v", o)
+	if j := cfg.Jobs; j.CompletedRetentionHours != 24 || j.CancelledRetentionHours != 24 || j.DiscardedRetentionHours != 168 {
+		t.Errorf("Jobs retention defaults = %+v", j)
 	}
-	if cfg.DB.JobsMaxConns != 10 || cfg.DB.DirectDSN != "" {
-		t.Errorf("DB jobs defaults = %d / %q, want 10 / empty", cfg.DB.JobsMaxConns, cfg.DB.DirectDSN)
+	if cfg.DB.JobsMaxConns != 30 || cfg.DB.DirectDSN != "" {
+		t.Errorf("DB jobs defaults = %d / %q, want 30 / empty", cfg.DB.JobsMaxConns, cfg.DB.DirectDSN)
+	}
+}
+
+func TestLoad_PoolerDefaultsAndEnv(t *testing.T) {
+	t.Setenv("AEDST_DATABASE_URL", "postgres://x")
+	t.Setenv("AEDST_JWT_SIGNING_KEY", strings.Repeat("k", 40))
+	t.Setenv("AEDST_AUTH_FIRST_PARTY_ENABLED", "true")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.DB.Pooler != config.PoolerNone || cfg.Jobs.PollOnly {
+		t.Errorf("defaults = pooler %q poll-only %v, want none/false", cfg.DB.Pooler, cfg.Jobs.PollOnly)
+	}
+
+	t.Setenv("AEDST_DATABASE_POOLER", "pgbouncer")
+	if _, err := config.Load(); err == nil || !strings.Contains(err.Error(), "AEDST_DATABASE_DIRECT_DSN") {
+		t.Fatalf("Load() with pgbouncer only = %v, want direct-dsn/poll-only error", err)
+	}
+	t.Setenv("AEDST_JOBS_POLL_ONLY", "true")
+	if cfg, err = config.Load(); err != nil || !cfg.Jobs.PollOnly {
+		t.Fatalf("Load() with poll-only = %+v, %v; want ok", cfg.Jobs, err)
 	}
 }
 
 func TestLoad_EmptyMinClientVersionsDisablesTheGate(t *testing.T) {
 	t.Setenv("AEDST_DATABASE_URL", "postgres://x")
 	t.Setenv("AEDST_JWT_SIGNING_KEY", strings.Repeat("k", 40))
+	t.Setenv("AEDST_AUTH_FIRST_PARTY_ENABLED", "true")
 	cfg, err := config.Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -124,7 +183,32 @@ func TestConfig_ValidateFeatures(t *testing.T) {
 		{"bad storage provider", func(c *config.Config) {
 			c.Storage = config.StorageConfig{Bucket: "b", Provider: "gcs", UploadURLTTLSeconds: 1, DownloadURLTTLSeconds: 1}
 		}, "AEDST_STORAGE_PROVIDER"},
+		{"integrity enabled without packages", func(c *config.Config) {
+			c.Integrity = config.IntegrityConfig{Enabled: true, MaxTokenAgeSeconds: 300, TimeoutSeconds: 10, MinDeviceLevel: "device"}
+		}, "AEDST_INTEGRITY_ALLOWED_PACKAGES"},
+		{"integrity bad device level", func(c *config.Config) {
+			c.Integrity = config.IntegrityConfig{Enabled: true, AllowedPackages: []string{"a.b"}, MaxTokenAgeSeconds: 300, TimeoutSeconds: 10, MinDeviceLevel: "paranoid"}
+		}, "AEDST_INTEGRITY_MIN_DEVICE_LEVEL"},
+		{"integrity disabled needs nothing", func(c *config.Config) { c.Integrity = config.IntegrityConfig{MinDeviceLevel: "bogus"} }, ""},
+		{"valid integrity", func(c *config.Config) {
+			c.Integrity = config.IntegrityConfig{Enabled: true, AllowedPackages: []string{"a.b"}, MaxTokenAgeSeconds: 300, TimeoutSeconds: 10, MinDeviceLevel: "strong"}
+		}, ""},
 		{"vapid without subject", func(c *config.Config) { c.Push.VAPIDPrivateKey = "k" }, "AEDST_PUSH_VAPID_SUBJECT"},
+		{"imgproxy without bucket", func(c *config.Config) {
+			c.Imgproxy = config.ImgproxyConfig{Enabled: true, URL: "https://img.example.com", Key: "00ff", Salt: "00ff"}
+		}, "AEDST_IMGPROXY_ENABLED requires AEDST_STORAGE_BUCKET"},
+		{"imgproxy bad key", func(c *config.Config) {
+			c.Storage = config.StorageConfig{Bucket: "b", Provider: "minio", UploadURLTTLSeconds: 1, DownloadURLTTLSeconds: 1}
+			c.Imgproxy = config.ImgproxyConfig{Enabled: true, URL: "https://img.example.com", Key: "nothex", Salt: "00ff"}
+		}, "AEDST_IMGPROXY_KEY"},
+		{"imgproxy relative url", func(c *config.Config) {
+			c.Storage = config.StorageConfig{Bucket: "b", Provider: "minio", UploadURLTTLSeconds: 1, DownloadURLTTLSeconds: 1}
+			c.Imgproxy = config.ImgproxyConfig{Enabled: true, URL: "img.example.com", Key: "00ff", Salt: "00ff"}
+		}, "AEDST_IMGPROXY_URL"},
+		{"valid imgproxy", func(c *config.Config) {
+			c.Storage = config.StorageConfig{Bucket: "b", Provider: "minio", UploadURLTTLSeconds: 1, DownloadURLTTLSeconds: 1}
+			c.Imgproxy = config.ImgproxyConfig{Enabled: true, URL: "https://img.example.com", Key: "00ff", Salt: "00ff", URLTTLSeconds: 3600}
+		}, ""},
 		{"valid queues and storage", func(c *config.Config) {
 			c.Jobs.Queues = map[string]int{"default": 10, "media": 2}
 			c.Storage = config.StorageConfig{Bucket: "b", Provider: "minio", UploadURLTTLSeconds: 1, DownloadURLTTLSeconds: 1}
@@ -145,5 +229,50 @@ func TestConfig_ValidateFeatures(t *testing.T) {
 				t.Fatalf("Validate() = %v, want error containing %q", err, tt.wantErr)
 			}
 		})
+	}
+}
+
+func TestAuthConfig_SunsetStatus(t *testing.T) {
+	now := time.Date(2027, 3, 1, 12, 0, 0, 0, time.UTC)
+	a := config.AuthConfig{FirstPartySunset: "2027-03-31"}
+	days, expired, ok := a.SunsetStatus(now)
+	if !ok || expired || days != 30 {
+		t.Errorf("SunsetStatus = %d, %v, %v; want 30 days, not expired", days, expired, ok)
+	}
+	if _, expired, _ := a.SunsetStatus(now.AddDate(0, 2, 0)); !expired {
+		t.Error("a date in the past must be expired")
+	}
+	if _, _, ok := (config.AuthConfig{}).SunsetStatus(now); ok {
+		t.Error("unset sunset must report ok=false")
+	}
+}
+
+func TestLoad_FirstPartyIsOffByDefault(t *testing.T) {
+	t.Setenv("AEDST_DATABASE_URL", "postgres://x")
+	t.Setenv("AEDST_OIDC_ISSUER", "http://localhost:8085")
+	t.Setenv("AEDST_OIDC_AUDIENCE", "1")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load() = %v", err)
+	}
+	if cfg.Auth.FirstPartyEnabled {
+		t.Error("first-party auth must default to disabled")
+	}
+	if cfg.OIDC.RolesOrg != "" {
+		t.Error("AEDST_OIDC_ROLES_ORG must default to empty (any organisation)")
+	}
+}
+
+func TestLoad_OIDCRolesOrg(t *testing.T) {
+	t.Setenv("AEDST_DATABASE_URL", "postgres://x")
+	t.Setenv("AEDST_OIDC_ISSUER", "http://localhost:8085")
+	t.Setenv("AEDST_OIDC_AUDIENCE", "1")
+	t.Setenv("AEDST_OIDC_ROLES_ORG", "312345678901230000")
+	cfg, err := config.Load()
+	if err != nil {
+		t.Fatalf("Load() = %v", err)
+	}
+	if cfg.OIDC.RolesOrg != "312345678901230000" {
+		t.Errorf("RolesOrg = %q", cfg.OIDC.RolesOrg)
 	}
 }

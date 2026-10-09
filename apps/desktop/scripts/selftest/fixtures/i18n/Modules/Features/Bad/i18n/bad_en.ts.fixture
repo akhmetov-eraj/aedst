@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="en">
+<context>
+    <name>Bad</name>
+    <message>
+        <source>%n item(s)</source>
+        <translation>%n items (not numerus on purpose)</translation>
+    </message>
+    <message>
+        <source>Total: %1 of %2</source>
+        <translation>Total: %1 of %2</translation>
+    </message>
+</context>
+</TS>

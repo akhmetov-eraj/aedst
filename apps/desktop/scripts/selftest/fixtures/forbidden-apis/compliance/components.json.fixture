@@ -1,0 +1,6 @@
+{
+  "components": [
+    { "name": "qtkeychain", "version": "0.17.0" },
+    { "name": "velopack", "version": "1.2.161" }
+  ]
+}

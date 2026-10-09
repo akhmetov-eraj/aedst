@@ -1,6 +1,7 @@
 #pragma once
 
 #include "aedst/analytics/analytics_tracker.hpp"
+#include "aedst/qmlsupport/singleton_slot.hpp"
 
 #include <QByteArray>
 #include <QDateTime>
@@ -13,6 +14,7 @@
 #include <QTimer>
 #include <QUrl>
 #include <QVariant>
+#include <QtQml/qqmlregistration.h>
 
 #include <map>
 #include <string>
@@ -77,9 +79,14 @@ struct PostHogEvent {
 /// disk, so events captured right before a crash are lost by design.
 class PostHogAnalyticsTracker final : public QObject, public analytics::AnalyticsTracker {
     Q_OBJECT
+    QML_NAMED_ELEMENT(FeatureFlags)
+    QML_SINGLETON
     Q_PROPERTY(bool enabled READ isEnabled NOTIFY enabledChanged)
 
 public:
+    static PostHogAnalyticsTracker* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<PostHogAnalyticsTracker>::create(engine, script);
+    }
     explicit PostHogAnalyticsTracker(PostHogConfig config, QObject* parent = nullptr);
     PostHogAnalyticsTracker(const PostHogAnalyticsTracker&) = delete;
     PostHogAnalyticsTracker& operator=(const PostHogAnalyticsTracker&) = delete;
@@ -107,6 +114,8 @@ public:
     Q_INVOKABLE void reloadFeatureFlags();
 
     [[nodiscard]] int queuedEventCount() const noexcept { return static_cast<int>(queue_.size()); }
+    /// Whether the batch timer is running (it runs only while events are waiting). Diagnostics and tests.
+    [[nodiscard]] bool flushTimerActive() const noexcept { return flushTimer_.isActive(); }
 
 signals:
     void enabledChanged();
@@ -116,6 +125,8 @@ private:
     [[nodiscard]] QString distinctId() const;
     [[nodiscard]] QJsonObject baseProperties() const;
     void enqueue(PostHogEvent event);
+    /// Starts the flush timer when events are waiting and none is running.
+    void armFlushTimer();
     [[nodiscard]] QUrl endpoint(const QString& path) const;
 
     PostHogConfig config_;

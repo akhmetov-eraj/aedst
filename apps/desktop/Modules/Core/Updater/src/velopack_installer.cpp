@@ -68,14 +68,14 @@ core::Outcome<std::optional<InstallerCandidate>> VelopackInstaller::checkFeed(co
             .fileName = asset.FileName,
         }};
     } catch (const std::exception& e) {
-        return core::fail(core::Error::network(std::string("update feed: ") + e.what()));
+        return core::fail(core::Error::unavailable(std::string("update feed: ") + e.what()));
     }
 }
 
 core::Outcome<std::filesystem::path> VelopackInstaller::download(const InstallerCandidate& /*candidate*/,
                                                                  const std::function<void(int)>& progress) {
     if (!impl_->lastInfo) {
-        return core::fail(core::Error::invalidArgument("update: download requested before a feed check"));
+        return core::fail(core::Error::invalidInput("update: download requested before a feed check"));
     }
     try {
         auto manager = makeManager(feedUrl_, impl_->channel, impl_->allowDowngrade);
@@ -89,13 +89,13 @@ core::Outcome<std::filesystem::path> VelopackInstaller::download(const Installer
         // the independent re-hash is skipped (empty path) rather than guessed.
         return std::filesystem::path{};
     } catch (const std::exception& e) {
-        return core::fail(core::Error::network(std::string("update download: ") + e.what()));
+        return core::fail(core::Error::unavailable(std::string("update download: ") + e.what()));
     }
 }
 
 core::VoidOutcome VelopackInstaller::applyAfterExit(const InstallerCandidate& /*candidate*/, bool restart) {
     if (!impl_->lastInfo) {
-        return core::fail(core::Error::invalidArgument("update: nothing was downloaded"));
+        return core::fail(core::Error::invalidInput("update: nothing was downloaded"));
     }
     try {
         auto manager = makeManager(feedUrl_, impl_->channel, impl_->allowDowngrade);

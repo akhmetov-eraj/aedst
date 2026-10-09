@@ -30,7 +30,8 @@
     "priorityFilterLabel": "Filter by priority",
     "sortLabel": "Sort tasks",
     "paginationLabel": "Pagination",
-    "resultsLabel": "Tasks"
+    "resultsLabel": "Tasks",
+    "resultCount": "{count, plural, one {# task} other {# tasks}}"
   },
   "status": {
     "todo": "Todo",
@@ -78,10 +79,18 @@
     "deleteCancelAction": "Cancel",
     "notFoundTitle": "Task not found",
     "notFoundDescription": "It may have been deleted, or it belongs to someone else.",
-    "loadErrorTitle": "Couldn't load this task"
+    "loadErrorTitle": "Couldn't load this task",
+    "pageTitle": "Task"
   },
   "a11y": {
     "priority": "Priority",
     "status": "Status"
+  },
+  "sync": {
+    "pendingBadge": "Pending sync",
+    "failedBadge": "Not synced",
+    "discard": "Discard",
+    "queuedTitle": "Waiting to sync",
+    "queuedHint": "Saved on this device. Sent automatically."
   }
 }

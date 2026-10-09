@@ -45,13 +45,13 @@ std::optional<core::Error> CreateTaskUseCase::normalizeAndValidate(NewTask& task
     task.title = trimmed(task.title);
     task.description = trimmed(task.description);
     if (task.title.empty()) {
-        return core::Error::invalidArgument("Title is required");
+        return core::Error::invalidInput("Title is required");
     }
     if (codePoints(task.title) > kMaxTitleChars) {
-        return core::Error::invalidArgument("Title must be at most 200 characters");
+        return core::Error::invalidInput("Title must be at most 200 characters");
     }
     if (codePoints(task.description) > kMaxDescriptionChars) {
-        return core::Error::invalidArgument("Description must be at most 4000 characters");
+        return core::Error::invalidInput("Description must be at most 4000 characters");
     }
     if (task.priority == TaskPriority::Unspecified) {
         task.priority = TaskPriority::Medium;

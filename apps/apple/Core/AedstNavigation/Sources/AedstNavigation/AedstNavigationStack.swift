@@ -1,12 +1,9 @@
-import FlowStacks
-import Perception
 import SwiftUI
 
-/// The app's one navigation container: a `NavigationStack` on iOS 16 / macOS 13+
-/// and a `NavigationView`-based stack below (via FlowStacks), driven by `Router`.
+/// The app's one navigation container: a native `NavigationStack` driven by `Router`.
 /// Attach each feature's destinations to `root` with `.aedstDestination(for:)`.
 public struct AedstNavigationStack<Root: View>: View {
-    @Perception.Bindable private var router: Router
+    @Bindable private var router: Router
     private let root: Root
 
     /// Creates the stack for `router`; `root` is the first screen.
@@ -16,22 +13,20 @@ public struct AedstNavigationStack<Root: View>: View {
     }
 
     public var body: some View {
-        WithPerceptionTracking {
-            FlowStack($router.path, withNavigation: true) {
-                root
-            }
+        NavigationStack(path: $router.path) {
+            root
         }
     }
 }
 
 extension View {
-    /// Maps a feature's route type to its destination view — the back-ported
-    /// counterpart of `navigationDestination(for:destination:)`. Features call
-    /// this instead of importing FlowStacks.
+    /// Maps a feature's route type to its destination view, i.e.
+    /// `navigationDestination(for:destination:)`. Features call this so route
+    /// registration stays behind the navigation package's API.
     public func aedstDestination<Route: AedstRoute>(
         for routeType: Route.Type,
         @ViewBuilder destination: @escaping (Route) -> some View
     ) -> some View {
-        flowDestination(for: routeType, destination: destination)
+        navigationDestination(for: routeType, destination: destination)
     }
 }

@@ -8,7 +8,7 @@ import {
 } from "@bufbuild/protobuf";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { AdminService } from "@/shared/api/connect/generated/aedst/admin/v1/admin_pb";
-import { AuthService } from "@/shared/api/connect/generated/aedst/auth/v1/auth_pb";
+import { CapabilitiesService } from "@/shared/api/connect/generated/aedst/capabilities/v1/capabilities_pb";
 import { MediaService } from "@/shared/api/connect/generated/aedst/media/v1/media_pb";
 import { NotificationsService } from "@/shared/api/connect/generated/aedst/notifications/v1/notifications_pb";
 import { SearchService } from "@/shared/api/connect/generated/aedst/search/v1/search_pb";
@@ -42,12 +42,12 @@ type Handler = (
 type MockServices = Record<string, Record<string, Handler>>;
 
 const SERVICES: DescService[] = [
-  AuthService,
   TasksService,
   SearchService,
   NotificationsService,
   MediaService,
   AdminService,
+  CapabilitiesService,
 ];
 
 const CONNECT_CODES = new Set([
@@ -132,35 +132,14 @@ describe("mock API responses parse strictly as the declared messages", () => {
     )({ email, roles: ["user", "admin"], tasks: 3, notifications: 2 });
     ownerId = seeded.userId;
     req = { headers: {} };
-    const login = call(AuthService, "Login", {
-      email,
-      password: seeded.password,
-      deviceId: "contract-device",
-    }) as unknown as { tokens?: { accessToken: string } };
-    req = {
-      headers: { authorization: `Bearer ${login.tokens?.accessToken}` },
-    };
+    const { accessToken } = (
+      control["/__test/token"] as (b: object) => { accessToken: string }
+    )({ email });
+    req = { headers: { authorization: `Bearer ${accessToken}` } };
   });
 
   afterAll(() => {
     (control["/__test/revoke-session"] as (b: object) => void)({ email });
-  });
-
-  it("AuthService", () => {
-    expect(call(AuthService, "GetCurrentUser")).toBeTruthy();
-    const registered = call(AuthService, "Register", {
-      email: `contract-new-${Date.now()}@example.com`,
-      password: "password123",
-      deviceId: "d",
-    }) as unknown as { tokens?: { refreshToken: string } };
-    const refreshed = call(AuthService, "RefreshToken", {
-      refreshToken: registered.tokens?.refreshToken,
-    }) as unknown as { tokens?: { refreshToken: string } };
-    expect(
-      call(AuthService, "Logout", {
-        refreshToken: refreshed.tokens?.refreshToken,
-      }),
-    ).toBeTruthy();
   });
 
   it("TasksService", () => {
@@ -235,6 +214,10 @@ describe("mock API responses parse strictly as the declared messages", () => {
     call(MediaService, "GetMedia", { id: mediaId });
     call(MediaService, "ListMedia", { taskId, kinds: ["MEDIA_KIND_IMAGE"] });
     call(MediaService, "DeleteMedia", { id: mediaId });
+  });
+
+  it("CapabilitiesService", () => {
+    call(CapabilitiesService, "GetCapabilities");
   });
 
   it("AdminService", () => {

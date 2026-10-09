@@ -52,6 +52,41 @@ TEST(EndStreamTest, EmbeddedErrorIsSurfaced) {
     EXPECT_EQ(result.error().message, "shutting down");
 }
 
+TEST(ConnectErrorTest, ReadsTheErrorInfoReasonFromTheDebugObject) {
+    const QByteArray body =
+        R"({"code":"failed_precondition","message":"update","details":[{"type":"google.rpc.ErrorInfo",)"
+        R"("value":"CgFh","debug":{"reason":"CLIENT_UPGRADE_REQUIRED","domain":"aedst"}}]})";
+
+    const ApiError error = errorFromUnaryResponse(400, body, "");
+
+    EXPECT_EQ(error.reason, "CLIENT_UPGRADE_REQUIRED");
+    EXPECT_TRUE(error.isUpgradeRequired());
+    EXPECT_EQ(error.toCoreError().code, core::ErrorCode::UpgradeRequired);
+}
+
+TEST(ConnectErrorTest, ReadsTheKnownReasonFromTheProtoBytesWhenThereIsNoDebugObject) {
+    // google.rpc.ErrorInfo{reason: "CLIENT_UPGRADE_REQUIRED", domain: "aedst"}, unpadded base64.
+    const QByteArray proto = QByteArray("\x0a\x17", 2) + "CLIENT_UPGRADE_REQUIRED" + QByteArray("\x12\x05", 2) + "aedst";
+    const QByteArray value = proto.toBase64(QByteArray::Base64Encoding | QByteArray::OmitTrailingEquals);
+    const QByteArray body = R"({"code":"failed_precondition","message":"update","details":[{"type":"google.rpc.ErrorInfo","value":")" +
+                            value + R"("}]})";
+
+    EXPECT_TRUE(errorFromUnaryResponse(400, body, "").isUpgradeRequired());
+}
+
+TEST(ConnectErrorTest, OtherReasonsAndOtherCodesAreNotAnUpgradeRequest) {
+    const QByteArray otherReason =
+        R"({"code":"failed_precondition","message":"m","details":[{"type":"google.rpc.ErrorInfo","value":"CgFh","debug":{"reason":"TASK_DONE"}}]})";
+    const QByteArray otherCode =
+        R"({"code":"invalid_argument","message":"m","details":[{"type":"google.rpc.ErrorInfo","value":"CgFh","debug":{"reason":"CLIENT_UPGRADE_REQUIRED"}}]})";
+    const QByteArray noDetails = R"({"code":"failed_precondition","message":"m"})";
+
+    EXPECT_FALSE(errorFromUnaryResponse(400, otherReason, "").isUpgradeRequired());
+    EXPECT_FALSE(errorFromUnaryResponse(400, otherCode, "").isUpgradeRequired());
+    EXPECT_FALSE(errorFromUnaryResponse(400, noDetails, "").isUpgradeRequired());
+    EXPECT_EQ(errorFromUnaryResponse(400, noDetails, "").toCoreError().code, core::ErrorCode::InvalidInput);
+}
+
 TEST(EndStreamTest, GarbageIsADecodingError) {
     const auto result = parseEndStream("not json");
 

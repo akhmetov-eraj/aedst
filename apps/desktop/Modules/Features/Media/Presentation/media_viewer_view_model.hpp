@@ -1,11 +1,14 @@
 #pragma once
 
+#include "aedst/qmlsupport/singleton_slot.hpp"
+
 #include <aedst/media/v1/media.pb.h>
 
 #include <QObject>
 #include <QString>
 #include <QTimer>
 #include <QUrl>
+#include <QtQml/qqmlregistration.h>
 
 #include <memory>
 #include <optional>
@@ -26,6 +29,8 @@ namespace aedst::feature::media {
 /// still processing; `refresh()` re-signs URLs after a long pause.
 class MediaViewerViewModel final : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
     Q_PROPERTY(QString mediaId READ mediaId NOTIFY mediaChanged)
     Q_PROPERTY(bool hasMedia READ hasMedia NOTIFY mediaChanged)
     Q_PROPERTY(QString kind READ kind NOTIFY mediaChanged)
@@ -40,6 +45,9 @@ class MediaViewerViewModel final : public QObject {
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
 
 public:
+    static MediaViewerViewModel* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<MediaViewerViewModel>::create(engine, script);
+    }
     MediaViewerViewModel(std::shared_ptr<aedst::media::MediaRemoteDataSource> remote,
                          std::shared_ptr<core::ErrorSink> errors, QObject* parent = nullptr);
 

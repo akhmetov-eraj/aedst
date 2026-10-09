@@ -1,4 +1,4 @@
-// Package httpserver builds the chi router and the small, deliberately short
+// Package httpserver builds the net/http ServeMux router and the small, deliberately short
 // middleware stack every request goes through (CORS, request ID, logging,
 // panic recovery, timeout) plus the ConnectRPC interceptors (auth, rate
 // limiting). Tracing and HTTP metrics come from OpenTelemetry
@@ -8,6 +8,7 @@
 package httpserver
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"regexp"
@@ -15,11 +16,10 @@ import (
 	"time"
 	"uuid"
 
-	"github.com/go-chi/chi/v5"
-	chimw "github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
+	"github.com/rs/cors"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 
+	"github.com/aedst/server/internal/platform/clientip"
 	"github.com/aedst/server/internal/platform/observability"
 )
 
@@ -34,8 +34,8 @@ type Options struct {
 	AllowedOrigins []string
 	// TrustedProxyHops is the exact number of trusted reverse proxies in front
 	// of this server; the client IP is then read from X-Forwarded-For. 0 uses
-	// the socket peer address. (chi's deprecated RealIP is deliberately not
-	// used: it is spoofable.)
+	// the socket peer address (see package clientip; spoofable headers such as
+	// X-Real-IP or the leftmost X-Forwarded-For entry are never trusted).
 	TrustedProxyHops int
 	// Readiness backs /readyz. Optional; without it /readyz always reports
 	// ready.
@@ -59,45 +59,137 @@ type Options struct {
 	StreamingProcedures map[string]bool
 }
 
-// NewRouter builds the base chi router with the standard middleware stack
-// applied.
-func NewRouter(opts Options) *chi.Mux {
-	r := chi.NewRouter()
+// Router is a net/http ServeMux wrapped in the standard middleware stack.
+// Register routes with Handle/HandleFunc using Go 1.22+ patterns
+// ("GET /livez", "/pkg.Service/"); every request, including ones the mux
+// answers with 404/405, passes through the middleware.
+type Router struct {
+	*http.ServeMux
+	handler http.Handler
+}
 
-	r.Use(corsMiddleware(opts.AllowedOrigins))
-	r.Use(securityHeaders(opts.HSTSMaxAge, opts.TrustedProxyHops > 0))
-	r.Use(requestIDMiddleware)
-	if opts.TrustedProxyHops > 0 {
-		r.Use(chimw.ClientIPFromXFFTrustedProxies(opts.TrustedProxyHops))
-	} else {
-		r.Use(chimw.ClientIPFromRemoteAddr)
+// ServeHTTP runs the middleware stack, then the mux.
+func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
+	r.handler.ServeHTTP(w, req)
+}
+
+// NewRouter builds the base router with the standard middleware stack
+// applied.
+func NewRouter(opts Options) *Router {
+	mux := http.NewServeMux()
+
+	// Outermost first.
+	stack := []func(http.Handler) http.Handler{
+		corsMiddleware(opts.AllowedOrigins),
+		securityHeaders(opts.HSTSMaxAge, opts.TrustedProxyHops > 0),
+		requestIDMiddleware,
+		clientip.Middleware(opts.TrustedProxyHops),
+		loggingMiddleware(opts.Logger),
+		recoveryMiddleware(opts.Logger),
 	}
-	r.Use(loggingMiddleware(opts.Logger))
-	r.Use(recoveryMiddleware(opts.Logger))
 	if opts.MaxInFlight > 0 {
-		r.Use(skipProbes(chimw.ThrottleWithOpts(chimw.ThrottleOpts{
-			Limit:        opts.MaxInFlight,
-			RetryAfterFn: func(bool) time.Duration { return time.Second },
-		})))
+		stack = append(stack, skipProbes(loadShedding(opts.MaxInFlight)))
 	}
 	if opts.MaxBodyBytes > 0 {
-		r.Use(maxBodyBytes(opts.MaxBodyBytes))
+		stack = append(stack, maxBodyBytes(opts.MaxBodyBytes))
 	}
-	r.Use(streamingDeadlines(opts.StreamingProcedures, opts.Logger))
+	stack = append(stack, streamingDeadlines(opts.StreamingProcedures, opts.Logger))
 	if opts.RequestTimeout > 0 {
-		r.Use(skipPaths(opts.StreamingProcedures, chimw.Timeout(opts.RequestTimeout)))
+		stack = append(stack, skipPaths(opts.StreamingProcedures, requestTimeout(opts.RequestTimeout)))
 	}
 
 	// Liveness: the process is up and serving, nothing more. No dependency
 	// checks here, so a database outage does not make an orchestrator
 	// restart otherwise-healthy instances.
-	r.Get("/livez", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("GET /livez", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	// Readiness: dependencies reachable and not draining; gates traffic.
-	r.Get("/readyz", opts.Readiness.Handler())
+	mux.Handle("GET /readyz", opts.Readiness.Handler())
 
-	return r
+	var h http.Handler = mux
+	for i := len(stack) - 1; i >= 0; i-- {
+		h = stack[i](h)
+	}
+	return &Router{ServeMux: mux, handler: h}
+}
+
+// loadShedding caps concurrently processing requests at limit and sheds the
+// excess immediately with 429 + Retry-After instead of queueing. Custom code
+// is justified: neither the standard library nor any library in the approved
+// stack does load shedding (http.TimeoutHandler and rate limiters do not bound
+// concurrency).
+func loadShedding(limit int) func(http.Handler) http.Handler {
+	slots := make(chan struct{}, limit)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			select {
+			case slots <- struct{}{}:
+				defer func() { <-slots }()
+				next.ServeHTTP(w, r)
+			default:
+				w.Header().Set("Retry-After", "1")
+				http.Error(w, "server busy, retry shortly", http.StatusTooManyRequests)
+			}
+		})
+	}
+}
+
+// requestTimeout bounds each request with a context deadline. It is not
+// http.TimeoutHandler: that buffers the whole response and breaks Flush and
+// http.ResponseController, which Connect relies on. If the handler returns
+// after the deadline without having written anything, the client gets 504.
+func requestTimeout(d time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx, cancel := context.WithTimeout(r.Context(), d)
+			sw := &statusWriter{ResponseWriter: w}
+			defer func() {
+				cancel()
+				if ctx.Err() == context.DeadlineExceeded && !sw.wrote {
+					w.WriteHeader(http.StatusGatewayTimeout)
+				}
+			}()
+			next.ServeHTTP(sw, r.WithContext(ctx))
+		})
+	}
+}
+
+// statusWriter records the response status. Unwrap keeps
+// http.ResponseController (Flush, SetWriteDeadline, ...) working through it.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+	wrote  bool
+}
+
+func (w *statusWriter) WriteHeader(code int) {
+	// Informational 1xx responses (103 Early Hints) are not the final status.
+	if code >= 100 && code < 200 && code != http.StatusSwitchingProtocols {
+		w.ResponseWriter.WriteHeader(code)
+		return
+	}
+	if !w.wrote {
+		w.status, w.wrote = code, true
+	}
+	w.ResponseWriter.WriteHeader(code)
+}
+
+func (w *statusWriter) Write(b []byte) (int, error) {
+	if !w.wrote {
+		w.status, w.wrote = http.StatusOK, true
+	}
+	return w.ResponseWriter.Write(b)
+}
+
+func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
+
+// Status is the recorded status (200 when the handler wrote nothing).
+func (w *statusWriter) Status() int {
+	if !w.wrote {
+		return http.StatusOK
+	}
+	return w.status
 }
 
 // Instrument wraps handler with OpenTelemetry HTTP server tracing and
@@ -119,7 +211,7 @@ func Instrument(handler http.Handler, serviceName string) http.Handler {
 // Connect-specific ones a browser client sends; auth is a bearer token, not a
 // cookie, so credentials aren't required.
 func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
-	return cors.Handler(cors.Options{
+	return cors.New(cors.Options{
 		AllowedOrigins: allowedOrigins,
 		AllowedMethods: []string{http.MethodGet, http.MethodPost, http.MethodOptions},
 		AllowedHeaders: []string{
@@ -142,7 +234,7 @@ func corsMiddleware(allowedOrigins []string) func(http.Handler) http.Handler {
 		// Bearer tokens only: browsers must never attach cookies or HTTP auth.
 		AllowCredentials: false,
 		MaxAge:           3600,
-	})
+	}).Handler
 }
 
 // validRequestID accepts the shapes real clients send (UUIDs, ULIDs, short
@@ -187,7 +279,7 @@ func loggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
-			ww := chimw.NewWrapResponseWriter(w, r.ProtoMajor)
+			ww := &statusWriter{ResponseWriter: w}
 			next.ServeHTTP(ww, r)
 			if isProbe(r.URL.Path) {
 				return // probes fire every few seconds; not worth a log line each

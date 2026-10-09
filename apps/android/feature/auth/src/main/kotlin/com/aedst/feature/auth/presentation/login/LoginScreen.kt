@@ -1,17 +1,15 @@
 package com.aedst.feature.auth.presentation.login
 
+import android.content.ActivityNotFoundException
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -19,36 +17,44 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.autofill.ContentType
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.contentType
 import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aedst.core.ui.adaptive.AedstAdaptiveContent
+import com.aedst.core.ui.adaptive.AedstContentWidth
+import com.aedst.core.ui.adaptive.AedstWindowSizePreviews
+import com.aedst.core.ui.components.AedstAlert
+import com.aedst.core.ui.components.AedstAlertVariant
 import com.aedst.core.ui.components.AedstButton
-import com.aedst.core.ui.components.AedstPasswordTextField
-import com.aedst.core.ui.components.AedstTextField
+import com.aedst.core.ui.components.AedstButtonSize
 import com.aedst.core.ui.components.userMessage
+import com.aedst.core.ui.theme.AedstSpacing
+import com.aedst.core.ui.theme.AedstTheme
 import com.aedst.feature.auth.R
-import com.aedst.feature.auth.domain.model.CredentialsIssue
 
 @Composable
-fun LoginRoute(onLoggedIn: () -> Unit, viewModel: LoginViewModel = hiltViewModel()) {
+internal fun LoginRoute(onLoggedIn: () -> Unit, viewModel: LoginViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val currentOnLoggedIn by rememberUpdatedState(onLoggedIn)
+    // Registered with a stable key, so a result delivered after the activity was recreated (or the process died while
+    // the browser was open) reaches the new view model instance.
+    val launcher = rememberLauncherForActivityResult(AuthorizationActivityContract()) { callback ->
+        viewModel.onIntent(LoginIntent.AuthorizationReturned(callback))
+    }
 
     LaunchedEffect(viewModel) {
         viewModel.effects.collect { effect ->
             when (effect) {
                 LoginEffect.NavigateToHome -> currentOnLoggedIn()
+                is LoginEffect.LaunchBrowser -> try {
+                    launcher.launch(effect.launch)
+                } catch (@Suppress("SwallowedException") noBrowser: ActivityNotFoundException) {
+                    viewModel.onIntent(LoginIntent.BrowserUnavailable)
+                }
             }
         }
     }
@@ -58,77 +64,62 @@ fun LoginRoute(onLoggedIn: () -> Unit, viewModel: LoginViewModel = hiltViewModel
 
 @Composable
 internal fun LoginScreen(state: LoginState, onIntent: (LoginIntent) -> Unit) {
-    // Contents are capped at a phone-form width and centred, so tablets/foldables/landscape don't stretch the form.
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .safeDrawingPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState()),
-        contentAlignment = Alignment.TopCenter,
-    ) {
+    // Capped at a form width, centred, and kept clear of a fold, so tablets/foldables/landscape don't stretch the form.
+    AedstAdaptiveContent(modifier = Modifier.safeDrawingPadding(), maxWidth = AedstContentWidth.form) {
         Column(
             modifier = Modifier
-                .widthIn(max = FORM_MAX_WIDTH)
-                .fillMaxWidth()
-                .padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(AedstSpacing.xxl),
+            verticalArrangement = Arrangement.spacedBy(AedstSpacing.lg),
         ) {
             Text(
                 text = stringResource(R.string.auth_login_title),
                 style = MaterialTheme.typography.headlineMedium,
                 modifier = Modifier.semantics { heading() },
             )
-            LoginFields(state = state, onIntent = onIntent)
+            Text(
+                text = stringResource(R.string.auth_login_subtitle),
+                style = MaterialTheme.typography.bodyLarge,
+            )
+            // AedstAlert is a polite live region, so TalkBack announces a problem that appears after composition.
+            state.problem?.let { problem -> ProblemAlert(problem) }
             AedstButton(
                 text = stringResource(R.string.auth_login_submit),
-                onClick = { onIntent(LoginIntent.Submit) },
+                onClick = { onIntent(LoginIntent.SignIn) },
+                enabled = state.problem != LoginProblem.NotConfigured,
                 loading = state.isLoading,
-                modifier = Modifier.fillMaxWidth(),
+                size = AedstButtonSize.LG,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = MIN_TOUCH_TARGET),
             )
         }
     }
 }
 
 @Composable
-private fun LoginFields(state: LoginState, onIntent: (LoginIntent) -> Unit) {
-    val emailMessage = state.emailIssue?.let { stringResource(R.string.auth_login_invalid_email) }
-    // A server/transport error is shown under the password field; a local password issue takes precedence.
-    val passwordMessage = when (state.passwordIssue) {
-        CredentialsIssue.EmptyPassword -> stringResource(R.string.auth_login_invalid_password)
-        CredentialsIssue.PasswordTooLong -> stringResource(R.string.auth_login_password_too_long)
-        else -> state.error?.userMessage()
+private fun ProblemAlert(problem: LoginProblem) {
+    val title = when (problem) {
+        LoginProblem.NotConfigured -> stringResource(R.string.auth_login_not_configured)
+        LoginProblem.NoBrowser -> stringResource(R.string.auth_login_no_browser)
+        is LoginProblem.Failed -> stringResource(R.string.auth_login_failed_title)
     }
-
-    AedstTextField(
-        value = state.email,
-        onValueChange = { onIntent(LoginIntent.EmailChanged(it)) },
-        label = stringResource(R.string.auth_login_email_label),
-        supportingText = emailMessage,
-        isError = emailMessage != null,
-        enabled = !state.isLoading,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, imeAction = ImeAction.Next),
-        modifier = Modifier
-            .fillMaxWidth()
-            .semantics { contentType = ContentType.EmailAddress },
-    )
-    AedstPasswordTextField(
-        value = state.password,
-        onValueChange = { onIntent(LoginIntent.PasswordChanged(it)) },
-        label = stringResource(R.string.auth_login_password_label),
-        supportingText = passwordMessage,
-        isError = passwordMessage != null,
-        enabled = !state.isLoading,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
-        keyboardActions = KeyboardActions(onDone = { onIntent(LoginIntent.Submit) }),
-        modifier = Modifier
-            .fillMaxWidth()
-            // Errors appear/disappear without focus change; announce them to TalkBack.
-            .semantics {
-                contentType = ContentType.Password
-                liveRegion = LiveRegionMode.Polite
-            },
+    val description = (problem as? LoginProblem.Failed)?.error?.userMessage()
+    AedstAlert(
+        title = title,
+        description = description,
+        variant = when (problem) {
+            LoginProblem.NotConfigured -> AedstAlertVariant.WARNING
+            else -> AedstAlertVariant.DESTRUCTIVE
+        },
     )
 }
 
-private val FORM_MAX_WIDTH = 480.dp
+private val MIN_TOUCH_TARGET = 48.dp // allow-dp: accessibility minimum touch target, not a spacing step
+
+@AedstWindowSizePreviews
+@Composable
+private fun LoginScreenWindowSizesPreview() {
+    AedstTheme { LoginScreen(state = LoginState(), onIntent = {}) }
+}

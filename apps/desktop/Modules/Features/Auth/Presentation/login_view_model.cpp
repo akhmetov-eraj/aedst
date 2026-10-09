@@ -78,6 +78,35 @@ bool LoginViewModel::canSubmit() const {
     return !isLoading_ && !email_.trimmed().isEmpty() && !password_.empty();
 }
 
+QString LoginViewModel::messageFor(const core::Error& error) {
+    switch (error.code) {
+    case core::ErrorCode::Unauthenticated:
+        return tr("Wrong e-mail or password.");
+    case core::ErrorCode::InvalidInput:
+        return tr("Check your e-mail and password and try again.");
+    case core::ErrorCode::Forbidden:
+        return tr("This account is not allowed to sign in.");
+    case core::ErrorCode::RateLimited:
+        return tr("Too many attempts. Wait a moment and try again.");
+    case core::ErrorCode::Unavailable:
+        return tr("The service cannot be reached right now. Try again later.");
+    case core::ErrorCode::Offline:
+        return tr("You are offline. Check your connection and try again.");
+    case core::ErrorCode::Timeout:
+        return tr("The request took too long. Try again.");
+    case core::ErrorCode::Storage:
+        return tr("Your session could not be stored securely on this device.");
+    case core::ErrorCode::UpgradeRequired:
+        return tr("This version of AEDST is no longer supported. Please update.");
+    case core::ErrorCode::Conflict:
+    case core::ErrorCode::NotFound:
+    case core::ErrorCode::Cancelled:
+    case core::ErrorCode::Unknown:
+        break;
+    }
+    return tr("Sign-in failed. Try again.");
+}
+
 void LoginViewModel::login() {
     if (!canSubmit()) {
         return;
@@ -96,12 +125,13 @@ void LoginViewModel::login() {
                          guard->setLoading(false);
 
                          if (!result) {
-                             const QString message = QString::fromStdString(result.error().message);
+                             const QString message = messageFor(result.error());
                              guard->setErrorMessage(message);
                              if (guard->analytics_) {
                                  guard->analytics_->track(
                                      analytics::events::kLoginFailed,
-                                     {{"reason", std::string(core::toString(result.error().code))}});
+                                     {{"method", "password"},
+                                      {"reason", std::string(core::toString(result.error().code))}});
                              }
                              emit guard->loginFailed(message);
                              return;
@@ -110,7 +140,7 @@ void LoginViewModel::login() {
                          guard->clearPassword();
                          if (guard->analytics_) {
                              guard->analytics_->identify(result->userId);
-                             guard->analytics_->track(analytics::events::kLoginSucceeded, {});
+                             guard->analytics_->track(analytics::events::kLoginSucceeded, {{"method", "password"}});
                          }
                          // Auth never names another feature's screen: App/
                          // (AppDependencies::onSignedIn) routes to the signed-in
@@ -169,11 +199,12 @@ void LoginViewModel::signInWithBrowser() {
         if (!result) {
             // Cancelling or closing the browser step is a choice of the user, not an error to display.
             if (result.error().code != core::ErrorCode::Cancelled) {
-                const QString message = QString::fromStdString(result.error().message);
+                const QString message = messageFor(result.error());
                 guard->setErrorMessage(message);
                 if (guard->analytics_) {
                     guard->analytics_->track(analytics::events::kLoginFailed,
-                                             {{"reason", std::string(core::toString(result.error().code))}});
+                                             {{"method", "browser"},
+                                              {"reason", std::string(core::toString(result.error().code))}});
                 }
                 emit guard->loginFailed(message);
             }
@@ -181,7 +212,7 @@ void LoginViewModel::signInWithBrowser() {
         }
         if (guard->analytics_) {
             guard->analytics_->identify(result->userId);
-            guard->analytics_->track(analytics::events::kLoginSucceeded, {});
+            guard->analytics_->track(analytics::events::kLoginSucceeded, {{"method", "browser"}});
         }
         emit guard->loginSucceeded(QString::fromStdString(result->userId));
     });

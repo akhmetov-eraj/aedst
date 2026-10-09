@@ -1,10 +1,10 @@
 import {
   createLoader,
   type inferParserType,
-  parseAsArrayOf,
-  parseAsString,
   parseAsStringLiteral,
 } from "nuqs/server";
+
+import { cursorParsers } from "@/shared/lib/url/cursor-params";
 
 export const STATUS_FILTERS = ["all", "todo", "in-progress", "done"] as const;
 export const PRIORITY_FILTERS = [
@@ -32,11 +32,10 @@ export const SORT_VALUES = [
  * survives a reload, unlike component state.
  */
 export const taskSearchParsers = {
-  q: parseAsString.withDefault(""),
+  ...cursorParsers,
   status: parseAsStringLiteral(STATUS_FILTERS).withDefault("all"),
   priority: parseAsStringLiteral(PRIORITY_FILTERS).withDefault("all"),
   sort: parseAsStringLiteral(SORT_VALUES).withDefault("created-desc"),
-  cursors: parseAsArrayOf(parseAsString).withDefault([]),
 };
 
 /** Server-side reader over the same parsers the client hook uses. */

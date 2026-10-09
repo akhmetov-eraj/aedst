@@ -1,14 +1,14 @@
 import AedstAnalytics
 import AedstCore
 import Foundation
-import Perception
+import Observation
 
 /// Search-as-you-type. Every keystroke cancels the pending request and starts
-/// a new debounce (`Task` + `AedstClock.sleep`, i.e. `Task.sleep(nanoseconds:)`
-/// — `Task.sleep(for:)`/`Duration` are iOS 16+). Stale responses are dropped
+/// a new debounce (`Task` + the injected `AedstClock.sleep`, so tests control
+/// time). Stale responses are dropped
 /// by comparing against the query they were issued for.
 @MainActor
-@Perceptible
+@Observable
 public final class SearchViewModel {
     /// Debounce interval in seconds.
     public static let debounce: TimeInterval = 0.3
@@ -25,8 +25,8 @@ public final class SearchViewModel {
     /// Bound to `aedstErrorPresenter`.
     public var error: AedstError?
 
-    private var nextPageToken: String?
-    private var pending: Task<Void, Never>?
+    @ObservationIgnored private var nextPageToken: String?
+    @ObservationIgnored private var pending: Task<Void, Never>?
     private let repository: any SearchRepository
     private let clock: any AedstClock
     private let analytics: AnalyticsClient

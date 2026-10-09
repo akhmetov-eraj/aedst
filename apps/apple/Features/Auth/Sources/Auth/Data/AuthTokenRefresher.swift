@@ -25,7 +25,7 @@ public struct AuthTokenRefresher: Sendable {
         switch await remote.refresh(refreshToken: refreshToken) {
         case .success(let dto):
             return .refreshed(dto.tokenPair(issuedAt: clock.now))
-        case .failure(.unauthorized), .failure(.validation):
+        case .failure(.unauthenticated), .failure(.invalidInput):
             return .rejected
         case .failure:
             return .unavailable

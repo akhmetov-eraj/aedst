@@ -8,14 +8,8 @@ import { screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { DashboardStats } from "@/modules/tasks/ui/DashboardStats";
-import { createBrowserTransport } from "@/shared/api/connect/client";
 import { TasksService } from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
-import {
-  rpcErrorHandler,
-  rpcHandler,
-  TEST_RPC_BASE_URL,
-} from "@/test/mocks/connect";
-import { server } from "@/test/mocks/server";
+import { backend, Code, rpc, rpcError } from "@/test/mocks/transport";
 import { messages, renderWithProviders } from "@/test/render";
 
 const t = messages.tasks.dashboard;
@@ -28,8 +22,8 @@ function statValue(label: string) {
 describe("DashboardStats", () => {
   it("shows each aggregate from a single GetTaskStats call", async () => {
     let calls = 0;
-    server.use(
-      rpcHandler(TasksService.method.getTaskStats, () => {
+    backend.use(
+      rpc(TasksService.method.getTaskStats, () => {
         calls += 1;
         return { total: 12, todo: 5, inProgress: 3, done: 4, overdue: 2 };
       }),
@@ -48,8 +42,8 @@ describe("DashboardStats", () => {
   });
 
   it("highlights overdue tasks only when there are some", async () => {
-    server.use(
-      rpcHandler(TasksService.method.getTaskStats, () => ({
+    backend.use(
+      rpc(TasksService.method.getTaskStats, () => ({
         total: 1,
         todo: 1,
         overdue: 0,
@@ -63,8 +57,8 @@ describe("DashboardStats", () => {
   });
 
   it("marks overdue in the destructive colour when non-zero", async () => {
-    server.use(
-      rpcHandler(TasksService.method.getTaskStats, () => ({
+    backend.use(
+      rpc(TasksService.method.getTaskStats, () => ({
         total: 3,
         overdue: 3,
       })),
@@ -78,8 +72,8 @@ describe("DashboardStats", () => {
   });
 
   it("degrades to dashes when the request fails", async () => {
-    server.use(
-      rpcErrorHandler(TasksService.method.getTaskStats, "internal", "boom"),
+    backend.use(
+      rpcError(TasksService.method.getTaskStats, Code.Internal, "boom"),
     );
 
     renderWithProviders(<DashboardStats />);
@@ -88,9 +82,7 @@ describe("DashboardStats", () => {
   });
 
   it("renders server-prefetched data on first paint, before any client request", async () => {
-    server.use(
-      rpcHandler(TasksService.method.getTaskStats, () => ({ total: 7 })),
-    );
+    backend.use(rpc(TasksService.method.getTaskStats, () => ({ total: 7 })));
     // What a Server Component does (see createRpcPrefetcher): prefetch with a
     // transport carrying the shared static key, then dehydrate.
     const serverClient = new QueryClient();
@@ -98,7 +90,7 @@ describe("DashboardStats", () => {
       createQueryOptions(
         TasksService.method.getTaskStats,
         {},
-        { transport: createBrowserTransport(TEST_RPC_BASE_URL) },
+        { transport: backend.transport },
       ),
     );
 

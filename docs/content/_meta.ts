@@ -2,28 +2,28 @@ import type { MetaRecord } from "nextra";
 
 const meta: MetaRecord = {
   index: "Overview",
-  stack: "Stack",
+  "---general---": {
+    type: "separator",
+    title: "General",
+  },
+  stack: "Stack overview",
   "library-first": "Library-First Development",
   status: "Platform status & profiles",
-  architecture: "Backend architecture",
-  modules: "Modules",
-  database: "Database",
-  events: "Events",
-  scaling: "Scaling guide",
-  deployment: "Deployment",
-  runbook: "Runbook",
+  parity: "Parity matrix",
+  "client-recipe": "Client recipe",
+  features: "Feature specs",
   "ui-kit": "UI kit",
-  i18n: "i18n",
-  "---clients---": {
-    type: "separator",
-    title: "Clients",
-  },
-  "architecture-web": "Web architecture",
-  "architecture-android": "Android architecture",
-  "architecture-apple": "Apple architecture",
-  "apple-release": "Apple release & signing",
-  "architecture-desktop": "Desktop architecture",
+  i18n: "i18n overview",
   decisions: "Decision records",
+  "---platforms---": {
+    type: "separator",
+    title: "Platforms",
+  },
+  server: "Server",
+  web: "Web",
+  android: "Android",
+  apple: "Apple",
+  desktop: "Desktop",
 };
 
 export default meta;

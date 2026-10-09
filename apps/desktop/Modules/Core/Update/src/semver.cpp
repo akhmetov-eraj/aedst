@@ -100,7 +100,7 @@ std::string SemVer::toString() const {
 
 core::Outcome<SemVer> parseSemVer(std::string_view text) {
     if (text.empty() || text.size() > kMaxVersionLength) {
-        return fail(Error::invalidArgument("semver: empty or too long"));
+        return fail(Error::invalidInput("semver: empty or too long"));
     }
     SemVer version;
     std::string_view rest = text;
@@ -109,7 +109,7 @@ core::Outcome<SemVer> parseSemVer(std::string_view text) {
         const std::string_view build = rest.substr(plus + 1);
         for (const std::string_view id : split(build, '.')) {
             if (!isValidIdentifier(id)) {
-                return fail(Error::invalidArgument("semver: invalid build metadata"));
+                return fail(Error::invalidInput("semver: invalid build metadata"));
             }
         }
         version.buildMetadata = std::string{build};
@@ -119,10 +119,10 @@ core::Outcome<SemVer> parseSemVer(std::string_view text) {
         const std::string_view pre = rest.substr(dash + 1);
         for (const std::string_view id : split(pre, '.')) {
             if (!isValidIdentifier(id)) {
-                return fail(Error::invalidArgument("semver: invalid pre-release"));
+                return fail(Error::invalidInput("semver: invalid pre-release"));
             }
             if (allDigits(id) && id.size() > 1 && id.front() == '0') {
-                return fail(Error::invalidArgument("semver: leading zero in numeric pre-release identifier"));
+                return fail(Error::invalidInput("semver: leading zero in numeric pre-release identifier"));
             }
             version.prerelease.emplace_back(id);
         }
@@ -130,13 +130,13 @@ core::Outcome<SemVer> parseSemVer(std::string_view text) {
     }
     const std::vector<std::string_view> numbers = split(rest, '.');
     if (numbers.size() != 3) {
-        return fail(Error::invalidArgument("semver: expected MAJOR.MINOR.PATCH"));
+        return fail(Error::invalidInput("semver: expected MAJOR.MINOR.PATCH"));
     }
     const auto major = parseCoreNumber(numbers[0]);
     const auto minor = parseCoreNumber(numbers[1]);
     const auto patch = parseCoreNumber(numbers[2]);
     if (!major || !minor || !patch) {
-        return fail(Error::invalidArgument("semver: invalid numeric component"));
+        return fail(Error::invalidInput("semver: invalid numeric component"));
     }
     version.major = *major;
     version.minor = *minor;

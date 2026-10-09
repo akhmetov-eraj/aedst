@@ -2,28 +2,22 @@
 
 import { cn } from "cn";
 import { useTranslations } from "next-intl";
-import { Link, usePathname } from "@/app/config/i18n/navigation";
-import { useAuth } from "@/shared/lib/auth/auth-provider";
-import { ADMIN_ROLE } from "@/shared/lib/auth/roles";
-
-const ITEMS = [
-  { href: "/tasks", key: "tasks" },
-  { href: "/search", key: "search" },
-  { href: "/notifications", key: "notifications" },
-] as const;
+import { navEntriesFor } from "@/app/config/modules/registry";
+import { Link, usePathname } from "@/shared/i18n/navigation";
+import { useAuth } from "@/shared/lib/auth/AuthProvider";
+import { useCapabilities } from "@/shared/lib/capabilities/CapabilitiesProvider";
 
 /**
- * Primary navigation. The admin entry renders only for tokens carrying the
- * admin role — a UI hint; the admin pages and every admin RPC are guarded
- * again by proxy.ts and apps/server.
+ * Primary navigation, built from the module manifests (`nav`) via the
+ * registry. An entry with `requiredRole` (admin) renders only for tokens
+ * carrying that role — a UI hint; the pages and every RPC are guarded again
+ * by proxy.ts and apps/server.
  */
 export function AppNav() {
   const t = useTranslations("common.nav");
   const pathname = usePathname();
   const { hasRole } = useAuth();
-  const items = hasRole(ADMIN_ROLE)
-    ? [...ITEMS, { href: "/admin", key: "admin" } as const]
-    : ITEMS;
+  const items = navEntriesFor(hasRole, useCapabilities());
 
   return (
     <nav aria-label={t("label")}>
@@ -41,7 +35,7 @@ export function AppNav() {
                   active ? "bg-muted text-foreground" : "text-muted-foreground",
                 )}
               >
-                {t(item.key)}
+                {t(item.labelKey)}
               </Link>
             </li>
           );

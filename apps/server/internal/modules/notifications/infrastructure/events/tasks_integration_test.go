@@ -1,13 +1,12 @@
 //go:build integration
 
 // Integration tests against a real PostgreSQL container: the tasks ->
-// notifications projection, end to end through the bus and the inbox.
+// notifications projection, end to end through River delivery (dispatched synchronously here) and the idempotent handler.
 package events_test
 
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"testing"
 	"time"
 
@@ -15,46 +14,46 @@ import (
 	"github.com/aedst/server/internal/modules/notifications/infrastructure/events"
 	notificationspostgres "github.com/aedst/server/internal/modules/notifications/infrastructure/postgres"
 	tasksapi "github.com/aedst/server/internal/modules/tasks/api"
-	"github.com/aedst/server/internal/platform/messaging"
+	platformevents "github.com/aedst/server/internal/platform/events"
 	"github.com/aedst/server/internal/platform/postgrestest"
 	"github.com/aedst/server/internal/shared/ids"
 	sharedtime "github.com/aedst/server/internal/shared/time"
 )
 
-func taskCompleted(t *testing.T, eventID, userID ids.ID, title string, at time.Time) messaging.Event {
+func taskCompleted(t *testing.T, eventID, userID ids.ID, title string, at time.Time) platformevents.Event {
 	t.Helper()
 	payload, err := json.Marshal(tasksapi.TaskCompletedEvent{TaskID: ids.New().String(), UserID: userID.String(), Title: title, CompletedAt: at})
 	if err != nil {
 		t.Fatal(err)
 	}
-	return messaging.Event{ID: eventID, Type: tasksapi.TaskCompletedEventType, Version: 1, OccurredAt: at, Payload: payload}
+	return platformevents.Event{ID: eventID, Type: tasksapi.TaskCompletedEventType, Version: 1, OccurredAt: at, Payload: payload}
 }
 
 func TestTaskCompleted_ProjectsOneNotificationPerEvent(t *testing.T) {
 	pool := postgrestest.NewPool(t, "notifications")
 	repo := notificationspostgres.NewRepository(pool, nil)
-	bus := messaging.NewBus()
-	events.SubscribeTaskCompleted(bus, pool, repo, slog.New(slog.DiscardHandler))
+	registry := platformevents.NewRegistry()
+	events.SubscribeTaskCompleted(registry, pool, repo)
 	svc := application.NewService(repo, sharedtime.Real{})
 	ctx := context.Background()
 
 	user, other := ids.New(), ids.New()
 	base := time.Now().UTC().Truncate(time.Microsecond)
 	first := ids.New()
-	if err := bus.Publish(ctx, taskCompleted(t, first, user, "first", base)); err != nil {
-		t.Fatalf("Publish() error = %v", err)
+	if err := registry.Dispatch(ctx, taskCompleted(t, first, user, "first", base)); err != nil {
+		t.Fatalf("Dispatch() error = %v", err)
 	}
 	// At-least-once delivery: the same event redelivered must change nothing.
-	if err := bus.Publish(ctx, taskCompleted(t, first, user, "first", base)); err != nil {
-		t.Fatalf("redelivered Publish() error = %v", err)
+	if err := registry.Dispatch(ctx, taskCompleted(t, first, user, "first", base)); err != nil {
+		t.Fatalf("redelivered Dispatch() error = %v", err)
 	}
 	for i, title := range []string{"second", "third", "fourth"} {
-		if err := bus.Publish(ctx, taskCompleted(t, ids.New(), user, title, base.Add(time.Duration(i+1)*time.Second))); err != nil {
-			t.Fatalf("Publish(%s) error = %v", title, err)
+		if err := registry.Dispatch(ctx, taskCompleted(t, ids.New(), user, title, base.Add(time.Duration(i+1)*time.Second))); err != nil {
+			t.Fatalf("Dispatch(%s) error = %v", title, err)
 		}
 	}
-	if err := bus.Publish(ctx, taskCompleted(t, ids.New(), other, "someone else's", base)); err != nil {
-		t.Fatalf("Publish(other) error = %v", err)
+	if err := registry.Dispatch(ctx, taskCompleted(t, ids.New(), other, "someone else's", base)); err != nil {
+		t.Fatalf("Dispatch(other) error = %v", err)
 	}
 
 	var got []string
@@ -98,15 +97,15 @@ func TestTaskCompleted_ProjectsOneNotificationPerEvent(t *testing.T) {
 	}
 }
 
-// A malformed payload must fail the delivery (so it is retried and eventually
-// poisoned) rather than being silently dropped.
+// A malformed payload must fail the delivery (so River retries it and eventually
+// discards it) rather than being silently dropped.
 func TestTaskCompleted_MalformedPayloadFails(t *testing.T) {
 	pool := postgrestest.NewPool(t, "notifications")
-	bus := messaging.NewBus()
-	events.SubscribeTaskCompleted(bus, pool, notificationspostgres.NewRepository(pool, nil), slog.New(slog.DiscardHandler))
+	registry := platformevents.NewRegistry()
+	events.SubscribeTaskCompleted(registry, pool, notificationspostgres.NewRepository(pool, nil))
 
-	err := bus.Publish(context.Background(), messaging.Event{ID: ids.New(), Type: tasksapi.TaskCompletedEventType, Payload: []byte(`{"user_id":"nope"}`)})
+	err := registry.Dispatch(context.Background(), platformevents.Event{ID: ids.New(), Type: tasksapi.TaskCompletedEventType, Payload: []byte(`{"user_id":"nope"}`)})
 	if err == nil {
-		t.Fatal("Publish() error = nil, want a decode error")
+		t.Fatal("Dispatch() error = nil, want a decode error")
 	}
 }

@@ -33,10 +33,13 @@ const (
 	StatusReady         = domain.StatusReady
 	StatusFailed        = domain.StatusFailed
 
-	VariantThumbnail = domain.VariantThumbnail
-	VariantPreview   = domain.VariantPreview
-	VariantOptimized = domain.VariantOptimized
-	VariantPoster    = domain.VariantPoster
+	VariantPoster = domain.VariantPoster
+
+	VariantThumb64        = domain.VariantThumb64
+	VariantAvatar256      = domain.VariantAvatar256
+	VariantCard400        = domain.VariantCard400
+	VariantFeed800x600    = domain.VariantFeed800x600
+	VariantStory1080x1350 = domain.VariantStory1080x1350
 )
 
 // Service is everything the transport can do; every method is owner-scoped.

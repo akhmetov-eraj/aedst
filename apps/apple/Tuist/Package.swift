@@ -5,8 +5,8 @@ import PackageDescription
 import ProjectDescription
 
 // Tuist integrates every product of every package below (and their transitive
-// dependencies: connect-swift, swift-protobuf, GRDB, swift-perception,
-// FlowStacks, ...) as generated Xcode targets, referenced from Project.swift
+// dependencies: connect-swift, swift-protobuf, GRDB, ...) as generated Xcode
+// targets, referenced from Project.swift
 // with `.external(name:)`. Third-party versions are declared once, in the
 // local packages' own Package.swift files (Core/*, Features/*); this manifest
 // only lists the single package the app targets consume.

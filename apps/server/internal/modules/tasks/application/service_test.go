@@ -14,7 +14,7 @@ import (
 
 // fakeRepository is an in-memory test double for application.Repository,
 // demonstrating that use cases are testable without a database (see
-// docs/architecture.md — "Most business logic should be tested without
+// docs/content/server/architecture.md — "Most business logic should be tested without
 // infrastructure"). It mirrors the real repository's contract: guarded,
 // idempotent transitions and version checks.
 type fakeRepository struct {
@@ -93,7 +93,7 @@ func (f *fakeRepository) Reopen(ctx context.Context, id, userID ids.ID, now time
 	return task, nil
 }
 
-func (f *fakeRepository) Delete(_ context.Context, id, userID ids.ID) error {
+func (f *fakeRepository) Delete(_ context.Context, id, userID ids.ID, _ string) error {
 	task, ok := f.byID[id]
 	if !ok || task.UserID != userID {
 		return sharederrors.NotFound("fake.Delete", "task not found")
@@ -218,7 +218,7 @@ func TestService_UpdateTask_CrossUserAccessIsNotFound(t *testing.T) {
 	}
 
 	hijacked := "hijacked"
-	_, err = svc.UpdateTask(context.Background(), attacker, task.ID, domain.Patch{Title: &hijacked}, nil)
+	_, err = svc.UpdateTask(context.Background(), attacker, task.ID, domain.Patch{Title: &hijacked}, nil, "")
 	if sharederrors.KindOf(err) != sharederrors.KindNotFound {
 		t.Fatalf("attacker UpdateTask() = %v, want KindNotFound", err)
 	}
@@ -240,7 +240,7 @@ func TestService_UpdateTask_PatchAndVersion(t *testing.T) {
 	task, _ := svc.CreateTask(ctx, owner, "Title", "desc", domain.PriorityLow, nil, "")
 
 	title := "  New title  "
-	updated, err := svc.UpdateTask(ctx, owner, task.ID, domain.Patch{Title: &title}, nil)
+	updated, err := svc.UpdateTask(ctx, owner, task.ID, domain.Patch{Title: &title}, nil, "")
 	if err != nil {
 		t.Fatalf("UpdateTask() error = %v", err)
 	}
@@ -249,17 +249,17 @@ func TestService_UpdateTask_PatchAndVersion(t *testing.T) {
 	}
 
 	stale := task.Version
-	if _, err := svc.UpdateTask(ctx, owner, task.ID, domain.Patch{Title: &title}, &stale); sharederrors.KindOf(err) != sharederrors.KindConflict {
+	if _, err := svc.UpdateTask(ctx, owner, task.ID, domain.Patch{Title: &title}, &stale, ""); sharederrors.KindOf(err) != sharederrors.KindConflict {
 		t.Fatalf("UpdateTask() with a stale version = %v, want KindConflict", err)
 	}
 
 	blank := " "
-	if _, err := svc.UpdateTask(ctx, owner, task.ID, domain.Patch{Title: &blank}, nil); sharederrors.KindOf(err) != sharederrors.KindValidation {
+	if _, err := svc.UpdateTask(ctx, owner, task.ID, domain.Patch{Title: &blank}, nil, ""); sharederrors.KindOf(err) != sharederrors.KindValidation {
 		t.Fatalf("UpdateTask() with a blank title = %v, want KindValidation", err)
 	}
 
 	before := repo.updates
-	same, err := svc.UpdateTask(ctx, owner, task.ID, domain.Patch{}, nil)
+	same, err := svc.UpdateTask(ctx, owner, task.ID, domain.Patch{}, nil, "")
 	if err != nil || repo.updates != before || same.ID != task.ID {
 		t.Fatalf("empty patch = %v (updates %d -> %d); want a plain read with no write", err, before, repo.updates)
 	}
@@ -275,7 +275,7 @@ func TestService_DeleteTask_CrossUserAccessIsNotFound(t *testing.T) {
 		t.Fatalf("CreateTask() error = %v", err)
 	}
 
-	if err := svc.DeleteTask(context.Background(), attacker, task.ID); sharederrors.KindOf(err) != sharederrors.KindNotFound {
+	if err := svc.DeleteTask(context.Background(), attacker, task.ID, ""); sharederrors.KindOf(err) != sharederrors.KindNotFound {
 		t.Fatalf("attacker DeleteTask() = %v, want KindNotFound", err)
 	}
 	if _, err := svc.GetTask(context.Background(), owner, task.ID); err != nil {

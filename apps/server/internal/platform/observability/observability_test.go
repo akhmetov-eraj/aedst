@@ -97,7 +97,7 @@ func TestSetup_ExposesOTelMetricsOnThePrometheusHandler(t *testing.T) {
 	rec := httptest.NewRecorder()
 	tel.MetricsHandler.ServeHTTP(rec, httptest.NewRequest("GET", "/metrics", nil))
 	body := rec.Body.String()
-	for _, want := range []string{"aedst_test_events_total", "go_goroutines", "process_"} {
+	for _, want := range []string{"aedst_test_events_total", "go_goroutine_count", "go_memory_used_bytes"} {
 		if !strings.Contains(body, want) {
 			t.Errorf("/metrics lacks %q", want)
 		}

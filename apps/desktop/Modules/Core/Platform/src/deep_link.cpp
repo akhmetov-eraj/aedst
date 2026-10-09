@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -27,9 +28,10 @@ struct RouteRule {
     std::string_view fixedSegment;
 };
 
-constexpr std::array<RouteRule, 3> kRouteRules{{
+/// Hosts that are not screens of a feature, so no active route can declare them: the OIDC redirect and the
+/// settings entry. Every other host comes from the active routes (see parseDeepLink).
+constexpr std::array<RouteRule, 2> kFixedRules{{
     {"auth", 1, 1, "callback"},
-    {"tasks", 0, 1, ""},
     {"settings", 0, 0, ""},
 }};
 
@@ -196,16 +198,23 @@ std::vector<std::string_view> split(std::string_view text, char separator) {
     }
 }
 
-const RouteRule* findRule(std::string_view host) {
-    for (const RouteRule& rule : kRouteRules) {
+/// A fixed rule, else a route-derived one: the host is a link prefix of an active route and takes at most one
+/// identifier segment.
+std::optional<RouteRule> findRule(std::string_view host, std::span<const std::string> routeHosts) {
+    for (const RouteRule& rule : kFixedRules) {
         if (rule.host == host) {
-            return &rule;
+            return rule;
         }
     }
-    return nullptr;
+    for (const std::string& routeHost : routeHosts) {
+        if (routeHost == host) {
+            return RouteRule{.host = routeHost, .minSegments = 0, .maxSegments = 1, .fixedSegment = {}};
+        }
+    }
+    return std::nullopt;
 }
 
-core::Outcome<std::string> parseRoute(std::string_view pathPart) {
+core::Outcome<std::string> parseRoute(std::string_view pathPart, std::span<const std::string> routeHosts) {
     if (pathPart.ends_with('/')) {
         pathPart.remove_suffix(1);
     }
@@ -214,21 +223,21 @@ core::Outcome<std::string> parseRoute(std::string_view pathPart) {
     for (const char c : parts.front()) {
         host.push_back(asciiLower(c));
     }
-    const RouteRule* rule = findRule(host);
-    if (rule == nullptr) {
-        return fail(Error::invalidArgument("deep link: host not allowed"));
+    const std::optional<RouteRule> rule = findRule(host, routeHosts);
+    if (!rule) {
+        return fail(Error::invalidInput("deep link: host not allowed"));
     }
     const std::size_t segmentCount = parts.size() - 1;
     if (segmentCount < rule->minSegments || segmentCount > rule->maxSegments) {
-        return fail(Error::invalidArgument("deep link: path not allowed"));
+        return fail(Error::invalidInput("deep link: path not allowed"));
     }
     std::string route = host;
     for (std::size_t i = 1; i < parts.size(); ++i) {
         if (!isValidSegment(parts[i])) {
-            return fail(Error::invalidArgument("deep link: invalid path segment"));
+            return fail(Error::invalidInput("deep link: invalid path segment"));
         }
         if (!rule->fixedSegment.empty() && parts[i] != rule->fixedSegment) {
-            return fail(Error::invalidArgument("deep link: path not allowed"));
+            return fail(Error::invalidInput("deep link: path not allowed"));
         }
         route.push_back('/');
         route.append(parts[i]);
@@ -245,30 +254,30 @@ core::Outcome<ParamList> parseQuery(std::string_view query) {
     }
     for (const std::string_view pair : split(query, '&')) {
         if (params.size() >= kMaxDeepLinkParams) {
-            return fail(Error::invalidArgument("deep link: too many parameters"));
+            return fail(Error::invalidInput("deep link: too many parameters"));
         }
         const std::size_t eq = pair.find('=');
         const std::string_view key = pair.substr(0, eq);
         const std::string_view rawValue = eq == std::string_view::npos ? std::string_view{} : pair.substr(eq + 1);
         if (!isValidKey(key)) {
-            return fail(Error::invalidArgument("deep link: invalid parameter name"));
+            return fail(Error::invalidInput("deep link: invalid parameter name"));
         }
         for (const auto& existing : params) {
             if (existing.first == key) {
-                return fail(Error::invalidArgument("deep link: duplicate parameter"));
+                return fail(Error::invalidInput("deep link: duplicate parameter"));
             }
         }
         for (const char c : rawValue) {
             if (!isUnreserved(c) && c != '%') {
-                return fail(Error::invalidArgument("deep link: invalid character in parameter value"));
+                return fail(Error::invalidInput("deep link: invalid character in parameter value"));
             }
         }
         std::optional<std::string> decoded = percentDecode(rawValue);
         if (!decoded) {
-            return fail(Error::invalidArgument("deep link: invalid percent-encoding"));
+            return fail(Error::invalidInput("deep link: invalid percent-encoding"));
         }
         if (decoded->size() > kMaxDeepLinkValueLength) {
-            return fail(Error::invalidArgument("deep link: parameter value too long"));
+            return fail(Error::invalidInput("deep link: parameter value too long"));
         }
         params.emplace_back(std::string{key}, std::move(*decoded));
     }
@@ -282,23 +291,23 @@ bool looksLikeDeepLink(std::string_view argument) noexcept {
            equalsIgnoreCase(argument.substr(0, kSchemeShort.size()), kSchemeShort);
 }
 
-core::Outcome<DeepLink> parseDeepLink(std::string_view url) {
+core::Outcome<DeepLink> parseDeepLink(std::string_view url, std::span<const std::string> routeHosts) {
     if (url.empty()) {
-        return fail(Error::invalidArgument("deep link: empty"));
+        return fail(Error::invalidInput("deep link: empty"));
     }
     if (url.size() > kMaxDeepLinkLength) {
-        return fail(Error::invalidArgument("deep link: too long"));
+        return fail(Error::invalidInput("deep link: too long"));
     }
     for (const char c : url) {
         if (isRawForbidden(c)) {
-            return fail(Error::invalidArgument("deep link: forbidden character"));
+            return fail(Error::invalidInput("deep link: forbidden character"));
         }
         if (c == '#') {
-            return fail(Error::invalidArgument("deep link: fragments are not supported"));
+            return fail(Error::invalidInput("deep link: fragments are not supported"));
         }
     }
     if (url.size() < kSchemePrefix.size() || !equalsIgnoreCase(url.substr(0, kSchemePrefix.size()), kSchemePrefix)) {
-        return fail(Error::invalidArgument("deep link: wrong scheme"));
+        return fail(Error::invalidInput("deep link: wrong scheme"));
     }
     const std::string_view rest = url.substr(kSchemePrefix.size());
     const std::size_t questionMark = rest.find('?');
@@ -306,7 +315,7 @@ core::Outcome<DeepLink> parseDeepLink(std::string_view url) {
     const std::string_view query =
         questionMark == std::string_view::npos ? std::string_view{} : rest.substr(questionMark + 1);
 
-    auto route = parseRoute(pathPart);
+    auto route = parseRoute(pathPart, routeHosts);
     if (!route) {
         return fail(route.error());
     }

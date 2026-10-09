@@ -23,6 +23,14 @@ struct ConnectAuthRepositoryTests {
 
     private let credentials = Credentials(email: "a@b.com", password: "pw")
 
+    @Test("first-party repository is password mode and does not do browser sign-in")
+    func passwordModeOnly() async {
+        let repository = makeRepository(remote: FakeAuthRemote(), store: StubTokenProvider())
+
+        #expect(repository.signInMode == .password)
+        #expect(await repository.signIn(deviceID: "d1").error == .unsupported)
+    }
+
     @Test("login stores the tokens with absolute expiries computed from the injected clock")
     func loginStoresTokens() async {
         let store = StubTokenProvider()
@@ -39,13 +47,13 @@ struct ConnectAuthRepositoryTests {
 
     @Test("bad credentials are not retried and nothing is stored")
     func badCredentials() async {
-        let remote = FakeAuthRemote(loginResults: [.failure(.unauthorized)])
+        let remote = FakeAuthRemote(loginResults: [.failure(.unauthenticated)])
         let store = StubTokenProvider()
         let repository = makeRepository(remote: remote, store: store)
 
         let result = await repository.login(with: credentials, deviceID: "d1")
 
-        #expect(result.error == .unauthorized)
+        #expect(result.error == .unauthenticated)
         #expect(await remote.loginCalls.count == 1)
         #expect(await store.savedTokens == nil)
     }
@@ -53,7 +61,7 @@ struct ConnectAuthRepositoryTests {
     @Test("a transient network failure is retried once")
     func retriesTransientFailure() async {
         let remote = FakeAuthRemote(loginResults: [
-            .failure(.network(reason: "flaky")),
+            .failure(.unavailable(reason: "flaky")),
             .success(LoginResultDTO(userID: "user-1", tokens: .stub)),
         ])
         let repository = makeRepository(remote: remote, store: StubTokenProvider())
@@ -64,7 +72,21 @@ struct ConnectAuthRepositoryTests {
         #expect(await remote.loginCalls.count == 2)
     }
 
-    @Test("a Keychain write failure surfaces as a storage error, not a silent success")
+    @Test("by default a transient failure is not retried (login is not idempotent)")
+    func defaultPolicyDoesNotRetry() async {
+        let remote = FakeAuthRemote(loginResults: [
+            .failure(.unavailable(reason: "flaky")),
+            .success(LoginResultDTO(userID: "user-1", tokens: .stub)),
+        ])
+        let repository = ConnectAuthRepository(remote: remote, sessionStore: StubTokenProvider(), clock: ManualClock(now: issuedAt))
+
+        let result = await repository.login(with: credentials, deviceID: "d1")
+
+        #expect(result.error == .unavailable(reason: "flaky"))
+        #expect(await remote.loginCalls.count == 1)
+    }
+
+$1 as a storage error, not a silent success")
     func storageFailure() async {
         let store = StubTokenProvider()
         await store.setSaveError(InMemorySecureStore.WriteFailure())
@@ -95,14 +117,14 @@ struct ConnectAuthRepositoryTests {
 
     @Test("logout clears the local session even when the network call fails")
     func logoutIsLocalFirst() async {
-        let remote = FakeAuthRemote(logoutResult: .failure(.network(reason: "offline")))
+        let remote = FakeAuthRemote(logoutResult: .failure(.unavailable(reason: "offline")))
         let store = StubTokenProvider()
         let repository = makeRepository(remote: remote, store: store)
         _ = await repository.login(with: credentials, deviceID: "d1")
 
         let result = await repository.logout()
 
-        #expect(result.error == .network(reason: "offline"))
+        #expect(result.error == .unavailable(reason: "offline"))
         #expect(await store.didClearTokens)
     }
 

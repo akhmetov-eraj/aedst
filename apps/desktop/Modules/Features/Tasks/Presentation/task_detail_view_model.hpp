@@ -3,11 +3,13 @@
 #include "Domain/task.hpp"
 #include "aedst/media/media_list_model.hpp"
 #include "aedst/media/media_upload_controller.hpp"
+#include "aedst/qmlsupport/singleton_slot.hpp"
 
 #include <QDateTime>
 #include <QObject>
 #include <QString>
 #include <QTimer>
+#include <QtQml/qqmlregistration.h>
 
 #include <memory>
 #include <optional>
@@ -36,6 +38,8 @@ class TaskRepository;
 /// server's variants (thumbnails, posters) are READY.
 class TaskDetailViewModel final : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
     Q_PROPERTY(QString taskId READ taskId NOTIFY taskChanged)
     Q_PROPERTY(bool hasTask READ hasTask NOTIFY taskChanged)
     Q_PROPERTY(QString title READ title NOTIFY taskChanged)
@@ -52,6 +56,9 @@ class TaskDetailViewModel final : public QObject {
     Q_PROPERTY(aedst::media::MediaUploadController* uploader READ uploader CONSTANT)
 
 public:
+    static TaskDetailViewModel* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<TaskDetailViewModel>::create(engine, script);
+    }
     struct Dependencies {
         std::shared_ptr<TaskRepository> tasks;
         std::shared_ptr<media::MediaRemoteDataSource> media;

@@ -1,0 +1,4 @@
+# Fixture: a feature linking another feature (and the run-time plugin loader). MUST be reported.
+add_library(AedstFeatureWorse STATIC)
+add_library(Aedst::Feature::Worse ALIAS AedstFeatureWorse)
+target_link_libraries(AedstFeatureWorse PUBLIC Aedst::Feature::Bad Aedst::PluginLoader)

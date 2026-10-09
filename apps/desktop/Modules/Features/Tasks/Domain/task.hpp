@@ -53,6 +53,8 @@ struct Task {
     std::optional<std::chrono::system_clock::time_point> completedAt;
     /// Optimistic-concurrency version (UpdateTask.expected_version).
     int version{0};
+    /// Local only: this row shows a change that is still in the offline outbox, not yet confirmed by the server.
+    bool pendingSync{false};
 
     [[nodiscard]] bool isDone() const noexcept { return status == TaskStatus::Done; }
 
@@ -68,7 +70,7 @@ struct TaskQuery {
     std::string search;
     bool includeDone{true};
     std::string pageToken;
-    int pageSize{50};
+    int pageSize{20};
 };
 
 struct TaskPage {
@@ -83,6 +85,16 @@ struct NewTask {
     std::string description;
     TaskPriority priority{TaskPriority::Medium};
     std::optional<std::chrono::system_clock::time_point> dueDate;
+    /// Sent as the Idempotency-Key of CreateTask. The same id is used if the create is queued offline afterwards, so
+    /// a create whose response was lost is applied once. Empty = no key.
+    std::string clientRequestId;
 };
+
+/// Ids of rows that exist only locally (a create waiting in the outbox) start with this prefix.
+inline constexpr std::string_view kLocalTaskIdPrefix = "local:";
+
+[[nodiscard]] inline bool isLocalTaskId(std::string_view id) noexcept {
+    return id.starts_with(kLocalTaskIdPrefix);
+}
 
 } // namespace aedst::feature::tasks

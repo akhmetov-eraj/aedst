@@ -1,26 +1,37 @@
 package com.aedst.core.analytics
 
-import androidx.navigation.NavController
-import io.sentry.android.navigation.SentryNavigationListener
+import io.sentry.Breadcrumb
+import io.sentry.Sentry
 import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
- * Navigation → telemetry: Sentry breadcrumbs/transactions ([SentryNavigationListener]) and PostHog screen events.
- * Both use the route *template* (`tasks/{taskId}`), so no ids leak into analytics.
+ * Navigation -> telemetry: a PostHog `screen` event and a Sentry navigation breadcrumb whenever the top destination of
+ * the back stack changes. Navigation 3 has no listener API (the back stack is app-owned state), so the app shell
+ * observes its top key and calls [onScreenChanged]; this class stays free of any navigation dependency.
+ *
+ * Names are route *templates* (`tasks/{taskId}`), never concrete ids, so nothing sensitive leaks into analytics.
+ *
+ * A singleton on purpose: the activity is re-created on rotation and on process-preserving config changes, and an
+ * instance per activity would forget the last screen and report the same screen view again after every recreate.
  */
+@Singleton
 class NavigationTelemetry @Inject constructor(private val analytics: AnalyticsTracker) {
 
-    /** Attaches the listeners; call the returned function to detach (e.g. from `DisposableEffect.onDispose`). */
-    fun attach(navController: NavController): () -> Unit {
-        val sentryListener = SentryNavigationListener()
-        val screenListener = NavController.OnDestinationChangedListener { _, destination, _ ->
-            destination.route?.let(analytics::screen)
+    private var lastScreen: String? = null
+
+    /** Reports a move to [screenName]; repeated calls for the same screen (recomposition, tab reselect) are ignored. */
+    fun onScreenChanged(screenName: String) {
+        val previous = lastScreen
+        if (previous == screenName) return
+        lastScreen = screenName
+        analytics.screen(screenName)
+        if (Sentry.isEnabled()) {
+            Sentry.addBreadcrumb(Breadcrumb.navigation(previous ?: APP_START, screenName))
         }
-        navController.addOnDestinationChangedListener(sentryListener)
-        navController.addOnDestinationChangedListener(screenListener)
-        return {
-            navController.removeOnDestinationChangedListener(sentryListener)
-            navController.removeOnDestinationChangedListener(screenListener)
-        }
+    }
+
+    private companion object {
+        const val APP_START = "app-start"
     }
 }

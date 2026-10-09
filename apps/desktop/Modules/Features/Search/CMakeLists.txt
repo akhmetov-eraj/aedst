@@ -36,6 +36,11 @@ add_library(AedstFeatureSearch STATIC
 )
 add_library(Aedst::Feature::Search ALIAS AedstFeatureSearch)
 
+# Declarative QML singletons (QML_ELEMENT + QML_SINGLETON, Aedst::QmlSupport); the module URI is the import name QML uses.
+# Only App links AedstFeatureSearchplugin, so QML test executables keep registering their fakes under this URI.
+target_link_libraries(AedstFeatureSearch PUBLIC Aedst::QmlSupport)
+qt_add_qml_module(AedstFeatureSearch URI Aedst.Feature.Search VERSION 1.0 RESOURCE_PREFIX /qt/qml)
+
 target_include_directories(AedstFeatureSearch PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(AedstFeatureSearch
@@ -44,6 +49,7 @@ target_link_libraries(AedstFeatureSearch
         Aedst::Network
         Aedst::Contract
         Aedst::Navigation
+        Aedst::Plugin
         Qt6::Core
     PRIVATE
         Aedst::Analytics

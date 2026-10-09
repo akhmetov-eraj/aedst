@@ -30,8 +30,8 @@ fun <T> AedstRadioGroup(
     options: List<T>,
     selected: T,
     onSelectedChange: (T) -> Unit,
-    modifier: Modifier = Modifier,
     optionLabel: (T) -> String,
+    modifier: Modifier = Modifier,
     enabled: Boolean = true,
 ) {
     Column(

@@ -1,10 +1,7 @@
 // Package resilience wraps an outbound http.RoundTripper with a circuit
 // breaker, a rate limiter and a default timeout, for calls this server makes
-// to another service over the network. Nothing in this repo calls another
-// service synchronously today (see internal/platform/rpc's doc comment on
-// why dual-transport RPC exists without a wired demo caller yet) — this
-// package exists so that when such a call is added, it doesn't get a naive
-// http.Client that retries into a downed dependency forever.
+// to an external service over the network (push providers today; a Connect client to an
+// extracted module later).
 package resilience
 
 import (
@@ -68,7 +65,7 @@ func WrapRoundTripper(next http.RoundTripper, cfg Config) http.RoundTripper {
 	}
 }
 
-func (rt *resilientRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) { //nolint:bodyclose // caller owns the response body, mirroring http.RoundTripper's own contract
+func (rt *resilientRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx := req.Context()
 	cancel := func() {}
 	if _, hasDeadline := ctx.Deadline(); !hasDeadline && rt.timeout > 0 {

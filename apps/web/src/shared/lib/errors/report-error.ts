@@ -9,7 +9,8 @@ type ErrorSource =
   | "route"
   | "upload"
   | "push"
-  | "service-worker";
+  | "service-worker"
+  | "bff";
 
 export type ErrorContext = {
   source: ErrorSource;

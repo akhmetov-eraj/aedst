@@ -75,3 +75,46 @@ public struct NewTask: Sendable, Equatable {
         self.dueDate = dueDate
     }
 }
+
+/// Input for `UpdateTask`: only the non-nil fields are applied (the request's `update_mask`). Status is not
+/// here: it moves through complete/reopen only.
+public struct TaskUpdate: Sendable, Equatable {
+    public var id: String
+    public var title: String?
+    public var details: String?
+    public var priority: TaskItem.Priority?
+    /// Optimistic-concurrency guard (`expected_version`); `nil` means last-write-wins.
+    public var expectedVersion: Int32?
+
+    /// Memberwise initializer.
+    public init(
+        id: String,
+        title: String? = nil,
+        details: String? = nil,
+        priority: TaskItem.Priority? = nil,
+        expectedVersion: Int32? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.details = details
+        self.priority = priority
+        self.expectedVersion = expectedVersion
+    }
+}
+
+extension TaskItem.Priority {
+    /// Stable wire name used in outbox payloads (never renamed: queued rows outlive app versions).
+    var wireName: String {
+        switch self {
+        case .low: "low"
+        case .medium: "medium"
+        case .high: "high"
+        case .urgent: "urgent"
+        }
+    }
+
+    init?(wireName: String) {
+        guard let match = Self.allCases.first(where: { $0.wireName == wireName }) else { return nil }
+        self = match
+    }
+}

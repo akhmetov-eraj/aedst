@@ -4,7 +4,7 @@ import {
   fallbackMessages,
   pickFallbackLocale,
 } from "@/app/config/i18n/fallback-messages";
-import { locales } from "@/app/config/i18n/locales";
+import { locales } from "@/shared/i18n/locales";
 
 describe("fallbackMessages", () => {
   it("has a complete entry for every supported locale", () => {

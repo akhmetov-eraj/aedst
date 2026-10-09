@@ -110,6 +110,16 @@ struct ClientConfig {
     /// least one backup key. Empty = pinning disabled. Malformed entries make the
     /// whole config invalid (fail closed).
     std::vector<std::string> pinnedSpkiSha256{};
+
+    /// Value of the `X-Aedst-Client` header sent with every request, `desktop/<semver>` (see
+    /// makeClientIdentifier). Empty = no header.
+    std::string clientIdentifier{};
+
+    /// Upper bound for the body of a UNARY response. A reply that has delivered (or announces) more than this is
+    /// aborted at once instead of being buffered into memory, and the call fails with ApiErrorKind::Decoding.
+    /// Server-streaming calls are not bounded by it (they are unbounded by design; each frame is bounded by the
+    /// envelope reader). 0 disables the limit.
+    std::size_t maxResponseBytes{16U * 1024U * 1024U};
 };
 
 /// Checks everything the client will enforce at construction: the endpoint policy
@@ -147,6 +157,13 @@ class ConnectClient final : public QObject {
 public:
     ConnectClient(ClientConfig config, std::shared_ptr<const AuthInterceptor> interceptor,
                   QObject* parent = nullptr);
+    /// Every call still in flight completes with ApiErrorKind::Cancelled before the client goes away (calls bound to a
+    /// context or a CallScope were already cancelled silently and are not completed).
+    ~ConnectClient() override;
+    ConnectClient(const ConnectClient&) = delete;
+    ConnectClient& operator=(const ConnectClient&) = delete;
+    ConnectClient(ConnectClient&&) = delete;
+    ConnectClient& operator=(ConnectClient&&) = delete;
 
     /// Typed unary call. Retried per the RetryPolicy only when `method` is Idempotent.
     template <typename Req, typename Res>
@@ -189,6 +206,12 @@ public:
     /// The reason the client refuses to send anything, if the config was rejected.
     [[nodiscard]] const std::optional<ApiError>& configError() const noexcept { return configError_; }
 
+signals:
+    /// A unary call was refused by the server's client-version gate (failed_precondition +
+    /// CLIENT_UPGRADE_REQUIRED). Emitted for every such answer, before the call's own completion; the app
+    /// routes to its blocking upgrade screen on it.
+    void clientUpgradeRequired();
+
 private:
     /// Refreshes the token if needed (AuthInterceptor::prepare), then sends the attempt.
     void runUnaryAttempt(const std::shared_ptr<detail::CallState>& state, const std::shared_ptr<detail::UnaryCall>& call,
@@ -203,7 +226,11 @@ private:
     void onUnaryFinished(QNetworkReply& reply, const std::shared_ptr<detail::CallState>& state,
                          const std::shared_ptr<detail::UnaryCall>& call, int attempt);
 
+    /// Remembers a call so ~ConnectClient can cancel it; forgets the ones that already ended.
+    void track(const std::shared_ptr<detail::CallState>& state);
+
     QNetworkAccessManager network_;
+    std::vector<std::weak_ptr<detail::CallState>> inFlight_;
     ClientConfig config_;
     std::shared_ptr<const AuthInterceptor> interceptor_;
     std::optional<ApiError> configError_;
@@ -220,7 +247,7 @@ template <typename Res>
     Res message;
     if (!message.ParseFromArray(bytes.constData(), static_cast<int>(bytes.size()))) {
         return std::unexpected(ApiError{
-            .kind = ApiErrorKind::Decoding, .httpStatus = 200, .message = "Malformed " + message.GetTypeName()});
+            .kind = ApiErrorKind::Decoding, .httpStatus = 200, .message = std::string("Malformed ").append(message.GetTypeName())});
     }
     return message;
 }
@@ -237,7 +264,7 @@ CallHandle ConnectClient::unary(const Method<Req, Res>& method, const Req& reque
     if (!body) {
         return failAsync(ApiError{.kind = ApiErrorKind::Internal,
                                   .httpStatus = 0,
-                                  .message = "Cannot serialize " + request.GetTypeName()},
+                                  .message = std::string("Cannot serialize ").append(request.GetTypeName())},
                          [done = std::move(done)](RawResult result) { done(std::unexpected(std::move(result.error()))); });
     }
     return unaryRaw(method.info, std::move(*body), options, [done = std::move(done)](RawResult raw) {
@@ -289,7 +316,7 @@ CallHandle ConnectClient::serverStream(const Method<Req, Res>& method, const Req
     if (!body) {
         return failAsync(ApiError{.kind = ApiErrorKind::Internal,
                                   .httpStatus = 0,
-                                  .message = "Cannot serialize " + request.GetTypeName()},
+                                  .message = std::string("Cannot serialize ").append(request.GetTypeName())},
                          [onDone = std::move(onDone)](RawResult result) {
                              onDone(std::unexpected(std::move(result.error())));
                          });

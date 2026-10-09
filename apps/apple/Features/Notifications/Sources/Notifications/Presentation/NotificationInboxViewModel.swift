@@ -1,23 +1,30 @@
 import AedstAnalytics
 import AedstCore
 import Foundation
-import Perception
+import Observation
 
 /// The in-app inbox: paged list, unread filter, mark one/all read.
 @MainActor
-@Perceptible
+@Observable
 public final class NotificationInboxViewModel {
     public private(set) var notifications: [InboxNotification] = []
     public private(set) var isLoading = false
     public private(set) var hasLoaded = false
     public var unreadOnly = false {
-        didSet { if unreadOnly != oldValue { reloadTask = Task { await refresh() } } }
+        didSet {
+            guard unreadOnly != oldValue else { return }
+            // A toggle supersedes an unfinished reload: cancel it so a slow, older answer never overwrites the new one.
+            reloadTask?.cancel()
+            reloadTask = Task { await refresh() }
+        }
     }
     /// Bound to `aedstErrorPresenter`.
     public var error: AedstError?
 
-    @PerceptionIgnored private var reloadTask: Task<Void, Never>?
-    private var nextPageToken: String?
+    @ObservationIgnored private var reloadTask: Task<Void, Never>?
+    @ObservationIgnored private var nextPageToken: String?
+    /// Bumped by every load; an answer whose generation is no longer current is dropped.
+    @ObservationIgnored private var generation = 0
     private let repository: any NotificationsRepository
     private let badge: UnreadBadgeModel
     private let analytics: AnalyticsClient
@@ -52,7 +59,7 @@ public final class NotificationInboxViewModel {
                 await refresh()
             }
         }
-        analytics.track(AnalyticsEvent(name: "notification_opened", parameters: ["source": "inbox"]))
+        analytics.track(AnalyticsEvent(name: "notification_opened", parameters: ["via": "inbox"]))
         return notification.link.isEmpty ? nil : notification.link
     }
 
@@ -74,14 +81,20 @@ public final class NotificationInboxViewModel {
         }
     }
 
+    /// A page load never starts while another is running, but a reload (`replacing`) always does: it supersedes
+    /// the running one, whose result is then discarded (it was fetched for another filter or an older state).
     private func load(replacing: Bool) async {
-        guard !isLoading else { return }
+        if !replacing, isLoading { return }
+        generation += 1
+        let mine = generation
+        let filter = unreadOnly
         isLoading = true
-        defer {
-            isLoading = false
-            hasLoaded = true
-        }
-        switch await repository.list(unreadOnly: unreadOnly, pageToken: replacing ? nil : nextPageToken) {
+        let result = await repository.list(unreadOnly: filter, pageToken: replacing ? nil : nextPageToken)
+        guard mine == generation else { return }
+        isLoading = false
+        hasLoaded = true
+        guard filter == unreadOnly else { return }
+        switch result {
         case .success(let page):
             notifications = replacing ? page.items : notifications + page.items
             nextPageToken = page.nextPageToken

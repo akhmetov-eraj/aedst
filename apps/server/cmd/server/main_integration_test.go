@@ -39,21 +39,28 @@ func freeAddr(t *testing.T) string {
 	return l.Addr().String()
 }
 
-// start runs the server against a migrated database with extra environment.
+// start runs the server against a fresh migrated database with extra environment.
 func start(t *testing.T, env map[string]string) *server {
 	t.Helper()
 	dsn := postgrestest.NewDatabase(t)
-	postgrestest.Migrate(t, dsn, "auth", "tasks", "notifications", "search", "media", "admin")
+	postgrestest.Migrate(t, dsn, "auth", "tasks", "notifications", "search", "media", "admin", "integrity", "appattest")
+	return startOn(t, dsn, env)
+}
 
+// startOn runs one more server process against an already migrated database: the
+// way to model N replicas (or an API and a worker) on one Postgres.
+func startOn(t *testing.T, dsn string, env map[string]string) *server {
+	t.Helper()
 	addr := freeAddr(t)
 	for k, v := range map[string]string{
 		"AEDST_ENV":                         "test",
 		"AEDST_DATABASE_URL":                dsn,
 		"AEDST_HTTP_ADDR":                   addr,
 		"AEDST_JWT_SIGNING_KEY":             strings.Repeat("k", 40),
+		"AEDST_AUTH_FIRST_PARTY_ENABLED":    "true",        // off by default (IdP-first); these tests drive Register
+		"AEDST_AUTH_FIRST_PARTY_SUNSET":     "2099-12-31",  // required outside development; tests are not a real deployment
 		"AEDST_VALKEY_ADDR":                 "127.0.0.1:1", // nothing listens: Valkey is optional
 		"AEDST_LOG_LEVEL":                   "error",
-		"AEDST_OUTBOX_RELAY_INTERVAL_MS":    "50",
 		"AEDST_RETENTION_INTERVAL_MINUTES":  "1",
 		"AEDST_GRPC_REFLECTION_ENABLED":     "false",
 		"AEDST_SHUTDOWN_TIMEOUT_SECONDS":    "10",
@@ -64,7 +71,7 @@ func start(t *testing.T, env map[string]string) *server {
 		t.Setenv(k, v)
 	}
 	for k, v := range env {
-		t.Setenv(k, v)
+		t.Setenv(k, strings.ReplaceAll(v, "{dsn}", dsn)) // {dsn} lets a test derive a variant of its own database URL
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -218,10 +225,10 @@ func TestServer_EndToEnd(t *testing.T) {
 			}
 			return n
 		}
-		if n := count("SELECT count(*) FROM platform.outbox WHERE module = 'tasks' AND event_type = 'tasks.v1.TaskCompleted'"); n != 1 {
-			t.Fatalf("outbox rows = %d after three completes, want 1", n)
+		if n := count("SELECT count(*) FROM river_job WHERE kind = 'platform.event_delivery' AND args->>'consumer' = 'notifications.task_completed'"); n != 1 {
+			t.Fatalf("notification delivery jobs = %d after three completes, want 1", n)
 		}
-		// The relay delivers asynchronously (50 ms interval): wait for the projection.
+		// River delivers asynchronously: wait for the projection.
 		deadline := time.Now().Add(10 * time.Second)
 		for count("SELECT count(*) FROM notifications.notifications") == 0 && time.Now().Before(deadline) {
 			time.Sleep(50 * time.Millisecond)
@@ -254,6 +261,25 @@ func TestServer_EndToEnd(t *testing.T) {
 		}
 		if status, _ := s.rpc(t, "/aedst.search.v1.SearchService/Search", token, "", map[string]any{"query": ""}); status != http.StatusBadRequest {
 			t.Errorf("Search with an empty query = %d, want 400 from protovalidate", status)
+		}
+		integrityReq := map[string]any{"integrityToken": "t", "action": "login", "requestHash": strings.Repeat("A", 43)}
+		if status, _ := s.rpc(t, "/aedst.integrity.v1.IntegrityService/VerifyIntegrityToken", "", "", integrityReq); status != http.StatusUnauthorized {
+			t.Errorf("VerifyIntegrityToken without a token = %d, want 401", status)
+		}
+		if status, body := s.rpc(t, "/aedst.integrity.v1.IntegrityService/VerifyIntegrityToken", token, "", integrityReq); body["code"] != "failed_precondition" {
+			t.Errorf("VerifyIntegrityToken while disabled = %d %v, want FAILED_PRECONDITION", status, body)
+		}
+		if status, _ := s.rpc(t, "/aedst.integrity.v1.IntegrityService/VerifyIntegrityToken", token, "", map[string]any{"integrityToken": "t", "action": "Bad Action", "requestHash": "x"}); status != http.StatusBadRequest {
+			t.Errorf("VerifyIntegrityToken with an invalid action = %d, want 400 from protovalidate", status)
+		}
+		if status, _ := s.rpc(t, "/aedst.appattest.v1.AppAttestService/CreateChallenge", "", "", map[string]any{}); status != http.StatusUnauthorized {
+			t.Errorf("CreateChallenge without a token = %d, want 401", status)
+		}
+		if status, body := s.rpc(t, "/aedst.appattest.v1.AppAttestService/CreateChallenge", token, "", map[string]any{}); body["code"] != "failed_precondition" {
+			t.Errorf("CreateChallenge while disabled = %d %v, want FAILED_PRECONDITION", status, body)
+		}
+		if status, _ := s.rpc(t, "/aedst.appattest.v1.AppAttestService/Enroll", token, "", map[string]any{"keyId": "x"}); status != http.StatusBadRequest {
+			t.Errorf("Enroll with an invalid key id = %d, want 400 from protovalidate", status)
 		}
 		if status, body := s.rpc(t, "/aedst.media.v1.MediaService/ListMedia", token, "", map[string]any{}); body["code"] != "failed_precondition" {
 			t.Errorf("ListMedia without storage = %d %v, want FAILED_PRECONDITION", status, body)
@@ -335,6 +361,8 @@ func TestServer_RefusesToStartWithAnInvalidRolePolicy(t *testing.T) {
 
 func TestServer_RefusesToStartWithoutADatabase(t *testing.T) {
 	t.Setenv("AEDST_DATABASE_URL", "postgres://nobody:nothing@127.0.0.1:1/none?sslmode=disable&connect_timeout=2")
+	t.Setenv("AEDST_AUTH_FIRST_PARTY_ENABLED", "true")
+	t.Setenv("AEDST_AUTH_FIRST_PARTY_SUNSET", "2099-12-31")
 	t.Setenv("AEDST_JWT_SIGNING_KEY", strings.Repeat("k", 40))
 	t.Setenv("AEDST_HTTP_ADDR", freeAddr(t))
 	t.Setenv("AEDST_LOG_LEVEL", "error")

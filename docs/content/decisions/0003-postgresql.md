@@ -1,3 +1,8 @@
+---
+title: "ADR-0003: PostgreSQL as the system of record, no ORM"
+description: "Accepted"
+---
+
 # ADR-0003: PostgreSQL as the system of record, no ORM
 
 ## Status
@@ -14,7 +19,7 @@ PostgreSQL 18 is the source of truth for every module. Access is through
 SQL) — no ORM. Migrations are managed with Goose, namespaced per module.
 Connection pooling in front of the app (for horizontal scaling) is PgBouncer in
 transaction mode. Schema-per-module from Phase 1 (see
-[database.md](/database)).
+[database.md](/server/database)).
 
 ## Consequences
 - SQL stays explicit and reviewable; no hidden N+1 queries or magic query

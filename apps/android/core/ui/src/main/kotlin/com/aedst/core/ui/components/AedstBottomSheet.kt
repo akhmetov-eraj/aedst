@@ -51,19 +51,21 @@ fun AedstBottomSheet(
 
 /** Preview-only content for [AedstBottomSheetContentPreview]; a real [ModalBottomSheet] cannot be statically previewed. */
 @Composable
-private fun AedstBottomSheetContent() {
-    Text("Share task", style = MaterialTheme.typography.titleMedium)
-    Text(
-        "Choose where you'd like to share this task.",
-        style = MaterialTheme.typography.bodyMedium,
-    )
+private fun AedstBottomSheetPreviewContent() {
+    Column {
+        Text("Share task", style = MaterialTheme.typography.titleMedium)
+        Text(
+            "Choose where you'd like to share this task.",
+            style = MaterialTheme.typography.bodyMedium,
+        )
+    }
 }
 
 /** Renders just the sheet's inner [Column], per the preview convention for overlay components. */
 @Composable
-fun AedstBottomSheetContentPreview() {
-    Column(modifier = Modifier.padding(AedstSpacing.xl)) {
-        AedstBottomSheetContent()
+fun AedstBottomSheetContentPreview(modifier: Modifier = Modifier) {
+    Column(modifier = modifier.padding(AedstSpacing.xl)) {
+        AedstBottomSheetPreviewContent()
     }
 }
 

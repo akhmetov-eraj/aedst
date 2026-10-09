@@ -6,8 +6,8 @@
 
 namespace aedst::updater {
 
-/// update::HttpFetcher over Qt Network. Blocking by contract, so it must be called from a worker thread: it creates
-/// its own QNetworkAccessManager and a local event loop on the calling thread for each fetch.
+/// update::HttpFetcher over Qt Network. Blocking by contract, so it must be called from a worker thread: it reuses one
+/// thread-local QNetworkAccessManager per calling thread (connection reuse) and runs a local event loop per fetch.
 ///
 /// Policy: https only (anything else is refused before a socket is opened), no redirects followed (a signed manifest
 /// is fetched from the exact URL that was configured), TLS verification stays on (no ignoreSslErrors), the body is

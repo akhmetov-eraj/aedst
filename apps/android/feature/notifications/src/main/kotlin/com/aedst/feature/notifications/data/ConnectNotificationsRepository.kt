@@ -21,7 +21,7 @@ import com.aedst.notifications.v1.updatePreferencesRequest
 import javax.inject.Inject
 import com.aedst.notifications.v1.NotificationKind as ProtoNotificationKind
 
-class ConnectNotificationsRepository @Inject constructor(
+internal class ConnectNotificationsRepository @Inject constructor(
     private val client: NotificationsServiceClientInterface,
     private val unreadStore: UnreadCountStore,
 ) : NotificationsRepository {
@@ -48,7 +48,7 @@ class ConnectNotificationsRepository @Inject constructor(
 
     override suspend fun markRead(ids: List<String>): Outcome<Unit> = runCatchingOutcome {
         // MarkReadRequest.ids is validated to 1..100 items.
-        ids.chunked(MAX_MARK_READ_IDS).forEach { chunk ->
+        for (chunk in ids.chunked(MAX_MARK_READ_IDS)) {
             rpc { client.markRead(markReadRequest { this.ids += chunk }) }
         }
         unreadStore.decrementBy(ids.size)
@@ -90,7 +90,11 @@ private fun Notification.toDomain() = InboxNotification(
         ProtoNotificationKind.NOTIFICATION_KIND_TASK_COMPLETED -> NotificationKind.TASK_COMPLETED
         ProtoNotificationKind.NOTIFICATION_KIND_TASK_DUE_SOON -> NotificationKind.TASK_DUE_SOON
         ProtoNotificationKind.NOTIFICATION_KIND_MEDIA_READY -> NotificationKind.MEDIA_READY
-        else -> NotificationKind.SYSTEM
+        // A kind this build does not know is still a displayable message: use the generic one, not a task kind.
+        ProtoNotificationKind.NOTIFICATION_KIND_SYSTEM,
+        ProtoNotificationKind.NOTIFICATION_KIND_UNSPECIFIED,
+        ProtoNotificationKind.UNRECOGNIZED,
+        -> NotificationKind.SYSTEM
     },
     title = title,
     body = body,

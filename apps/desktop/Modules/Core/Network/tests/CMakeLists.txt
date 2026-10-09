@@ -8,6 +8,7 @@ add_executable(AedstNetworkTests
     call_options_test.cpp
     connect_envelope_test.cpp
     connect_error_test.cpp
+    error_kinds_replay_test.cpp
     transport_policy_test.cpp
 )
 target_link_libraries(AedstNetworkTests PRIVATE Aedst::Network Aedst::Testing GTest::gtest_main)
@@ -22,7 +23,16 @@ gtest_discover_tests(AedstNetworkTests
 # Protobuf messages (Aedst::Contract), one QCoreApplication for the event loop.
 # Non-discovering (DISCOVERY_MODE would launch the binary at build time, which
 # needs the Qt DLLs on PATH on Windows); one CTest entry per binary like Qt Test.
-add_executable(AedstNetworkClientTests connect_client_test.cpp connect_client_auth_test.cpp)
+add_executable(AedstNetworkClientTests
+    connect_client_test.cpp
+    connect_client_test_support.hpp
+    connect_client_stream_test.cpp
+    connect_client_auth_test.cpp
+    connect_client_auth_test_support.hpp
+    connect_client_lifetime_test.cpp
+    client_headers_test.cpp
+    client_version_gate_test.cpp
+    connect_client_tls_test.cpp)
 target_link_libraries(AedstNetworkClientTests PRIVATE Aedst::Network Aedst::Contract Aedst::Testing)
 aedst_set_warnings(AedstNetworkClientTests)
 

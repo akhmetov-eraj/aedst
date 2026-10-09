@@ -1,22 +1,24 @@
 #include "Navigation/notifications_destinations.hpp"
 
-#include "aedst/navigation/nav_graph.hpp"
+#include "aedst/navigation/route.hpp"
 
-#include <QString>
-#include <QUrl>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace aedst::feature::notifications {
-namespace {
 
-[[nodiscard]] QUrl toUrl(std::string_view url) {
-    return QUrl(QString::fromUtf8(url.data(), static_cast<qsizetype>(url.size())));
-}
-
-} // namespace
-
-void registerNotificationsDestinations(navigation::NavGraph& graph) {
-    graph.registerDestination(navigation::routes::kNotifications, toUrl(kNotificationsViewUrl));
-    graph.registerDestination(navigation::routes::kNotificationPreferences, toUrl(kNotificationPreferencesViewUrl));
+std::unique_ptr<plugin::IFeaturePlugin> makeNotificationsPlugin() {
+    return std::make_unique<plugin::StaticFeaturePlugin>(
+        plugin::PluginDescriptor{.id = "notifications",
+                                 .version = "1.0.0",
+                                 .apiVersion = plugin::kPluginApiVersion,
+                                 .requiredCapabilities = {},
+                                 .featureFlag = {}},
+        std::vector<plugin::RouteContribution>{
+            {std::string(navigation::routes::kNotifications), std::string(kNotificationsViewUrl), {"notifications"}},
+            {std::string(navigation::routes::kNotificationPreferences), std::string(kNotificationPreferencesViewUrl)},
+        });
 }
 
 } // namespace aedst::feature::notifications

@@ -26,7 +26,9 @@ async function loadPage(mdxPath: string[] | undefined) {
 export async function generateMetadata(props: PageProps): Promise<Metadata> {
   const params = await props.params;
   const { metadata } = await loadPage(params.mdxPath);
-  return metadata;
+  const path = (params.mdxPath ?? []).join("/");
+  // Resolved against metadataBase (NEXT_PUBLIC_DOCS_URL); relative when that is unset.
+  return { ...metadata, alternates: { ...metadata.alternates, canonical: `/${path}` } };
 }
 
 const Wrapper = getMDXComponents().wrapper;

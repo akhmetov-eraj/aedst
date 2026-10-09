@@ -31,6 +31,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/aedst/server/internal/platform/database"
 )
 
 // ErrNotAcquired is returned by WithTryLock when the lock is held elsewhere.
@@ -41,9 +43,15 @@ type Locker struct {
 	pool *pgxpool.Pool
 }
 
-// NewLocker builds a Locker on the shared pool.
-func NewLocker(pool *pgxpool.Pool) *Locker {
-	return &Locker{pool: pool}
+// NewLocker builds a Locker. It takes a database.DirectPool on purpose: a
+// session-level advisory lock taken through a transaction pooler (PgBouncer)
+// stays on whichever server connection happened to serve that transaction and
+// is later handed to an unrelated client, so the lock leaks or is never
+// released. Build the pool with database.NewDirectPool (it refuses a
+// transaction-pooled Config) on AEDST_DATABASE_DIRECT_DSN, never from the API
+// pool. Prefer TryXact/Xact, which are safe behind a pooler.
+func NewLocker(pool *database.DirectPool) *Locker {
+	return &Locker{pool: pool.Pool}
 }
 
 // TryXact attempts to take the transaction-scoped advisory lock name inside

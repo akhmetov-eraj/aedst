@@ -1,0 +1,8 @@
+import QtQuick
+
+// Fixture: a clickable MouseArea with neither Accessible.role nor Accessible.name. MUST fail.
+Item {
+    MouseArea {
+        anchors.fill: parent
+    }
+}

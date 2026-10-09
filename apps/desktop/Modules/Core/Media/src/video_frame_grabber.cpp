@@ -14,6 +14,29 @@
 
 namespace aedst::media {
 
+namespace {
+
+QString& cacheRootStorage() {
+    static QString root;
+    return root;
+}
+
+} // namespace
+
+void VideoFrameGrabber::setCacheRoot(const QString& root) {
+    cacheRootStorage() = root;
+}
+
+QString VideoFrameGrabber::thumbnailDirectory() {
+    const QString root = cacheRootStorage().isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+                                                      : cacheRootStorage();
+    return QDir(root).filePath(QStringLiteral("video-thumbnails"));
+}
+
+void VideoFrameGrabber::clearThumbnailCache() {
+    QDir(thumbnailDirectory()).removeRecursively();
+}
+
 VideoFrameGrabber::VideoFrameGrabber(QObject* parent) : QObject(parent) {
     timeout_.setSingleShot(true);
     connect(&timeout_, &QTimer::timeout, this, [this]() { finish({}); });
@@ -110,8 +133,7 @@ void VideoFrameGrabber::finish(QImage image) {
         return;
     }
     image_ = std::move(image);
-    const QString dir = QDir(QStandardPaths::writableLocation(QStandardPaths::CacheLocation))
-                            .filePath(QStringLiteral("video-thumbnails"));
+    const QString dir = thumbnailDirectory();
     QDir().mkpath(dir);
     const QByteArray name =
         QCryptographicHash::hash(source_.toEncoded() + QByteArray::number(positionMs_), QCryptographicHash::Sha256)

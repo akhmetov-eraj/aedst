@@ -3,7 +3,7 @@
 import { cn } from "cn";
 import { useTranslations } from "next-intl";
 
-import { Link, usePathname } from "@/app/config/i18n/navigation";
+import { Link, usePathname } from "@/shared/i18n/navigation";
 
 const SECTIONS = [
   { href: "/admin", key: "overview" },

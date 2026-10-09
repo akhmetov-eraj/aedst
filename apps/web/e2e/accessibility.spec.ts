@@ -41,18 +41,11 @@ test.describe("public pages", () => {
     await expectNoViolations(page);
   });
 
-  test("registration form has no accessibility violations", async ({
-    page,
-  }) => {
-    await page.goto("/en");
-    await page.getByRole("button", { name: "Create one" }).click();
-    await expectNoViolations(page);
-  });
-
-  test("form validation errors are accessible", async ({ page }) => {
-    await page.goto("/en");
-    await page.getByRole("button", { name: "Log in" }).click();
-    await expect(page.getByText("Enter a valid email address.")).toBeVisible();
+  test("a failed sign-in explains itself accessibly", async ({ page }) => {
+    await page.goto("/en?auth_error=invalid");
+    await expect(page.locator("p[role=alert]")).toContainText(
+      "Sign-in could not be verified",
+    );
     await expectNoViolations(page);
   });
 
@@ -79,7 +72,9 @@ test.describe("public pages", () => {
 test.describe("signed-in pages", () => {
   test("dashboard and task list", async ({ page, signedIn }) => {
     expect(signedIn.email).toBeTruthy();
-    await expect(page.getByText("Seed task 25")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Seed task 25/ }),
+    ).toBeVisible();
     await expectNoViolations(page);
   });
 
@@ -87,7 +82,9 @@ test.describe("signed-in pages", () => {
     await page.emulateMedia({ colorScheme: "dark" });
     await page.goto("/en");
     await logIn(page, user);
-    await expect(page.getByText("Seed task 25")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Seed task 25/ }),
+    ).toBeVisible();
     await expectNoViolations(page);
   });
 
@@ -149,7 +146,9 @@ test.describe("signed-in pages", () => {
       "Safari only tabs to text fields by default (buttons need Option+Tab)",
     );
     expect(signedIn.email).toBeTruthy();
-    await expect(page.getByText("Seed task 25")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Seed task 25/ }),
+    ).toBeVisible();
 
     await page.getByRole("searchbox", { name: "Search tasks" }).focus();
     await page.keyboard.type("Seed task 03");

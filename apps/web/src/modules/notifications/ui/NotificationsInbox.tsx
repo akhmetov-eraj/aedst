@@ -1,20 +1,18 @@
 "use client";
 
-import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { useInfiniteQuery } from "@connectrpc/connect-query";
-import { useLocale, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { parseAsBoolean, useQueryState } from "nuqs";
-
-import type { Locale } from "@/app/config/i18n/locales";
-import { Link, useRouter } from "@/app/config/i18n/navigation";
 import { useMarkNotifications } from "@/modules/notifications/lib/use-notifications";
+import { NotificationsList } from "@/modules/notifications/ui/NotificationsList";
 import { NotificationsService } from "@/shared/api/connect/client";
 import {
   type Notification,
   NotificationKind,
 } from "@/shared/api/connect/generated/aedst/notifications/v1/notifications_pb";
-import { formatRelative } from "@/shared/date/format-date";
+import { Link, useRouter } from "@/shared/i18n/navigation";
 import { track } from "@/shared/lib/analytics/analytics";
+import { safeInAppPath } from "@/shared/lib/auth/safe-redirect";
 import { Button, buttonVariants } from "@/shared/ui/button";
 import {
   Empty,
@@ -28,18 +26,12 @@ import { Tabs, TabsList, TabsTrigger } from "@/shared/ui/tabs";
 
 const PAGE_SIZE = 20;
 
-/** Only relative in-app links are followed (the server promises that too). */
-function safeLink(link: string): string | null {
-  return link.startsWith("/") && !link.startsWith("//") ? link : null;
-}
-
 /**
  * The in-app inbox: unread/all filter in the URL, keyset paging, opening a
  * notification marks it read and follows its link, "mark all as read".
  */
 export function NotificationsInbox() {
   const t = useTranslations("notifications.inbox");
-  const locale = useLocale() as Locale;
   const router = useRouter();
   const [unreadOnly, setUnreadOnly] = useQueryState(
     "unread",
@@ -67,7 +59,7 @@ export function NotificationsInbox() {
     if (!item.readAt) {
       markRead.mutate({ ids: [item.id] });
     }
-    const link = safeLink(item.link);
+    const link = safeInAppPath(item.link);
     if (link) {
       router.push(link);
     }
@@ -132,40 +124,13 @@ export function NotificationsInbox() {
           </EmptyHeader>
         </Empty>
       ) : (
-        <ul className="flex flex-col gap-2" aria-label={t("listLabel")}>
-          {items.map((item) => (
-            <li key={item.id}>
-              <button
-                type="button"
-                onClick={() => open(item)}
-                className="flex w-full flex-col gap-1 rounded-lg border p-3 text-start transition-colors hover:bg-muted data-[unread=true]:border-primary/40 data-[unread=true]:bg-primary/5"
-                data-unread={!item.readAt}
-              >
-                <span className="flex items-center gap-2">
-                  {!item.readAt && (
-                    <span className="size-2 shrink-0 rounded-full bg-primary">
-                      <span className="sr-only">{t("unreadMarker")}</span>
-                    </span>
-                  )}
-                  <span className="font-medium">{item.title}</span>
-                </span>
-                {item.body && (
-                  <span className="text-muted-foreground text-sm">
-                    {item.body}
-                  </span>
-                )}
-                {item.createdAt && (
-                  <time
-                    className="text-muted-foreground text-xs"
-                    dateTime={timestampDate(item.createdAt).toISOString()}
-                  >
-                    {formatRelative(timestampDate(item.createdAt), locale)}
-                  </time>
-                )}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <NotificationsList
+          items={items}
+          onOpen={open}
+          hasNextPage={inbox.hasNextPage}
+          isFetchingNextPage={inbox.isFetchingNextPage}
+          fetchNextPage={() => void inbox.fetchNextPage()}
+        />
       )}
 
       {inbox.hasNextPage && (

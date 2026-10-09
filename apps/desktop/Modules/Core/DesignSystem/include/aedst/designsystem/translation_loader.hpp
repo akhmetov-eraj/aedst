@@ -13,7 +13,8 @@ namespace aedst::designsystem {
 
 /// Installs the module catalogs (`:/i18n/<catalog>_<lang>.qm`, produced by
 /// `qt_add_translations` with its default `/i18n` resource prefix) for the OS UI
-/// language, and lets the app switch language at runtime.
+/// language, plus Qt's own `qtbase_<lang>.qm` / `qtdeclarative_<lang>.qm` when they exist, and lets the app switch
+/// language at runtime.
 ///
 /// Also sets QLocale's default and QGuiApplication::layoutDirection so Arabic
 /// mirrors the layout (QML: `LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft`).
@@ -43,6 +44,8 @@ signals:
 
 private:
     void removeTranslators();
+    /// qtbase_<lang>.qm / qtdeclarative_<lang>.qm from the deployed `translations/` folder or the Qt installation.
+    void loadQtTranslations(const QString& language);
 
     QStringList catalogs_;
     QString language_;

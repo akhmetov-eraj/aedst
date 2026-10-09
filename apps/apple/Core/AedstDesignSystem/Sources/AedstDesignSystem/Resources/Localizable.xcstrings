@@ -1,41 +1,6 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-    "dsChartSummary" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "مخطط يحتوي على %lld نقطة بيانات"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chart with %lld data points"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "График с %lld точками данных"
-          }
-        },
-        "tg" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Диаграмма бо %lld нуқтаи маълумот"
-          }
-        },
-        "uz" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld ta ma’lumot nuqtasi bilan diagramma"
-          }
-        }
-      }
-    },
     "dsCheckbox" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -106,112 +71,7 @@
         }
       }
     },
-    "dsClose" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "إغلاق"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Close"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Закрыть"
-          }
-        },
-        "tg" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Пӯшидан"
-          }
-        },
-        "uz" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yopish"
-          }
-        }
-      }
-    },
-    "dsCollapses" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "طيّ %@"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Collapses %@"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Свернуть «%@»"
-          }
-        },
-        "tg" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Пӯшидани «%@»"
-          }
-        },
-        "uz" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“%@”ni yopish"
-          }
-        }
-      }
-    },
-    "dsEmpty" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "فارغ"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Empty"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Пусто"
-          }
-        },
-        "tg" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Холӣ"
-          }
-        },
-        "uz" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bo‘sh"
-          }
-        }
-      }
-    },
-    "dsErrorPrefix" : {
+    "dsErrorPrefix %@" : {
       "extractionState" : "manual",
       "localizations" : {
         "ar" : {
@@ -277,41 +137,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Nimadir xato ketdi"
-          }
-        }
-      }
-    },
-    "dsExpands" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "توسيع %@"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Expands %@"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Развернуть «%@»"
-          }
-        },
-        "tg" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Кушодани «%@»"
-          }
-        },
-        "uz" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "“%@”ni ochish"
           }
         }
       }
@@ -386,41 +211,6 @@
         }
       }
     },
-    "dsNextPage" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "الصفحة التالية"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Next page"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Следующая страница"
-          }
-        },
-        "tg" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Саҳифаи баъдӣ"
-          }
-        },
-        "uz" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Keyingi sahifa"
-          }
-        }
-      }
-    },
     "dsOK" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -456,177 +246,91 @@
         }
       }
     },
-    "dsOff" : {
+    "dsPercent %lld" : {
       "extractionState" : "manual",
       "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "معطّل"
-          }
-        },
         "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Off"
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld percent"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld percent"
+                }
+              }
+            }
           }
         },
         "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Выкл."
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld процент"
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld процента"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld процентов"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld процента"
+                }
+              }
+            }
           }
         },
         "tg" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ғайрифаъол"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld фоиз"
+                }
+              }
+            }
           }
         },
         "uz" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "O‘chirilgan"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld foiz"
+                }
+              }
+            }
           }
-        }
-      }
-    },
-    "dsOn" : {
-      "extractionState" : "manual",
-      "localizations" : {
+        },
         "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "مفعّل"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "On"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Вкл."
-          }
-        },
-        "tg" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Фаъол"
-          }
-        },
-        "uz" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yoqilgan"
-          }
-        }
-      }
-    },
-    "dsOneTimePasscode" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "رمز المرور لمرة واحدة"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "One-time passcode"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Одноразовый код"
-          }
-        },
-        "tg" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Рамзи якдафъаина"
-          }
-        },
-        "uz" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bir martalik kod"
-          }
-        }
-      }
-    },
-    "dsPercent" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld بالمئة"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld percent"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld процентов"
-          }
-        },
-        "tg" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld фоиз"
-          }
-        },
-        "uz" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%lld foiz"
-          }
-        }
-      }
-    },
-    "dsPreviousPage" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "الصفحة السابقة"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Previous page"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Предыдущая страница"
-          }
-        },
-        "tg" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Саҳифаи қаблӣ"
-          }
-        },
-        "uz" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Oldingi sahifa"
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld بالمئة"
+                }
+              }
+            }
           }
         }
       }
@@ -697,76 +401,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Qayta urinish"
-          }
-        }
-      }
-    },
-    "dsSelect" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "اختيار"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Select"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Выбор"
-          }
-        },
-        "tg" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Интихоб"
-          }
-        },
-        "uz" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tanlash"
-          }
-        }
-      }
-    },
-    "dsSlider" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "شريط التمرير"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Slider"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ползунок"
-          }
-        },
-        "tg" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Лағжанда"
-          }
-        },
-        "uz" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Slayder"
           }
         }
       }

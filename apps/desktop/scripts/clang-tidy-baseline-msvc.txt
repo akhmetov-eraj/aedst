@@ -1,0 +1,4 @@
+# clang-tidy baseline for the MSVC compile database (Windows-only translation units; AEDST_TIDY_ONLY_WINDOWS=1).
+# Same format and rules as clang-tidy-baseline.txt: one path:check per line, may only shrink.
+# The true starting set is UNKNOWN until the first CI run on windows-latest; generate it with
+#   AEDST_TIDY_ONLY_WINDOWS=1 AEDST_TIDY_BASELINE=scripts/clang-tidy-baseline-msvc.txt ./scripts/run-clang-tidy.sh --update-baseline build/msvc-debug

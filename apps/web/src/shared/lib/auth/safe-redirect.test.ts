@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { safeRedirectPath } from "@/shared/lib/auth/safe-redirect";
+import {
+  safeInAppPath,
+  safeRedirectPath,
+} from "@/shared/lib/auth/safe-redirect";
 
 describe("safeRedirectPath", () => {
   it.each([
@@ -33,5 +36,15 @@ describe("safeRedirectPath", () => {
     expect(safeRedirectPath(null)).toBe("/tasks");
     expect(safeRedirectPath(undefined, "/home")).toBe("/home");
     expect(safeRedirectPath("//x", "/home")).toBe("/home");
+  });
+});
+
+describe("safeInAppPath", () => {
+  it("returns the path or null (no fallback), for links that came from data", () => {
+    expect(safeInAppPath("/tasks/1?x=1")).toBe("/tasks/1?x=1");
+    expect(safeInAppPath("//evil.example")).toBeNull();
+    expect(safeInAppPath("")).toBeNull();
+    expect(safeInAppPath(null)).toBeNull();
+    expect(safeInAppPath(undefined)).toBeNull();
   });
 });

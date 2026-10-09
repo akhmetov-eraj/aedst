@@ -19,6 +19,8 @@ object AedstLightPalette {
     val destructive = Color(0xffe7000b)
     val destructiveForeground = Color(0xfffafafa)
     val foreground = Color(0xff0a0a0a)
+    val info = Color(0xff1d4ed8)
+    val infoForeground = Color(0xfffafafa)
     val input = Color(0xffe5e5e5)
     val muted = Color(0xfff5f5f5)
     val mutedForeground = Color(0xff737373)

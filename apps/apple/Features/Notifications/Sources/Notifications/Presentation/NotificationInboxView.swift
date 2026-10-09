@@ -1,5 +1,4 @@
 import AedstDesignSystem
-import Perception
 import SwiftUI
 
 /// Inbox screen. Tapping an entry marks it read and opens its link through
@@ -21,53 +20,51 @@ public struct NotificationInboxView: View {
     }
 
     public var body: some View {
-        WithPerceptionTracking {
-            @Perception.Bindable var viewModel = viewModel
+        @Bindable var viewModel = viewModel
 
-            List {
-                Picker(String(localized: "notificationsFilter", bundle: .module), selection: $viewModel.unreadOnly) {
-                    Text(String(localized: "notificationsFilterAll", bundle: .module)).tag(false)
-                    Text(String(localized: "notificationsFilterUnread", bundle: .module)).tag(true)
-                }
-                .pickerStyle(.segmented)
+        List {
+            Picker(String(localized: "notificationsFilter", bundle: .module), selection: $viewModel.unreadOnly) {
+                Text(String(localized: "notificationsFilterAll", bundle: .module)).tag(false)
+                Text(String(localized: "notificationsFilterUnread", bundle: .module)).tag(true)
+            }
+            .pickerStyle(.segmented)
 
-                if viewModel.hasLoaded, viewModel.notifications.isEmpty {
-                    Text(String(localized: "notificationsEmpty", bundle: .module))
-                        .foregroundStyle(AedstColor.mutedForeground)
-                }
-                ForEach(viewModel.notifications) { notification in
-                    Button {
-                        Task {
-                            if let link = await viewModel.open(notification) { onOpenLink(link) }
-                        }
-                    } label: {
-                        NotificationRow(notification: notification)
+            if viewModel.hasLoaded, viewModel.notifications.isEmpty {
+                Text(String(localized: "notificationsEmpty", bundle: .module))
+                    .foregroundStyle(AedstColor.mutedForeground)
+            }
+            ForEach(viewModel.notifications) { notification in
+                Button {
+                    Task {
+                        if let link = await viewModel.open(notification) { onOpenLink(link) }
                     }
-                    .buttonStyle(.plain)
-                    .task { await viewModel.loadMoreIfNeeded(after: notification) }
+                } label: {
+                    NotificationRow(notification: notification)
                 }
-                if viewModel.isLoading {
-                    AedstProgressView(style: .circular).frame(maxWidth: .infinity)
-                }
+                .buttonStyle(.plain)
+                .task { await viewModel.loadMoreIfNeeded(after: notification) }
             }
-            .refreshable { await viewModel.refresh() }
-            .navigationTitle(String(localized: "notificationsTitle", bundle: .module))
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button(String(localized: "notificationsMarkAllRead", bundle: .module)) {
-                            Task { await viewModel.markAllRead() }
-                        }
-                        Button(String(localized: "notificationsPreferences", bundle: .module), action: onOpenPreferences)
-                    } label: {
-                        Label(String(localized: "notificationsMore", bundle: .module), systemImage: "ellipsis.circle")
+            if viewModel.isLoading {
+                AedstProgressView(style: .circular).frame(maxWidth: .infinity)
+            }
+        }
+        .refreshable { await viewModel.refresh() }
+        .navigationTitle(String(localized: "notificationsTitle", bundle: .module))
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button(String(localized: "notificationsMarkAllRead", bundle: .module)) {
+                        Task { await viewModel.markAllRead() }
                     }
+                    Button(String(localized: "notificationsPreferences", bundle: .module), action: onOpenPreferences)
+                } label: {
+                    Label(String(localized: "notificationsMore", bundle: .module), systemImage: "ellipsis.circle")
                 }
             }
-            .aedstErrorPresenter($viewModel.error)
-            .task {
-                if !viewModel.hasLoaded { await viewModel.refresh() }
-            }
+        }
+        .aedstErrorPresenter($viewModel.error)
+        .task {
+            if !viewModel.hasLoaded { await viewModel.refresh() }
         }
     }
 }
@@ -103,5 +100,6 @@ private struct NotificationRow: View {
         .accessibilityValue(
             Text(notification.isRead ? "" : String(localized: "notificationsUnread", bundle: .module))
         )
+        .aedstSensitive()
     }
 }

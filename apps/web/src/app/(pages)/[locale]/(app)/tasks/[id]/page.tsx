@@ -1,14 +1,24 @@
 import type { Metadata } from "next";
+import { getTranslations } from "next-intl/server";
 import { Suspense } from "react";
 
-import { TaskAttachments } from "@/modules/media/ui/TaskAttachments";
+import { TaskAttachments } from "@/modules/media/public";
 import {
   TaskDetailsFallback,
   TaskDetailsSection,
-} from "@/modules/tasks/ui/TasksSections";
-import { ErrorBoundary } from "@/shared/lib/errors/error-boundary";
+} from "@/modules/tasks/public";
+import { requireLocale } from "@/shared/i18n/require-locale";
+import { ErrorBoundary } from "@/shared/lib/errors/ErrorBoundary";
 
-export const metadata: Metadata = { robots: { index: false, follow: false } };
+// A title per page (WCAG 2.4.2); the task's own title is not fetched here, the
+// page heading carries it.
+export async function generateMetadata({
+  params,
+}: PageProps<"/[locale]/tasks/[id]">): Promise<Metadata> {
+  const locale = requireLocale((await params).locale);
+  const t = await getTranslations({ locale, namespace: "tasks.details" });
+  return { title: t("pageTitle"), robots: { index: false, follow: false } };
+}
 
 /**
  * Task detail + its attachments. The two come from different feature

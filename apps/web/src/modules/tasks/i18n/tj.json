@@ -30,7 +30,8 @@
     "priorityFilterLabel": "Филтр аз рӯи афзалият",
     "sortLabel": "Тартиб додани вазифаҳо",
     "paginationLabel": "Саҳифабандӣ",
-    "resultsLabel": "Вазифаҳо"
+    "resultsLabel": "Вазифаҳо",
+    "resultCount": "{count, plural, one {# вазифа} other {# вазифа}}"
   },
   "status": {
     "todo": "Бояд иҷро шавад",
@@ -78,10 +79,18 @@
     "deleteCancelAction": "Бекор кардан",
     "notFoundTitle": "Вазифа ёфт нашуд",
     "notFoundDescription": "Шояд он нест карда шуда бошад ё ба дигар корбар тааллуқ дошта бошад.",
-    "loadErrorTitle": "Вазифа бор нашуд"
+    "loadErrorTitle": "Вазифа бор нашуд",
+    "pageTitle": "Вазифа"
   },
   "a11y": {
     "priority": "Афзалият",
     "status": "Ҳолат"
+  },
+  "sync": {
+    "pendingBadge": "Мунтазири ҳамоҳангсозӣ",
+    "failedBadge": "Ҳамоҳанг нашуд",
+    "discard": "Бекор кардан",
+    "queuedTitle": "Мунтазири ҳамоҳангсозӣ",
+    "queuedHint": "Дар дастгоҳ нигоҳ дошта шуд. Худкор фиристода мешавад."
   }
 }

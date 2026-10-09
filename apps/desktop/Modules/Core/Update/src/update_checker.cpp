@@ -19,14 +19,14 @@ UpdateChecker::UpdateChecker(UpdateCheckerConfig config, HttpFetcher& fetcher, c
 
 core::Outcome<std::optional<UpdateOffer>> UpdateChecker::check() {
     if (!isSecureHttpsUrl(config_.manifestUrl)) {
-        return fail(Error::invalidArgument("update: manifest URL must be a valid https URL"));
+        return fail(Error::invalidInput("update: manifest URL must be a valid https URL"));
     }
     const auto installed = parseSemVer(config_.installedVersion);
     if (!installed) {
-        return fail(Error::invalidArgument("update: installed version is not valid semver"));
+        return fail(Error::invalidInput("update: installed version is not valid semver"));
     }
     if (config_.platform.empty() || config_.arch.empty()) {
-        return fail(Error::invalidArgument("update: platform and arch are required"));
+        return fail(Error::invalidInput("update: platform and arch are required"));
     }
 
     auto body = fetcher_.fetch(config_.manifestUrl, config_.maxManifestBytes);
@@ -34,7 +34,7 @@ core::Outcome<std::optional<UpdateOffer>> UpdateChecker::check() {
         return fail(body.error());
     }
     if (body->size() > config_.maxManifestBytes) {
-        return fail(Error::invalidArgument("update: manifest response too large"));
+        return fail(Error::invalidInput("update: manifest response too large"));
     }
 
     auto manifest = verifier_.verify(*body);
@@ -42,13 +42,13 @@ core::Outcome<std::optional<UpdateOffer>> UpdateChecker::check() {
         return fail(manifest.error());
     }
     if (manifest->channel != config_.channel) {
-        return fail(Error::invalidArgument("update: manifest is for a different channel"));
+        return fail(Error::invalidInput("update: manifest is for a different channel"));
     }
     // parseManifest() already validated these, so failure here is a logic error.
     const auto offered = parseSemVer(manifest->version);
     const auto minimum = parseSemVer(manifest->minSupportedVersion);
     if (!offered || !minimum) {
-        return fail(Error::invalidArgument("update: manifest versions are invalid"));
+        return fail(Error::invalidInput("update: manifest versions are invalid"));
     }
 
     // Replay / rollback protection against what this install has seen before.
@@ -57,13 +57,13 @@ core::Outcome<std::optional<UpdateOffer>> UpdateChecker::check() {
         return fail(state.error());
     }
     if (manifest->publishedAt < state->lastSeenPublishedAt) {
-        return fail(Error::invalidArgument("update: manifest is older than one already seen (replay)"));
+        return fail(Error::invalidInput("update: manifest is older than one already seen (replay)"));
     }
     if (!state->lastSeenVersion.empty()) {
         const auto lastSeen = parseSemVer(state->lastSeenVersion);
         // A signed rollback may move the version backwards; its publishedAt is still checked above.
         if (!manifest->rollback && lastSeen && compareSemVer(*offered, *lastSeen) < 0) {
-            return fail(Error::invalidArgument("update: manifest version is older than one already seen (rollback)"));
+            return fail(Error::invalidInput("update: manifest version is older than one already seen (rollback)"));
         }
     }
     const UpdateState next{manifest->publishedAt, manifest->version};
@@ -77,7 +77,7 @@ core::Outcome<std::optional<UpdateOffer>> UpdateChecker::check() {
     }
     const bool isDowngrade = order < 0;
     if (isDowngrade && !config_.allowDowngrade && !manifest->rollback) {
-        return fail(Error::invalidArgument("update: manifest is older than the installed version (rollback rejected)"));
+        return fail(Error::invalidInput("update: manifest is older than the installed version (rollback rejected)"));
     }
 
     const ArtifactInfo* artifact = findArtifact(*manifest, config_.platform, config_.arch);

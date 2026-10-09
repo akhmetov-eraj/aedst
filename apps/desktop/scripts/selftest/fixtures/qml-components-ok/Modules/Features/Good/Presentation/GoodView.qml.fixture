@@ -1,0 +1,13 @@
+import QtQuick
+import QtQuick.Layouts
+
+// Positive control for scripts/check-qml-components.sh: composes Aedst* components and containers only.
+Item {
+    ColumnLayout {
+        AedstLabel { text: "title" }
+        AedstButton { text: "go" }
+        AedstTextField { }
+        AedstListItem { text: "row" }
+        Rectangle { color: "transparent" }
+    }
+}

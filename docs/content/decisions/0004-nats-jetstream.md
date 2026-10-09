@@ -1,7 +1,12 @@
+---
+title: "ADR-0004: NATS JetStream for domain/integration events"
+description: "Superseded by ADR-0011, then ADR-0014. The broker was never introduced: events flow as River jobs inserted in the producer's transaction. The reasoning..."
+---
+
 # ADR-0004: NATS JetStream for domain/integration events
 
 ## Status
-Superseded by [ADR-0011](/decisions/0011-outbox-relay-and-in-process-bus). The broker was never introduced: events flow through the Postgres outbox, an in-process bus and per-consumer inboxes. The reasoning below is kept for the record and applies again if a consumer becomes its own service.
+Superseded by [ADR-0011](/decisions/0011-outbox-relay-and-in-process-bus), then [ADR-0014](/decisions/0014-river-insert-tx-as-outbox). The broker was never introduced: events flow as River jobs inserted in the producer's transaction. The reasoning below is kept for the record and applies again if a consumer becomes its own service.
 
 ## Context
 Several modules (`notifications`, `search`, `media`, `admin`) must react to state changes in other modules without a
@@ -11,7 +16,7 @@ consumes their events — required both for module boundary rules (see
 
 ## Decision
 Use NATS JetStream for domain/integration events (see
-[events.md](/events) for subject naming, versioning and idempotency
+[events.md](/server/events) for subject naming, versioning and idempotency
 conventions). Kafka is explicitly not introduced — JetStream's operational
 footprint is far lower and nothing in the current requirements (retention,
 throughput, stream processing) needs Kafka's specific capabilities.

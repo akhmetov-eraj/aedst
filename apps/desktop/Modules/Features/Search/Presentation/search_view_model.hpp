@@ -1,11 +1,13 @@
 #pragma once
 
 #include "Presentation/search_results_model.hpp"
+#include "aedst/qmlsupport/singleton_slot.hpp"
 
 #include <QObject>
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QtQml/qqmlregistration.h>
 
 #include <memory>
 #include <string>
@@ -39,6 +41,8 @@ class SearchRepository;
 ///    another feature's types.
 class SearchViewModel final : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
     Q_PROPERTY(QString query READ query WRITE setQuery NOTIFY queryChanged)
     Q_PROPERTY(QString kindFilter READ kindFilter WRITE setKindFilter NOTIFY kindFilterChanged)
     Q_PROPERTY(QAbstractItemModel* results READ results CONSTANT)
@@ -50,6 +54,9 @@ class SearchViewModel final : public QObject {
     Q_PROPERTY(QString errorMessage READ errorMessage NOTIFY errorMessageChanged)
 
 public:
+    static SearchViewModel* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<SearchViewModel>::create(engine, script);
+    }
     static constexpr int kDebounceMs = 300;
     static constexpr int kSuggestionLimit = 8;
 

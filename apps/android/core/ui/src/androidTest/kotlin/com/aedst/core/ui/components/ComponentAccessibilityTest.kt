@@ -1,57 +1,58 @@
 package com.aedst.core.ui.components
 
-import androidx.compose.material3.Surface
+import android.os.Build
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.junit4.accessibility.enableAccessibilityChecks
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
-import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.aedst.core.ui.theme.AedstTheme
+import androidx.test.filters.SdkSuppress
+import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
+import org.junit.runners.Parameterized
 
-/** Runs the Accessibility Test Framework over representative design-system components, light and dark. */
+/**
+ * Runs the Accessibility Test Framework (touch-target size, speakable text, colour contrast, duplicate bounds, ...)
+ * over every [ComponentCatalog] entry, light and dark. ATF checks run before each UI action, which is why the test
+ * performs a click on the root after composing.
+ *
+ * Needs API 34+ (the Compose integration is `@RequiresApi(34)` and is unsupported on Robolectric); on older emulators
+ * the tests are skipped via an assumption. CI runs API 34 (android-ci.yml, `instrumented`). Window-based components
+ * (dialogs, sheets, menus) are listed in [ComponentCatalog.excluded]; the JVM `ComponentSemanticsTest` covers the
+ * touch-target and label rules for everything inline on every build.
+ */
 @OptIn(ExperimentalTestApi::class)
-@RunWith(AndroidJUnit4::class)
-class ComponentAccessibilityTest {
+@SdkSuppress(minSdkVersion = Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+@RunWith(Parameterized::class)
+class ComponentAccessibilityTest(private val entry: CatalogEntry, private val darkTheme: Boolean) {
 
     @get:Rule
     val compose = createComposeRule()
 
     @Before
     fun enableChecks() {
+        assumeTrue(
+            "Compose accessibility checks need API 34+",
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE,
+        )
         compose.enableAccessibilityChecks()
     }
 
-    private fun show(darkTheme: Boolean, content: @androidx.compose.runtime.Composable () -> Unit) {
-        compose.setContent { AedstTheme(useDarkTheme = darkTheme) { Surface { content() } } }
+    @Test
+    fun passesAccessibilityChecks() {
+        compose.setContent { ComponentCatalog.Themed(dark = darkTheme) { entry.content() } }
+
         compose.onRoot().performClick()
     }
 
-    @Test
-    fun offlineBanner_light() = show(darkTheme = false) { AedstOfflineBanner(isOffline = true) }
-
-    @Test
-    fun offlineBanner_dark() = show(darkTheme = true) { AedstOfflineBanner(isOffline = true) }
-
-    @Test
-    fun passwordField_light() =
-        show(darkTheme = false) { AedstPasswordTextField(value = "secret", onValueChange = {}, label = "Password") }
-
-    @Test
-    fun passwordField_dark() =
-        show(darkTheme = true) { AedstPasswordTextField(value = "secret", onValueChange = {}, label = "Password") }
-
-    @Test
-    fun button_light() = show(darkTheme = false) { AedstButton(text = "Continue", onClick = {}) }
-
-    @Test
-    fun button_dark() = show(darkTheme = true) { AedstButton(text = "Continue", onClick = {}) }
-
-    @Test
-    fun pagination_light() =
-        show(darkTheme = false) { AedstPagination(currentPage = 2, totalPages = 5, onPageChange = {}) }
+    companion object {
+        @JvmStatic
+        @Parameterized.Parameters(name = "{0}-dark={1}")
+        fun parameters(): Collection<Array<Any>> = ComponentCatalog.entries.flatMap { entry ->
+            listOf(false, true).map { dark -> arrayOf<Any>(entry, dark) }
+        }
+    }
 }

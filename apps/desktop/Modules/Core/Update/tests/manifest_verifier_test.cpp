@@ -132,7 +132,7 @@ TEST_F(ManifestVerifierTest, ValidSignatureOverAnInvalidManifestIsRejected) {
     const ManifestVerifier verifier{{trusted("k1", primary_)}};
     const auto manifest = verifier.verify(signedEnvelope(primary_, "k1", R"({"version":"nope"})"));
     ASSERT_FALSE(manifest.has_value());
-    EXPECT_EQ(manifest.error().code, core::ErrorCode::InvalidArgument);
+    EXPECT_EQ(manifest.error().code, core::ErrorCode::InvalidInput);
 }
 
 TEST_F(ManifestVerifierTest, VerifyEd25519RejectsBadInputSizes) {

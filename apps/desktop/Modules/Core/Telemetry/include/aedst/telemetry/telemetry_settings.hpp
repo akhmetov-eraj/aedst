@@ -1,6 +1,9 @@
 #pragma once
 
+#include "aedst/qmlsupport/singleton_slot.hpp"
+
 #include <QObject>
+#include <QtQml/qqmlregistration.h>
 
 namespace aedst::crash {
 class ConsentStore;
@@ -10,7 +13,7 @@ namespace aedst::telemetry {
 
 class PostHogAnalyticsTracker;
 
-/// QML-facing consent switches (registered by App as the `Telemetry` singleton of
+/// QML-facing consent switches (declared QML_SINGLETON, supplied by App as the `Telemetry` singleton of
 /// `Aedst.Telemetry`). Two independent opt-ins, both default OFF (Unknown):
 ///  - crash reports: Sentry (consent forwarded to sentry-native) and the local
 ///    ConsentGatedCrashUploader share the same stored decision;
@@ -20,6 +23,8 @@ class PostHogAnalyticsTracker;
 /// configured (no DSN / no key) reports `...Available == false` and is hidden.
 class TelemetrySettings final : public QObject {
     Q_OBJECT
+    QML_NAMED_ELEMENT(Telemetry)
+    QML_SINGLETON
     Q_PROPERTY(bool crashReportsAvailable READ crashReportsAvailable CONSTANT)
     Q_PROPERTY(bool analyticsAvailable READ analyticsAvailable CONSTANT)
     Q_PROPERTY(bool crashReportsEnabled READ crashReportsEnabled WRITE setCrashReportsEnabled NOTIFY changed)
@@ -27,6 +32,9 @@ class TelemetrySettings final : public QObject {
     Q_PROPERTY(bool needsDecision READ needsDecision NOTIFY changed)
 
 public:
+    static TelemetrySettings* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<TelemetrySettings>::create(engine, script);
+    }
     /// All references must outlive this object. `analytics` may be unconfigured.
     TelemetrySettings(crash::ConsentStore& crashConsent, crash::ConsentStore& analyticsConsent,
                       PostHogAnalyticsTracker& analytics, bool crashReportsAvailable, QObject* parent = nullptr);

@@ -21,12 +21,21 @@
 # path relative to apps/desktop, check may be a full name or `*`; `#` comments.
 #
 # Env: RUN_CLANG_TIDY (binary, default run-clang-tidy[-N]), AEDST_TIDY_LOG (log file,
-#      default clang-tidy.log), AEDST_TIDY_JOBS (default: all cores).
+#      default clang-tidy.log), AEDST_TIDY_JOBS (default: all cores),
+#      AEDST_TIDY_BASELINE (baseline file, default scripts/clang-tidy-baseline.txt),
+#      AEDST_TIDY_ONLY_WINDOWS=1 (analyse only the translation units with Windows-only code: for the MSVC compile
+#      database in CI, because the Linux clang database never compiles them; desktop-ci "clang-tidy (msvc database)"),
+#      AEDST_TIDY_EXTRA_ARGS (extra run-clang-tidy arguments, e.g. "-extra-arg=/clang:-Wno-unknown-argument").
+#
+# MSVC database (build/msvc-debug): clang-tidy sees cl.exe commands and switches to clang-cl mode. UNVERIFIED on a
+# real run: the first CI run decides whether extra arguments are needed.
 set -uo pipefail
 
 cd "$(dirname "$0")/.."
 root="$(pwd)"
-baseline="scripts/clang-tidy-baseline.txt"
+baseline="${AEDST_TIDY_BASELINE:-scripts/clang-tidy-baseline.txt}"
+# Windows (Git Bash): the compile database and clang-tidy output use D:/a/... paths, not /d/a/...
+root_native="$( (pwd -W 2>/dev/null) || pwd)"
 
 update=0
 if [ "${1:-}" = "--update-baseline" ]; then update=1; shift; fi
@@ -53,16 +62,27 @@ jobs="${AEDST_TIDY_JOBS:-$( (command -v nproc >/dev/null && nproc) || sysctl -n 
 
 # Only first-party sources. Anchoring on the source root keeps build/**/*_autogen and
 # generated protobuf (under build/) out even though their path contains "App/".
-files_regex="^${root}/(Modules|App)/"
+files_regex="^${root_native}/(Modules|App)/"
+if [ "${AEDST_TIDY_ONLY_WINDOWS:-0}" = "1" ]; then
+  # Translation units with Windows-only code: a _WIN32/Q_OS_WIN guard or the Windows toast adapter.
+  win_files=$(grep -rlE '_WIN32|Q_OS_WIN|AEDST_PLATFORM_HAS_WINDOWS' Modules App --include=*.cpp 2>/dev/null \
+    | grep -vE '/(tests|bench)/' | sed 's/[.[*^$()+?{|]/\\&/g' | paste -sd'|' -)
+  [ -n "$win_files" ] || { echo "OK: no Windows-only translation units."; exit 0; }
+  files_regex="^${root_native}/(${win_files})\$"
+fi
+runner_cmd=("$runner"); case "$runner" in *.py) runner_cmd=(python "$runner") ;; esac
 
-"$runner" -p "$build_dir" -quiet -j "$jobs" \
-  -warnings-as-errors='*' \
+# shellcheck disable=SC2086
+"${runner_cmd[@]}" -p "$build_dir" -quiet -j "$jobs" \
+  -warnings-as-errors='*' ${AEDST_TIDY_EXTRA_ARGS:-} \
   "$files_regex" >"$log" 2>&1
 tidy_status=$?
+# Windows output uses backslashes: normalise so the path reduction below sees one shape.
+sed -i 's#\\#/#g' "$log"
 
 # Reduce diagnostics to "relative/path:check" pairs.
 found=$(grep -E ': (warning|error): .*\[[A-Za-z0-9_.,-]+\]$' "$log" \
-  | sed -E "s#^${root}/##; s#^\./##" \
+  | sed -E "s#^(${root}|${root_native})/##I; s#^\./##" \
   | sed -E 's#^([^:]+):[0-9]+:[0-9]+: (warning|error): .*\[([A-Za-z0-9_.,-]+)\]$#\1:\3#' \
   | sed -E 's/,-warnings-as-errors//' \
   | sort -u || true)

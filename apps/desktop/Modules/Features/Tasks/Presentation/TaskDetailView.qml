@@ -52,7 +52,7 @@ Page {
                         Accessible.name: TaskDetailViewModel.done ? qsTr("Reopen task") : qsTr("Complete task")
                         onToggled: TaskDetailViewModel.setDone(checked)
                     }
-                    Label {
+                    AedstLabel {
                         Layout.fillWidth: true
                         text: TaskDetailViewModel.title
                         font: Theme.titleFont
@@ -73,7 +73,7 @@ Page {
                     }
                 }
 
-                Text {
+                AedstLabel {
                     Layout.fillWidth: true
                     Layout.leftMargin: Theme.spacingLg
                     Layout.rightMargin: Theme.spacingLg
@@ -85,7 +85,7 @@ Page {
                     textFormat: Text.PlainText
                 }
 
-                Text {
+                AedstLabel {
                     Layout.leftMargin: Theme.spacingLg
                     visible: !isNaN(TaskDetailViewModel.dueDate)
                     text: qsTr("Due %1").arg(Qt.formatDateTime(TaskDetailViewModel.dueDate, Locale.ShortFormat))
@@ -95,7 +95,7 @@ Page {
 
                 AedstSeparator { Layout.fillWidth: true }
 
-                Label {
+                AedstLabel {
                     Layout.leftMargin: Theme.spacingLg
                     text: qsTr("Attachments (%1)").arg(TaskDetailViewModel.attachments.count)
                     font: Theme.headingFont
@@ -122,7 +122,7 @@ Page {
                     onDeleteRequested: (mediaId) => TaskDetailViewModel.deleteAttachment(mediaId)
                 }
 
-                Text {
+                AedstLabel {
                     Layout.leftMargin: Theme.spacingLg
                     visible: grid.count === 0
                     text: qsTr("No attachments yet. Drop files above to attach them to this task.")

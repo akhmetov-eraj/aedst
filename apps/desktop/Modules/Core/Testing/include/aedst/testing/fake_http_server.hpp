@@ -8,6 +8,8 @@
 #include <QList>
 #include <QObject>
 #include <QPointer>
+#include <QSslConfiguration>
+#include <QSslServer>
 #include <QTcpServer>
 #include <QTcpSocket>
 #include <QTimer>
@@ -99,22 +101,32 @@ struct FakeResponse {
 
 class FakeHttpServer final : public QObject {
 public:
-    explicit FakeHttpServer(QObject* parent = nullptr) : QObject(parent) {
-        connect(&server_, &QTcpServer::newConnection, this, [this]() {
-            while (QTcpSocket* socket = server_.nextPendingConnection()) {
-                accept(socket);
-            }
-        });
-        static_cast<void>(server_.listen(QHostAddress::LocalHost, 0)); // isListening() reports failure
+    explicit FakeHttpServer(QObject* parent = nullptr) : QObject(parent), server_(std::make_unique<QTcpServer>()) {
+        start();
     }
 
-    [[nodiscard]] bool isListening() const { return server_.isListening(); }
+    /// HTTPS: the same server behind TLS (QSslServer) with `tls` as its server configuration (certificate + key). A
+    /// client that rejects the certificate never completes the handshake, so no request is recorded;
+    /// tlsHandshakeAttempts() still counts the connection, which is how a test proves "no retry".
+    explicit FakeHttpServer(const QSslConfiguration& tls, QObject* parent = nullptr)
+        : QObject(parent), tls_(true) {
+        auto sslServer = std::make_unique<QSslServer>();
+        sslServer->setSslConfiguration(tls);
+        connect(sslServer.get(), &QSslServer::startedEncryptionHandshake, this, [this]() { ++handshakeAttempts_; });
+        server_ = std::move(sslServer);
+        start();
+    }
+
+    [[nodiscard]] bool isListening() const { return server_->isListening(); }
+
+    /// Connections for which a TLS handshake was started (HTTPS mode only).
+    [[nodiscard]] int tlsHandshakeAttempts() const noexcept { return handshakeAttempts_; }
 
     [[nodiscard]] QUrl baseUrl() const {
         QUrl url;
-        url.setScheme(QStringLiteral("http"));
+        url.setScheme(tls_ ? QStringLiteral("https") : QStringLiteral("http"));
         url.setHost(QStringLiteral("127.0.0.1"));
-        url.setPort(server_.serverPort());
+        url.setPort(server_->serverPort());
         return url;
     }
 
@@ -129,6 +141,15 @@ public:
     [[nodiscard]] const std::vector<RecordedRequest>& requests() const { return requests_; }
 
 private:
+    void start() {
+        connect(server_.get(), &QTcpServer::newConnection, this, [this]() {
+            while (QTcpSocket* socket = server_->nextPendingConnection()) {
+                accept(socket);
+            }
+        });
+        static_cast<void>(server_->listen(QHostAddress::LocalHost, 0)); // isListening() reports failure
+    }
+
     void accept(QTcpSocket* socket) {
         socket->setParent(this);
         auto buffer = std::make_shared<QByteArray>();
@@ -232,7 +253,9 @@ private:
         });
     }
 
-    QTcpServer server_;
+    std::unique_ptr<QTcpServer> server_;
+    bool tls_{false};
+    int handshakeAttempts_{0};
     std::vector<FakeResponse> responses_;
     std::vector<RecordedRequest> requests_;
     Handler handler_;

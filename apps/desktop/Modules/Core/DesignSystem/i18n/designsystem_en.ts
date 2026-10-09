@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!DOCTYPE TS>
+<!-- Generated from the sources (lupdate -no-obsolete equivalent); do not reorder by hand. Refresh with the update_<module>_translations target. -->
 <TS version="2.1" language="en">
+<context>
+    <name>AedstAlert</name>
+    <message>
+        <source>Dismiss</source>
+        <translation>Dismiss</translation>
+    </message>
+</context>
 <context>
     <name>AedstAlertDialog</name>
     <message>
@@ -20,42 +28,7 @@
     </message>
 </context>
 <context>
-    <name>AedstCircularProgress</name>
-    <message>
-        <source>Loading</source>
-        <translation>Loading</translation>
-    </message>
-</context>
-<context>
     <name>AedstCalendar</name>
-    <message>
-        <source>Mo</source>
-        <translation>Mo</translation>
-    </message>
-    <message>
-        <source>Tu</source>
-        <translation>Tu</translation>
-    </message>
-    <message>
-        <source>We</source>
-        <translation>We</translation>
-    </message>
-    <message>
-        <source>Th</source>
-        <translation>Th</translation>
-    </message>
-    <message>
-        <source>Fr</source>
-        <translation>Fr</translation>
-    </message>
-    <message>
-        <source>Sa</source>
-        <translation>Sa</translation>
-    </message>
-    <message>
-        <source>Su</source>
-        <translation>Su</translation>
-    </message>
     <message>
         <source>Previous month</source>
         <translation>Previous month</translation>
@@ -84,6 +57,24 @@
     </message>
 </context>
 <context>
+    <name>AedstCircularProgress</name>
+    <message>
+        <source>Loading</source>
+        <translation>Loading</translation>
+    </message>
+</context>
+<context>
+    <name>AedstCollapsible</name>
+    <message>
+        <source>Expanded</source>
+        <translation>Expanded</translation>
+    </message>
+    <message>
+        <source>Collapsed</source>
+        <translation>Collapsed</translation>
+    </message>
+</context>
+<context>
     <name>AedstDialog</name>
     <message>
         <source>Close</source>
@@ -95,6 +86,28 @@
     <message>
         <source>Close</source>
         <translation>Close</translation>
+    </message>
+</context>
+<context>
+    <name>AedstMenuBar</name>
+    <message>
+        <source>Menu</source>
+        <translation>Menu</translation>
+    </message>
+</context>
+<context>
+    <name>AedstOfflineBanner</name>
+    <message>
+        <source>You're offline</source>
+        <translation>You're offline</translation>
+    </message>
+    <message>
+        <source>Check your connection. Some features are unavailable until you're back online.</source>
+        <translation>Check your connection. Some features are unavailable until you're back online.</translation>
+    </message>
+    <message>
+        <source>Retry</source>
+        <translation>Retry</translation>
     </message>
 </context>
 <context>
@@ -111,12 +124,12 @@
         <translation>Previous page</translation>
     </message>
     <message>
-        <source>Next page</source>
-        <translation>Next page</translation>
-    </message>
-    <message>
         <source>More pages</source>
         <translation>More pages</translation>
+    </message>
+    <message>
+        <source>Next page</source>
+        <translation>Next page</translation>
     </message>
 </context>
 <context>
@@ -138,38 +151,6 @@
     <message>
         <source>Type a command or search…</source>
         <translation>Type a command or search…</translation>
-    </message>
-</context>
-<context>
-    <name>AedstTabBar</name>
-    <message>
-        <source>Tabs</source>
-        <translation>Tabs</translation>
-    </message>
-</context>
-<context>
-    <name>AedstMenuBar</name>
-    <message>
-        <source>Menu</source>
-        <translation>Menu</translation>
-    </message>
-</context>
-<context>
-    <name>AedstToast</name>
-    <message>
-        <source>Dismiss</source>
-        <translation>Dismiss</translation>
-    </message>
-</context>
-<context>
-    <name>AedstCollapsible</name>
-    <message>
-        <source>Expanded</source>
-        <translation>Expanded</translation>
-    </message>
-    <message>
-        <source>Collapsed</source>
-        <translation>Collapsed</translation>
     </message>
 </context>
 <context>
@@ -200,18 +181,17 @@
     </message>
 </context>
 <context>
-    <name>AedstOfflineBanner</name>
+    <name>AedstTabBar</name>
     <message>
-        <source>You're offline</source>
-        <translation>You're offline</translation>
+        <source>Tabs</source>
+        <translation>Tabs</translation>
     </message>
+</context>
+<context>
+    <name>AedstToast</name>
     <message>
-        <source>Check your connection. Some features are unavailable until you're back online.</source>
-        <translation>Check your connection. Some features are unavailable until you're back online.</translation>
-    </message>
-    <message>
-        <source>Retry</source>
-        <translation>Retry</translation>
+        <source>Dismiss</source>
+        <translation>Dismiss</translation>
     </message>
 </context>
 </TS>

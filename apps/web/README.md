@@ -2,7 +2,7 @@
 
 The web client for the `aedst` monorepo: a Next.js app that reaches
 `apps/server`'s ConnectRPC API **only through its own server** (see
-[Architecture](../../docs/content/architecture-web.md#auth-data-and-security-model)).
+[Architecture](../../docs/content/web/architecture.md#auth-data-and-security-model)).
 The session lives in httpOnly cookies — page JavaScript never sees a token —
 and the browser calls a same-origin `/api/rpc` proxy that attaches the bearer
 token and refreshes it transparently.
@@ -22,9 +22,28 @@ token and refreshes it transparently.
   [`src/instrumentation-client.ts`](src/instrumentation-client.ts) and every
   route segment's `error.tsx` + the root `global-error.tsx`
 - **Biome** for linting and formatting
-- **Vitest** + Testing Library + MSW for unit/integration tests (coverage thresholds enforced)
+- **oauth4webapi** for the OpenID Connect sign-in (Authorization Code + PKCE as a backend-for-frontend; ZITADEL by default). See [Sign-in](#sign-in-oidc)
+- **Vitest** 5 with two projects: `unit` (Node) and `browser` (Vitest Browser Mode in real Chromium; Testing Library + the in-memory Connect `createRouterTransport`). No MSW or jsdom. Coverage thresholds are enforced
 - **Playwright** (Chromium, Firefox, WebKit, Pixel 7, iPhone 14) + axe for end-to-end, accessibility and responsive tests, against an in-memory mock of the API
 - **Lighthouse CI** and a gzip **bundle budget** for performance
+
+## Sign-in (OIDC)
+
+The web app signs in with OpenID Connect against the identity provider
+(ZITADEL by default, see `apps/server/deployments/zitadel/`); it has no
+password forms and does not call `AuthService`. Flow: `/api/auth/login`
+(PKCE S256, state, nonce, sealed httpOnly pre-auth cookie) -> IdP ->
+`/api/auth/callback` (validation, code exchange, session cookies). Sign-out is
+a Server Action that revokes the refresh token and uses the IdP's
+`end_session_endpoint`.
+
+Set in `.env` (see `.env.example`): `OIDC_ISSUER`, `OIDC_CLIENT_ID`,
+`OIDC_PROJECT_ID` (ZITADEL project id: adds the audience scope so the access
+token is accepted by apps/server), `OIDC_STATE_SECRET` (32+ chars, required in
+production) and `AUTH_ROLES_CLAIM=urn:zitadel:iam:org:project:roles`. Register
+`<NEXT_PUBLIC_SITE_URL>/api/auth/callback` as the redirect URI and
+`<NEXT_PUBLIC_SITE_URL>` as the post-logout redirect URI. The app needs JWT access
+tokens, and "User Info inside ID Token" if the signed-in email should be shown.
 
 ## Getting started
 
@@ -59,7 +78,6 @@ the browser sees vs. server-only ones — see
 | `API_BASE_URL` | Server-only address of `apps/server`'s ConnectRPC API (the browser never uses it) | `http://localhost:8080` |
 | `AUTH_COOKIE_NAME` | Base name of the httpOnly session cookies | `aedst_session` |
 | `NEXT_PUBLIC_SENTRY_DSN` | Sentry DSN (optional) | — |
-| `NEXT_PUBLIC_BETTER_UPTIME_HEARTBEAT_URL` | Better Uptime heartbeat URL (optional) | — |
 | `SENTRY_AUTH_TOKEN` | Server-only; enables Sentry source-map upload during `next build` (optional) | — |
 
 ### Generate the ConnectRPC client
@@ -73,9 +91,10 @@ pnpm connect:generate
 ```
 
 This runs `buf generate` (config in `buf.gen.yaml`) against
-`apps/server/api/proto`'s `auth`, `users`, and `profile` services (the
-`events.proto` files are NATS event schemas, not RPCs, and are intentionally
-excluded).
+`apps/server/api/proto`'s RPC-bearing protos (auth, tasks, notifications,
+search, media, admin; `scripts/connect-generate.mjs` discovers them, so a new
+module needs no edit there). The `events.proto` files are integration-event
+schemas carried by River jobs, not RPCs, and are intentionally excluded.
 
 ### Run the dev server
 
@@ -90,7 +109,10 @@ Open [http://localhost:3000](http://localhost:3000).
 ### Unit tests (Vitest)
 
 ```bash
-pnpm test          # run once
+pnpm test          # run once (all projects)
+pnpm test:unit     # Node project only (no browser needed)
+pnpm test:browser  # component tests in real Chromium
+pnpm test:browser:install  # one-off: download Chromium for the browser project
 pnpm test:watch    # watch mode
 pnpm test:coverage # with coverage
 pnpm test:ui       # Vitest UI
@@ -107,7 +129,7 @@ pnpm test:e2e:report  # view the last HTML report
 ```
 
 Playwright starts the app and `e2e/mock-api` (an in-memory stand-in for
-`apps/server` speaking the Connect JSON protocol) itself, so login, token
+`apps/server` speaking the Connect JSON protocol, plus a tiny OpenID Connect provider, `e2e/mock-api/oidc.mjs`) itself, so login, token
 refresh, dashboard, filters, pagination and CRUD run with no database or Go
 service. Install engines once with `npx playwright install`.
 
@@ -153,8 +175,8 @@ src/
     api/connect/      # Connect-ES transport/client setup + generated stubs — the web "network" layer
     date/             # date-fns formatting helpers, locale-aware
     env/              # client.ts (NEXT_PUBLIC_* only) / server.ts (`server-only`-guarded secrets)
-    lib/              # remaining cross-cutting utilities: auth/ (session state, token storage,
-                       # auth interceptor), hooks/, utils/, query-client.ts
+    lib/              # remaining cross-cutting utilities: auth/ (server-side session cookies,
+                       # claims, refresh, auth provider; no token reaches page JS), hooks/, utils/, query-client.ts
 ```
 
 Feature modules only ever import from `shared/**` (or from `app/**`, which

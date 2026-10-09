@@ -1,4 +1,4 @@
-import { defaultLocale, type Locale, locales } from "@/app/config/i18n/locales";
+import { defaultLocale, type Locale, locales } from "@/shared/i18n/locales";
 
 /**
  * Strings for the two pages that render *outside* the locale layout and so

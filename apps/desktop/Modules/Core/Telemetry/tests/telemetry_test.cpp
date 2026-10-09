@@ -86,11 +86,31 @@ TEST(PostHogTrackerTest, RevokingConsentDropsQueuedEvents) {
     EXPECT_EQ(tracker.queuedEventCount(), 0);
 }
 
+TEST(PostHogTrackerTest, TheFlushTimerRunsOnlyWhileEventsAreWaiting) {
+    PostHogAnalyticsTracker tracker(PostHogConfig{.apiKey = QStringLiteral("phc_test"),
+                                                  .host = QUrl(QStringLiteral("https://127.0.0.1:9")),
+                                                  .maxBatchSize = 100});
+    EXPECT_FALSE(tracker.flushTimerActive()) << "no timer before there is anything to send";
+    tracker.setConsent(true);
+    EXPECT_FALSE(tracker.flushTimerActive()) << "consent alone starts nothing";
+
+    tracker.track("a", {});
+    EXPECT_TRUE(tracker.flushTimerActive()) << "the first enqueued event starts the timer";
+
+    tracker.setConsent(false);
+    EXPECT_FALSE(tracker.flushTimerActive()) << "revoking consent empties the queue and stops the timer";
+}
+
 TEST(ErrorCenterTest, MapsCodesToStableKinds) {
-    EXPECT_EQ(ErrorCenter::kindFor(core::ErrorCode::Network), QStringLiteral("network"));
-    EXPECT_EQ(ErrorCenter::kindFor(core::ErrorCode::PermissionDenied), QStringLiteral("permission_denied"));
-    EXPECT_TRUE(ErrorCenter::isRetryable(core::ErrorCode::Network));
-    EXPECT_FALSE(ErrorCenter::isRetryable(core::ErrorCode::InvalidArgument));
+    EXPECT_EQ(ErrorCenter::kindFor(core::ErrorCode::Unavailable), QStringLiteral("unavailable"));
+    EXPECT_EQ(ErrorCenter::kindFor(core::ErrorCode::Forbidden), QStringLiteral("forbidden"));
+    EXPECT_TRUE(ErrorCenter::isRetryable(core::ErrorCode::Unavailable));
+    EXPECT_TRUE(ErrorCenter::isRetryable(core::ErrorCode::Offline));
+    EXPECT_TRUE(ErrorCenter::isRetryable(core::ErrorCode::Timeout));
+    EXPECT_TRUE(ErrorCenter::isRetryable(core::ErrorCode::RateLimited));
+    EXPECT_FALSE(ErrorCenter::isRetryable(core::ErrorCode::InvalidInput));
+    EXPECT_FALSE(ErrorCenter::isRetryable(core::ErrorCode::Unknown));
+    EXPECT_FALSE(ErrorCenter::isRetryable(core::ErrorCode::Storage));
 }
 
 TEST(ErrorCenterTest, EmitsOnceForDuplicatesAndNeverForSilentOrCancelled) {
@@ -98,8 +118,8 @@ TEST(ErrorCenterTest, EmitsOnceForDuplicatesAndNeverForSilentOrCancelled) {
     QSignalSpy raised(&center, &ErrorCenter::errorRaised);
     QSignalSpy expired(&center, &ErrorCenter::sessionExpired);
 
-    center.report(Error::network("offline"), "tasks.list");
-    center.report(Error::network("offline"), "tasks.list");
+    center.report(Error::unavailable("offline"), "tasks.list");
+    center.report(Error::unavailable("offline"), "tasks.list");
     center.report(Error::cancelled("user"), "tasks.list");
     center.report(Error::notFound("gone"), "tasks.detail", ErrorVisibility::Silent);
     EXPECT_EQ(raised.count(), 1);

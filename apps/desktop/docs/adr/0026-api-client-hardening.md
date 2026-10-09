@@ -63,3 +63,15 @@ caller, and retries also covered `resource_exhausted`.
 
 Protos declare `idempotency_level` (then derive the method table from them), the server stops rejecting before
 the handler runs for `unauthenticated`, or a commercial Qt license makes Qt GRPC an option.
+
+## Proposal awaiting the owner: `google.rpc.ErrorInfo` through generated messages (nothing implemented)
+
+`connect_error.cpp` reads the `reason` of the server's `google.rpc.ErrorInfo` detail (needed for `CLIENT_UPGRADE_REQUIRED`,
+ADR-0034) with a small hand-written parser of the Protobuf wire format. It is covered by the replay fixtures, but it is custom
+code for something a library does: the buf/protoc toolchain can generate `google.rpc.ErrorInfo` (and `Status`) like every other
+message.
+
+**Recommendation: replace it** with the generated `google::rpc::ErrorInfo` (from `googleapis`' `error_details.proto`, vendored
+under `third_party/` and pinned like `protovalidate`), decoded from the base64 `details[].value` that the Connect error body
+carries, and keep `error_kinds_replay_test` / `client_version_gate_test` as the safety net. **Why not now:** it changes the error
+model that every test replays and adds a vendored proto; it is best done together with the first real build and compiler.

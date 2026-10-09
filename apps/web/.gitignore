@@ -44,3 +44,13 @@ next-env.d.ts
 # generated ConnectRPC client stubs (run `pnpm connect:generate`) — sourced
 # from apps/server/api/proto, regenerated rather than hand-edited.
 /src/shared/api/connect/generated
+.vitest-attachments/
+__screenshots__/
+
+# Storybook static build (pnpm build-storybook)
+/storybook-static
+
+# mutation testing
+/.stryker-tmp
+/reports
+/dep-graph.dot

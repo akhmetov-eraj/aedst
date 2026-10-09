@@ -6,13 +6,18 @@ import (
 	"crypto/elliptic"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"slices"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/lestrrat-go/jwx/v4/jwa"
 	"github.com/lestrrat-go/jwx/v4/jwk"
+	"github.com/lestrrat-go/jwx/v4/jws"
 	"github.com/lestrrat-go/jwx/v4/jwt"
 
 	"github.com/aedst/server/internal/platform/auth"
@@ -22,8 +27,42 @@ import (
 const testAudience = "aedst-api"
 
 type fakeIdP struct {
-	server *httptest.Server
-	signer jwk.Key
+	server  *httptest.Server
+	signer  jwk.Key
+	mu      sync.Mutex
+	set     jwk.Set
+	fetches int
+}
+
+func (i *fakeIdP) jwksFetches() int {
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	return i.fetches
+}
+
+// rotate replaces the provider's signing key with a new one under kid and
+// publishes only the new public key.
+func (i *fakeIdP) rotate(t *testing.T, kid string) {
+	t.Helper()
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	signer, err := jwk.Import[jwk.Key](priv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = signer.Set(jwk.KeyIDKey, kid)
+	pub, err := jwk.PublicKeyOf(signer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = pub.Set(jwk.AlgorithmKey, jwa.ES256())
+	set := jwk.NewSet()
+	_ = set.AddKey(pub)
+	i.mu.Lock()
+	i.signer, i.set = signer, set
+	i.mu.Unlock()
 }
 
 func newFakeIdP(t *testing.T) *fakeIdP {
@@ -46,7 +85,7 @@ func newFakeIdP(t *testing.T) *fakeIdP {
 	set := jwk.NewSet()
 	_ = set.AddKey(pub)
 
-	idp := &fakeIdP{signer: signer}
+	idp := &fakeIdP{signer: signer, set: set}
 	mux := http.NewServeMux()
 	idp.server = httptest.NewServer(mux)
 	t.Cleanup(idp.server.Close)
@@ -55,12 +94,22 @@ func newFakeIdP(t *testing.T) *fakeIdP {
 		_ = json.NewEncoder(w).Encode(map[string]string{"issuer": idp.server.URL, "jwks_uri": idp.server.URL + "/jwks"})
 	})
 	mux.HandleFunc("/jwks", func(w http.ResponseWriter, _ *http.Request) {
-		_ = json.NewEncoder(w).Encode(set)
+		idp.mu.Lock()
+		idp.fetches++
+		current := idp.set
+		idp.mu.Unlock()
+		_ = json.NewEncoder(w).Encode(current)
 	})
 	return idp
 }
 
 func (i *fakeIdP) token(t *testing.T, mutate func(*jwt.Builder)) string {
+	t.Helper()
+	return i.tokenTyped(t, "at+jwt", mutate)
+}
+
+// tokenTyped signs a token with the given JOSE typ header ("" = none).
+func (i *fakeIdP) tokenTyped(t *testing.T, typ string, mutate func(*jwt.Builder)) string {
 	t.Helper()
 	now := time.Now()
 	b := jwt.NewBuilder().
@@ -77,7 +126,30 @@ func (i *fakeIdP) token(t *testing.T, mutate func(*jwt.Builder)) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), i.signer))
+	if typ == "" { // jwt.Sign always adds typ=JWT: sign the payload as a bare JWS to omit it
+		payload, err := json.Marshal(tok)
+		if err != nil {
+			t.Fatal(err)
+		}
+		i.mu.Lock()
+		signer := i.signer
+		i.mu.Unlock()
+		signed, err := jws.Sign(payload, jws.WithKey(jwa.ES256(), signer))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(signed)
+	}
+	var signOpts []jwt.Option
+	if typ != "" {
+		headers := jws.NewHeaders()
+		_ = headers.Set(jws.TypeKey, typ)
+		signOpts = append(signOpts, jws.WithProtectedHeaders(headers))
+	}
+	i.mu.Lock()
+	signer := i.signer
+	i.mu.Unlock()
+	signed, err := jwt.Sign(tok, jwt.WithKey(jwa.ES256(), signer, signOpts...))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,5 +313,115 @@ func TestOIDCVerifier_RolesClaimShapes(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestOIDCVerifier_RolesOrgFilter(t *testing.T) {
+	idp := newFakeIdP(t)
+	const claim = "urn:zitadel:iam:org:project:roles"
+	zitadelRoles := func(b *jwt.Builder) {
+		b.Claim(claim, map[string]any{
+			"admin":  map[string]any{"org-a": "a.example"},
+			"user":   map[string]any{"org-a": "a.example", "org-b": "b.example"},
+			"editor": map[string]any{"org-b": "b.example"},
+			"bare":   true, // no organisation info
+		})
+	}
+
+	tests := []struct {
+		name  string
+		org   string
+		claim string
+		set   func(*jwt.Builder)
+		want  []string
+	}{
+		{"empty org keeps every role", "", claim, zitadelRoles, []string{"admin", "bare", "editor", "user"}},
+		{"org-a only", "org-a", claim, zitadelRoles, []string{"admin", "user"}},
+		{"org-b only", "org-b", claim, zitadelRoles, []string{"editor", "user"}},
+		{"org mismatch yields no roles", "org-c", claim, zitadelRoles, nil},
+		{"org is ignored for array claims", "org-a", "roles", func(b *jwt.Builder) { b.Claim("roles", []string{"admin"}) }, []string{"admin"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v, err := auth.NewOIDCVerifier(auth.OIDCConfig{
+				Issuer: idp.server.URL, Audience: testAudience, Algorithms: []string{"ES256"},
+				RolesClaim: tt.claim, RolesOrg: tt.org,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { _ = v.Close(context.Background()) })
+
+			claims, err := v.VerifyAccessToken(context.Background(), idp.token(t, tt.set))
+			if err != nil {
+				t.Fatalf("VerifyAccessToken() error = %v", err)
+			}
+			if !slices.Equal(claims.Roles, tt.want) {
+				t.Fatalf("roles = %v, want %v", claims.Roles, tt.want)
+			}
+		})
+	}
+}
+
+func TestVerifiers_OpaqueTokenGivesActionableError(t *testing.T) {
+	idp := newFakeIdP(t)
+	oidc := newVerifier(t, idp)
+	multi, err := auth.NewMultiVerifier(newTestService(t, "test-signing-key-at-least-32-bytes!!", ""), oidc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An opaque access token (what an IdP issues when the app is not set to JWT).
+	const opaque = "Kj3nFZ0xq9aVbYtL2hQeW8uRmP4sDcGoXiN7vAzTyBwE1lHk"
+	for name, verify := range map[string]func(context.Context, string) (auth.Claims, error){
+		"oidc": oidc.VerifyAccessToken, "multi": multi.VerifyAccessToken,
+	} {
+		_, err := verify(context.Background(), opaque)
+		if !errors.Is(err, auth.ErrOpaqueToken) {
+			t.Errorf("%s: err = %v, want ErrOpaqueToken", name, err)
+		}
+		if err != nil && !strings.Contains(err.Error(), "JWT access tokens") {
+			t.Errorf("%s: error lacks the JWT hint: %v", name, err)
+		}
+	}
+}
+
+// A ZITADEL access token (JWT access-token type): numeric subject, the project
+// id (and the client id) in aud, roles as an object keyed by role name with the
+// granting organisations below each role.
+func TestOIDCVerifier_ZitadelShapedToken(t *testing.T) {
+	idp := newFakeIdP(t)
+	const projectID = "312345678901234567"
+	const rolesClaim = "urn:zitadel:iam:org:project:roles"
+	v, err := auth.NewOIDCVerifier(auth.OIDCConfig{
+		Issuer: idp.server.URL, Audience: projectID, Algorithms: []string{"ES256"}, RolesClaim: rolesClaim,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = v.Close(context.Background()) })
+
+	raw := idp.token(t, func(b *jwt.Builder) {
+		b.Subject("312345678901234999").
+			Audience([]string{"312345678901234888", projectID}).
+			Claim(rolesClaim, map[string]any{
+				"admin": map[string]any{"312345678901230000": "aedst.localhost"},
+				"user":  map[string]any{"312345678901230000": "aedst.localhost"},
+			})
+	})
+	claims, err := v.VerifyAccessToken(context.Background(), raw)
+	if err != nil {
+		t.Fatalf("VerifyAccessToken() error = %v", err)
+	}
+	if want := ids.FromExternal(idp.server.URL, "312345678901234999"); claims.UserID != want {
+		t.Errorf("UserID = %s, want deterministic mapping %s", claims.UserID, want)
+	}
+	if len(claims.Roles) != 2 || claims.Roles[0] != "admin" || claims.Roles[1] != "user" {
+		t.Errorf("roles = %v, want [admin user]", claims.Roles)
+	}
+
+	// A token for a different project (audience) is rejected.
+	other := idp.token(t, func(b *jwt.Builder) { b.Audience([]string{"999"}) })
+	if _, err := v.VerifyAccessToken(context.Background(), other); err == nil {
+		t.Error("token with another project as audience must be rejected")
 	}
 }

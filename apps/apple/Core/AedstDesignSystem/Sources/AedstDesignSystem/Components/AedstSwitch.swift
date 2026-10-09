@@ -1,8 +1,7 @@
 import SwiftUI
 
 /// `Toggle` wrapper matching shadcn/ui `Switch` styling (tokenized tint
-/// instead of the system green) — use for on/off settings; use
-/// `AedstToggleButton` when the control should read as a pressable button.
+/// instead of the system green) — use for on/off settings.
 public struct AedstSwitch: View {
     private let label: String?
     @Binding private var isOn: Bool

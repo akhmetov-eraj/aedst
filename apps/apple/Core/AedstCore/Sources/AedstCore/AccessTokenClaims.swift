@@ -67,7 +67,8 @@ public struct AccessTokenClaims: Sendable, Equatable {
         }
     }
 
-    static func decodeBase64URL(_ value: String) -> Data? {
+    /// Decodes an unpadded base64url string (RFC 4648 section 5), as used by JWT segments.
+    public static func decodeBase64URL(_ value: String) -> Data? {
         var base64 = value
             .replacingOccurrences(of: "-", with: "+")
             .replacingOccurrences(of: "_", with: "/")

@@ -1,0 +1,45 @@
+include(AedstCompilerWarnings)
+
+find_package(Qt6 ${AEDST_QT_MINIMUM} REQUIRED COMPONENTS Core)
+
+# BOUNDARY RULE: a feature links Core targets only - never Aedst::Feature::*.
+# Scaffolded by `task new:module`: Domain/Data/Presentation/Navigation are plain C++ with an in-memory repository;
+# add a QML view (static qt_add_qml_module, see Features/Search) and a ConnectClient repository when the module has
+# an RPC, then register its plugin in App/.
+
+add_library(AedstFeature{{Name}} STATIC
+    Domain/{{name}}_entry.hpp
+    Domain/{{name}}_repository.hpp
+    Data/in_memory_{{name}}_repository.hpp
+    Data/in_memory_{{name}}_repository.cpp
+    Presentation/{{name}}_list_state.hpp
+    Presentation/{{name}}_list_state.cpp
+    Navigation/{{name}}_route.hpp
+)
+add_library(Aedst::Feature::{{Name}} ALIAS AedstFeature{{Name}})
+
+target_include_directories(AedstFeature{{Name}} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+target_link_libraries(AedstFeature{{Name}}
+    PUBLIC
+        Aedst::Core
+        Qt6::Core
+)
+
+qt_add_translations(AedstFeature{{Name}}
+    TS_FILES
+        i18n/{{name}}_en.ts
+        i18n/{{name}}_ru.ts
+        i18n/{{name}}_ar.ts
+        i18n/{{name}}_tg.ts
+        i18n/{{name}}_uz.ts
+    SOURCES Presentation/{{name}}_list_state.cpp
+    LUPDATE_TARGET update_{{name}}_translations
+    LRELEASE_TARGET release_{{name}}_translations
+)
+
+aedst_set_warnings(AedstFeature{{Name}})
+
+if(BUILD_TESTING)
+    add_subdirectory(tests)
+endif()

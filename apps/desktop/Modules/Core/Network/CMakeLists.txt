@@ -20,6 +20,10 @@ add_library(AedstNetwork STATIC
     src/access_token_claims.cpp
     src/auth_interceptor.cpp
     src/connect_client.cpp
+    src/connect_client_internal.hpp
+    src/connect_client_stream.cpp
+    src/connect_client_support.cpp
+    src/connect_client_tls.cpp
     src/connect_envelope.cpp
     src/connect_error.cpp
     src/transport_policy.cpp

@@ -21,6 +21,9 @@ add_library(AedstOidc STATIC
     src/oidc_config.cpp
     src/oidc_discovery.cpp
     src/oidc_session.cpp
+    src/oidc_session_internal.hpp
+    src/oidc_session_signin.cpp
+    src/oidc_session_signout.cpp
     src/refresh_token_store.cpp
 )
 add_library(Aedst::Oidc ALIAS AedstOidc)

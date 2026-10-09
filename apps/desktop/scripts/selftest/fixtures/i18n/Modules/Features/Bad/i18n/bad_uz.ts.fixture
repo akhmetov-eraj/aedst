@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE TS>
+<TS version="2.1" language="uz">
+<context>
+    <name>Bad</name>
+    <message>
+        <source>Hello</source>
+        <translation>Salom</translation>
+    </message>
+    <message numerus="yes">
+        <source>%n item(s)</source>
+        <translation>
+            <numerusform>%n element</numerusform>
+            <numerusform>%n elementlar</numerusform>
+        </translation>
+    </message>
+    <message>
+        <source>Total: %1 of %2</source>
+        <translation>Jami: %1</translation>
+    </message>
+</context>
+</TS>

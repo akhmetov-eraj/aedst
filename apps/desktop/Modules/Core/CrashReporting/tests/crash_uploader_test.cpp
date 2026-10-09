@@ -29,7 +29,7 @@ class FakeHttpPoster final : public HttpPoster {
 public:
     [[nodiscard]] core::VoidOutcome post(const UploadPayload& payload) override {
         if (fail_) {
-            return core::fail(core::Error::network("offline"));
+            return core::fail(core::Error::unavailable("offline"));
         }
         sent_.push_back(payload);
         return core::ok();

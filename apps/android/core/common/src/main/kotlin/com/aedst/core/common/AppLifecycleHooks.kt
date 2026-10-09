@@ -25,13 +25,19 @@ interface AppInitializer {
 }
 
 /**
- * Work that must happen while the session is still valid, right before an explicit sign-out clears it
- * (e.g. `UnregisterPushDevice`, which needs the bearer token). Called by `feature/auth`'s logout; each hook is
- * best-effort and must not throw for expected failures. Not called when the server rejects the refresh token —
- * there is no valid session left to call with.
+ * Work tied to the end of a session. Modules contribute one with `@Binds @IntoSet`; `feature/auth` calls it. Each
+ * method is best-effort and must not throw for expected failures.
+ *
+ *  - [beforeSignOut]: needs the session while it is still valid (e.g. `UnregisterPushDevice` needs the bearer token).
+ *    Only an explicit sign-out runs it; when the IdP rejects the refresh token there is no valid session left.
+ *  - [onSessionEnded]: wipes local data that belongs to the user (queued writes, caches, counters) so the next user
+ *    of the device never sees or sends it. Runs after the session has been cleared, on both paths: an explicit
+ *    sign-out and a rejected refresh token.
  */
-fun interface SignOutHook {
-    suspend fun beforeSignOut()
+interface SignOutHook {
+    suspend fun beforeSignOut() = Unit
+
+    suspend fun onSessionEnded() = Unit
 }
 
 /**

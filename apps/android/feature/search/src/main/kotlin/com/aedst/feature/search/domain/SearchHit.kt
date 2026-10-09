@@ -19,6 +19,6 @@ data class SearchHit(
 data class SearchResults(val hits: List<SearchHit>, val nextPageToken: String?, val totalEstimate: Int)
 
 /** Read-only, caller-scoped full-text search (SearchService). */
-interface SearchRepository {
+internal interface SearchRepository {
     suspend fun search(query: String, pageToken: String? = null): Outcome<SearchResults>
 }

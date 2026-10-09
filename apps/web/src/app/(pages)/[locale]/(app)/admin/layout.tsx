@@ -1,7 +1,8 @@
 import { getTranslations } from "next-intl/server";
-
-import { redirect } from "@/app/config/i18n/navigation";
-import { AdminNav } from "@/modules/admin/ui/AdminNav";
+import { RouteMessages } from "@/app/providers/RouteMessages";
+import { AdminNav } from "@/modules/admin/entries/admin-nav";
+import { redirect } from "@/shared/i18n/navigation";
+import { requireLocale } from "@/shared/i18n/require-locale";
 import { ADMIN_ROLE } from "@/shared/lib/auth/roles";
 import { getSessionRoles } from "@/shared/lib/auth/session";
 
@@ -15,16 +16,18 @@ export default async function AdminLayout({
   children,
   params,
 }: LayoutProps<"/[locale]/admin">) {
-  const { locale } = await params;
+  const locale = requireLocale((await params).locale);
   if (!(await getSessionRoles()).includes(ADMIN_ROLE)) {
     redirect({ href: "/forbidden", locale });
   }
   const t = await getTranslations({ locale, namespace: "admin" });
   return (
-    <div className="flex flex-col gap-4">
-      <h1 className="font-semibold text-2xl">{t("title")}</h1>
-      <AdminNav />
-      {children}
-    </div>
+    <RouteMessages locale={locale} routes={["/admin"]}>
+      <div className="flex flex-col gap-4">
+        <h1 className="font-semibold text-2xl">{t("title")}</h1>
+        <AdminNav />
+        {children}
+      </div>
+    </RouteMessages>
   );
 }

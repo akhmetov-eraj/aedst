@@ -1,12 +1,11 @@
 package com.aedst.feature.auth.domain.model
 
-/** Domain entity — no ConnectRPC/Room/DataStore types leak in here, mirrors `modules/auth/domain`. */
+/** Domain entity — no ConnectRPC/Room/DataStore/AppAuth types leak in here, mirrors `modules/auth/domain`. */
 data class AuthSession(
+    /** The OIDC subject (`sub`) of the signed-in user, as the IdP issued it. */
     val userId: String,
     val accessToken: String,
     val refreshToken: String,
-    /** Absolute expiry of [accessToken] (Unix epoch seconds), i.e. issue time + the server's `expires_in`. */
+    /** Absolute expiry of [accessToken] (Unix epoch seconds), derived from the token response's `expires_in`. */
     val accessExpiresAtEpochSeconds: Long,
 )
-
-data class Credentials(val email: String, val password: String)

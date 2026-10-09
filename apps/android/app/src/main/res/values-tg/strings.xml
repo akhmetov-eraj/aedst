@@ -1,23 +1,15 @@
 <resources>
-    <string name="common_app_name">iman</string>
-    <string name="common_app_description">Ба iman ворид шавед.</string>
-
-    <string name="common_action_submit">Фиристодан</string>
-    <string name="common_action_cancel">Бекор кардан</string>
-    <string name="common_action_save">Захира кардан</string>
-    <string name="common_action_back">Бозгашт</string>
-    <string name="common_action_go_home">Ба саҳифаи асосӣ</string>
-    <string name="common_action_try_again">Бори дигар кӯшиш кунед</string>
-
-    <string name="common_error_generic">Хатое рух дод. Лутфан бори дигар кӯшиш кунед.</string>
-    <string name="common_error_title">Хатое рух дод</string>
-    <string name="common_error_not_found_title">Саҳифа ёфт нашуд</string>
-    <string name="common_error_not_found_description">Саҳифае, ки шумо меҷӯед, вуҷуд надорад ё кӯчонида шудааст.</string>
-
     <string name="nav_tasks">Вазифаҳо</string>
     <string name="nav_search">Ҷустуҷӯ</string>
     <string name="nav_notifications">Огоҳиномаҳо</string>
     <string name="nav_media">Файлҳо</string>
     <string name="nav_account">Ҳисоб</string>
     <string name="nav_admin">Маъмур</string>
+
+    <string name="update_recommended">Версияи нави AEDST дастрас аст.</string>
+    <string name="update_recommended_action">Навсозӣ</string>
+    <string name="update_recommended_later">Ҳоло не</string>
+    <string name="outbox_failed_title">Баъзе тағйирот фиристода нашуд</string>
+    <string name="outbox_failed_description">Ин тағйирот фиристода нашуд. Такрор кунед ё нест кунед.</string>
+    <string name="outbox_failed_discard">Нест кардан</string>
 </resources>

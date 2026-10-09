@@ -21,7 +21,7 @@ struct RetryPolicyTests {
 
         let result: Outcome<Int> = await policy.run(clock: clock, jitter: { $0.upperBound }) {
             let n = await attempts.increment()
-            return n < 3 ? .failure(.network(reason: "flaky")) : .success(n)
+            return n < 3 ? .failure(.unavailable(reason: "flaky")) : .success(n)
         }
 
         #expect(result.value == 3)
@@ -35,10 +35,10 @@ struct RetryPolicyTests {
 
         let result: Outcome<Int> = await policy.run(clock: clock, jitter: { $0.upperBound }) {
             _ = await attempts.increment()
-            return .failure(.network(reason: "down"))
+            return .failure(.unavailable(reason: "down"))
         }
 
-        #expect(result.error == .network(reason: "down"))
+        #expect(result.error == .unavailable(reason: "down"))
         #expect(await attempts.value == 3)
     }
 
@@ -49,10 +49,10 @@ struct RetryPolicyTests {
 
         let result: Outcome<Int> = await policy.run(clock: clock) {
             _ = await attempts.increment()
-            return .failure(.validation(fields: ["email"]))
+            return .failure(.invalidInput(fields: ["email"]))
         }
 
-        #expect(result.error == .validation(fields: ["email"]))
+        #expect(result.error == .invalidInput(fields: ["email"]))
         #expect(await attempts.value == 1)
         #expect(await clock.sleeps.isEmpty)
     }

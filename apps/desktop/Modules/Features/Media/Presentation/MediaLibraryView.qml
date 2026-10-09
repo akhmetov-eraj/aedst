@@ -24,7 +24,7 @@ Page {
         anchors.margins: Theme.spacingLg
         spacing: Theme.spacingMd
 
-        Label {
+        AedstLabel {
             text: qsTr("Files")
             font: Theme.titleFont
             color: Theme.foreground

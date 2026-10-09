@@ -45,6 +45,9 @@ public:
     /// before the request starts never touches the network.
     std::shared_ptr<Ticket> fetch(const QUrl& url, std::function<void(QByteArray, QString)> done);
 
+    /// Empties the disk cache (sign-out: a user's thumbnails and previews must not outlive the session). GUI thread.
+    void clear();
+
     /// Stops the download of `ticket` (an aborted transfer, or none at all if it has not started). Thread-safe.
     void cancel(const std::shared_ptr<Ticket>& ticket);
 
@@ -70,6 +73,9 @@ public:
     explicit MediaImageProvider(MediaImageFetcher& fetcher, qsizetype memoryCacheKiB = kDefaultMemoryCacheKiB);
 
     QQuickImageResponse* requestImageResponse(const QString& id, const QSize& requestedSize) override;
+
+    /// Drops the decoded in-memory images (sign-out). Thread-safe.
+    void clear();
 
     /// Thread-safe cache access for responses.
     [[nodiscard]] QImage cached(const QString& key) const;

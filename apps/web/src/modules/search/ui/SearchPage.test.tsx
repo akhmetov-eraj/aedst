@@ -7,8 +7,7 @@ import {
   DocumentKind,
   SearchService,
 } from "@/shared/api/connect/generated/aedst/search/v1/search_pb";
-import { rpcErrorHandler, rpcHandler } from "@/test/mocks/connect";
-import { server } from "@/test/mocks/server";
+import { backend, Code, rpc, rpcError } from "@/test/mocks/transport";
 import { messages, renderWithProviders } from "@/test/render";
 
 const t = messages.search;
@@ -21,8 +20,8 @@ describe("SearchPage", () => {
 
   it("searches the URL query, highlights matches and keys kinds to the filter", async () => {
     const requests: { query: string; kinds: DocumentKind[] }[] = [];
-    server.use(
-      rpcHandler(SearchService.method.search, (input) => {
+    backend.use(
+      rpc(SearchService.method.search, (input) => {
         requests.push({ query: input.query, kinds: input.kinds });
         return {
           hits: [
@@ -49,10 +48,34 @@ describe("SearchPage", () => {
     expect(requests[0]).toEqual({ query: "docs", kinds: [DocumentKind.TASK] });
   });
 
+  it("never links to an off-site or script hit link", async () => {
+    backend.use(
+      rpc(SearchService.method.search, () => ({
+        hits: [
+          "https://evil.example",
+          "//evil.example",
+          "javascript:alert(1)",
+        ].map((link, i) => ({
+          kind: DocumentKind.TASK,
+          id: `t-${i}`,
+          title: `Hit ${i}`,
+          link,
+        })),
+      })),
+    );
+    renderWithProviders(<SearchPage />, { searchParams: "?q=hit" });
+
+    const links = await screen.findAllByRole("link");
+    expect(links).toHaveLength(3);
+    for (const link of links) {
+      expect(link).toHaveAttribute("href", "/search");
+    }
+  });
+
   it("debounces typing into one request and writes the query to the URL", async () => {
     let calls = 0;
-    server.use(
-      rpcHandler(SearchService.method.search, () => {
+    backend.use(
+      rpc(SearchService.method.search, () => {
         calls += 1;
         return { hits: [] };
       }),
@@ -70,7 +93,7 @@ describe("SearchPage", () => {
   });
 
   it("offers a retry when search fails", async () => {
-    server.use(rpcErrorHandler(SearchService.method.search, "internal", "x"));
+    backend.use(rpcError(SearchService.method.search, Code.Internal, "x"));
     renderWithProviders(<SearchPage />, { searchParams: "?q=x" });
     expect(await screen.findByRole("alert")).toHaveTextContent(t.errorTitle);
   });

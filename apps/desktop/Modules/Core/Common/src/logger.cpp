@@ -2,6 +2,7 @@
 
 #include "aedst/core/correlation.hpp"
 #include "aedst/core/redaction.hpp"
+#include "redacting_sink.hpp"
 
 #if defined(_WIN32)
 #ifndef NOMINMAX
@@ -258,9 +259,11 @@ void AedstLogger::init(const LoggerConfig& config, std::vector<spdlog::sink_ptr>
         sinks.push_back(std::move(sink));
     }
 
-    auto logger = std::make_shared<spdlog::logger>(config.name, sinks.begin(), sinks.end());
+    // ONE redaction pass for all sinks (RedactingSink); the per-sink formatters only format.
+    auto logger = std::make_shared<spdlog::logger>(
+        config.name, std::make_shared<RedactingSink>(std::move(sinks), config.redact));
     logger->set_level(toSpdlog(config.level));
-    logger->set_formatter(makeFormatter(config.format, config.redact)); // clones onto every sink
+    logger->set_formatter(makeFormatter(config.format, false)); // cloned onto every wrapped sink
     logger->flush_on(spdlog::level::warn);
 
     const std::scoped_lock lock(loggerMutex());

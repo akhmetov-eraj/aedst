@@ -23,6 +23,7 @@ set(AEDST_DESIGNSYSTEM_QML_FILES
     qml/AedstDesignSystem/AedstTextField.qml
     qml/AedstDesignSystem/AedstTextArea.qml
     qml/AedstDesignSystem/AedstLabel.qml
+    qml/AedstDesignSystem/AedstListItem.qml
     qml/AedstDesignSystem/AedstCheckBox.qml
     qml/AedstDesignSystem/AedstSwitch.qml
     qml/AedstDesignSystem/AedstRadioButton.qml
@@ -104,6 +105,7 @@ target_include_directories(AedstDesignSystem PUBLIC
 
 target_link_libraries(AedstDesignSystem
     PUBLIC
+        Aedst::QmlSupport # SingletonSlot: ThemeController is a QML_SINGLETON of this module
         Qt6::Core
         Qt6::Gui
     PRIVATE

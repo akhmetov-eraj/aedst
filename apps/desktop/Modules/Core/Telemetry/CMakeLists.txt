@@ -24,6 +24,11 @@ add_library(AedstTelemetry STATIC
 )
 add_library(Aedst::Telemetry ALIAS AedstTelemetry)
 
+# Declarative QML singletons (QML_ELEMENT + QML_SINGLETON, Aedst::QmlSupport); the module URI is the import name QML uses.
+# Only App links AedstTelemetryplugin, so QML test executables keep registering their fakes under this URI.
+target_link_libraries(AedstTelemetry PUBLIC Aedst::QmlSupport)
+qt_add_qml_module(AedstTelemetry URI Aedst.Telemetry VERSION 1.0 RESOURCE_PREFIX /qt/qml)
+
 target_include_directories(AedstTelemetry PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>)
 
@@ -38,6 +43,7 @@ target_link_libraries(AedstTelemetry
     PRIVATE
         Aedst::Network        # validateEndpoint (https policy for the PostHog host)
         Aedst::CrashReporting # ConsentStore
+        Aedst::Logging        # qCWarning(lcTelemetry, ...)
 )
 
 if(AEDST_ENABLE_SENTRY)

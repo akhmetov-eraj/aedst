@@ -1,22 +1,40 @@
 # Multi-stage build for the aedst-server binary. Build context is
 # apps/server (see Taskfile.yml/server-ci.yml's docker build invocations,
 # which pass `-f deployments/docker/Dockerfile .` from apps/server).
-FROM golang:1.27-alpine AS build
+#
+# Image processing uses govips over libvips (cgo, build tag "vips", ADR-0015),
+# so the binary is dynamically linked against glibc + libvips and the old
+# CGO_ENABLED=0 / distroless-static runtime no longer works. Both stages use
+# Debian bookworm so the libvips the binary is linked against at build time
+# (libvips-dev) is the same major library the runtime installs (libvips42).
+# NOT verified by a local `docker build` where this was authored (no libvips,
+# no Docker): the first CI image build is its acceptance test.
+FROM golang:1.27.1-bookworm AS build
 WORKDIR /src
 
-RUN apk add --no-cache git
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends gcc pkg-config libvips-dev \
+ && rm -rf /var/lib/apt/lists/*
 
 COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /out/aedst-server ./cmd/server
+ARG VERSION=dev
+RUN CGO_ENABLED=1 GOOS=linux go build -tags vips -trimpath -ldflags="-s -w -X github.com/aedst/server/internal/platform/buildinfo.Version=${VERSION}" -o /out/aedst-server ./cmd/server
 
-# Distroless: no shell, no package manager — smaller attack surface than
-# alpine for the runtime image, matching how the binary is deployed (no
-# in-container debugging; use `kubectl debug` / a sidecar instead).
-FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+# Runtime: slim Debian with only libvips42 (its dependencies pull in the
+# JPEG/PNG/WebP/HEIF/GIF codecs libvips was built with) and CA certificates.
+# Runs as a non-root user; no shell tooling beyond what slim ships — use
+# `kubectl debug` for in-container debugging.
+FROM debian:bookworm-slim AS runtime
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libvips42 ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && groupadd --gid 65532 nonroot \
+ && useradd --uid 65532 --gid 65532 --no-create-home --shell /usr/sbin/nologin nonroot
 COPY --from=build /out/aedst-server /aedst-server
 
+USER 65532:65532
 EXPOSE 8080
 ENTRYPOINT ["/aedst-server"]

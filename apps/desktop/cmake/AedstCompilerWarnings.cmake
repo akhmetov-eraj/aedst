@@ -1,8 +1,11 @@
 include_guard(GLOBAL)
 
+include(AedstHardening)
+
 # aedst_set_warnings(<target>)
 #
-# Strict, per-compiler warning set applied to every first-party target.
+# Strict, per-compiler warning set applied to every first-party target, plus the exploit-mitigation flags of
+# aedst_set_hardening (cmake/AedstHardening.cmake): every first-party target already calls this function.
 # INTERFACE libraries get the flags as INTERFACE options so header-only code
 # is checked in the consumers that compile it.
 function(aedst_set_warnings target)
@@ -71,4 +74,6 @@ function(aedst_set_warnings target)
         "$<$<CXX_COMPILER_ID:GNU>:${gcc_warnings}>"
         "$<$<CXX_COMPILER_ID:Clang>:${clang_warnings}>"
     )
+
+    aedst_set_hardening(${target})
 endfunction()

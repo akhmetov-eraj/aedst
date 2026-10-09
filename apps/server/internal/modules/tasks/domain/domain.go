@@ -1,6 +1,6 @@
 // Package domain holds the tasks module's entities and invariants. It imports
 // nothing outside the standard library and shared primitives — no
-// infrastructure, no other module (see docs/modules.md).
+// infrastructure, no other module (see docs/content/server/modules.md).
 package domain
 
 import (

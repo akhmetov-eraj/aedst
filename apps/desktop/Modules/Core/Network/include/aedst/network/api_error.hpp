@@ -35,6 +35,19 @@ struct ApiError {
     /// empty for client-side failures (transport, timeout, decoding) and for
     /// responses that carried no Connect error body.
     std::string connectCode{};
+    /// `reason` of the google.rpc.ErrorInfo detail the server attached, if any (for example
+    /// "CLIENT_UPGRADE_REQUIRED"); empty otherwise.
+    std::string reason{};
+
+    /// google.rpc.ErrorInfo reason of the server's client-version gate (apps/server/internal/platform/httpserver/
+    /// clientversion.go, ADR-0009).
+    static constexpr std::string_view kUpgradeRequiredReason = "CLIENT_UPGRADE_REQUIRED";
+
+    /// The server refuses this app version: Connect code failed_precondition AND the CLIENT_UPGRADE_REQUIRED
+    /// reason. The code alone is not enough, failed_precondition is also an ordinary business error.
+    [[nodiscard]] bool isUpgradeRequired() const noexcept {
+        return connectCode == "failed_precondition" && reason == kUpgradeRequiredReason;
+    }
 
     [[nodiscard]] static constexpr ApiErrorKind kindFromConnectCode(std::string_view code) noexcept {
         if (code == "canceled") {
@@ -115,22 +128,33 @@ struct ApiError {
         return kind == ApiErrorKind::Transport || kind == ApiErrorKind::Timeout || kind == ApiErrorKind::Unavailable;
     }
 
+    /// The shared error kind of this failure (docs/contract/behavior/error-kinds.json). A connection-level
+    /// failure (Transport) is reported as Offline: Qt does not tell "no network" from "server not reachable".
     [[nodiscard]] core::Error toCoreError() const {
+        if (isUpgradeRequired()) {
+            return core::Error::upgradeRequired(message);
+        }
         switch (kind) {
         case ApiErrorKind::Transport:
+            return core::Error::offline(message);
         case ApiErrorKind::Timeout:
+            return core::Error::timeout(message);
         case ApiErrorKind::Unavailable:
-            return core::Error::network(message);
+            // kindFromConnectCode folds resource_exhausted into Unavailable (it is not retried blindly,
+            // see isRetryable); as a kind it is a rate limit.
+            return connectCode == "resource_exhausted" ? core::Error::rateLimited(message)
+                                                       : core::Error::unavailable(message);
         case ApiErrorKind::Unauthenticated:
             return core::Error::unauthenticated(message);
         case ApiErrorKind::PermissionDenied:
             // Not "signed out": the session is valid but lacks a role (e.g. admin RPCs).
-            return core::Error::permissionDenied(message);
+            return core::Error::forbidden(message);
         case ApiErrorKind::NotFound:
             return core::Error::notFound(message);
         case ApiErrorKind::InvalidArgument:
+            return core::Error::invalidInput(message);
         case ApiErrorKind::AlreadyExists:
-            return core::Error::invalidArgument(message);
+            return core::Error::conflict(message);
         case ApiErrorKind::Cancelled:
             return core::Error::cancelled(message);
         case ApiErrorKind::Internal:

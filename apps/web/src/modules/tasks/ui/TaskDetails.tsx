@@ -1,36 +1,35 @@
 "use client";
 
-import { timestampDate, timestampFromDate } from "@bufbuild/protobuf/wkt";
+import { timestampDate } from "@bufbuild/protobuf/wkt";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { useMutation, useQuery } from "@connectrpc/connect-query";
 import { useQueryClient } from "@tanstack/react-query";
-import { format } from "date-fns";
+import dynamic from "next/dynamic";
 import { useLocale, useTranslations } from "next-intl";
 import { useState } from "react";
-import type { Locale } from "@/app/config/i18n/locales";
-import { Link, useRouter } from "@/app/config/i18n/navigation";
+import { tasksQueryKey } from "@/modules/tasks/lib/task-query-keys";
+import {
+  useQueuedTasks,
+  useUpdateTask,
+} from "@/modules/tasks/lib/use-task-writes";
 import { PriorityBadge } from "@/modules/tasks/ui/PriorityBadge";
 import { StatusBadge } from "@/modules/tasks/ui/StatusBadge";
-import {
-  type SettablePriority,
-  TaskForm,
-  type TaskFormValues,
+import type {
+  SettablePriority,
+  TaskFormValues,
 } from "@/modules/tasks/ui/TaskForm";
 import { TasksService } from "@/shared/api/connect/client";
 import { TaskStatus } from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
-import { formatDate, formatDateTime } from "@/shared/date/format-date";
-import { track } from "@/shared/lib/analytics/analytics";
+import { mutationKeyFor } from "@/shared/api/connect/mutation-key";
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-  AlertDialogTrigger,
-} from "@/shared/ui/alert-dialog";
+  formatDate,
+  formatDateInputValue,
+  formatDateTime,
+} from "@/shared/date/format-date";
+import { Link, useRouter } from "@/shared/i18n/navigation";
+import { track } from "@/shared/lib/analytics/analytics";
+import { errorMessageKey, toAppError } from "@/shared/lib/errors/app-error";
+import { Badge } from "@/shared/ui/badge";
 import { Button, buttonVariants } from "@/shared/ui/button";
 import {
   Empty,
@@ -39,44 +38,56 @@ import {
   EmptyHeader,
   EmptyTitle,
 } from "@/shared/ui/empty";
+import { LoadingSkeleton } from "@/shared/ui/loading-skeleton";
 import { Skeleton } from "@/shared/ui/skeleton";
 
+// The edit form (and the Select stack it needs) is only used after "Edit", so
+// it stays out of the details route's first load.
+const DeleteTaskDialog = dynamic(() =>
+  import("@/modules/tasks/ui/DeleteTaskDialog").then((m) => m.DeleteTaskDialog),
+);
+
+const TaskForm = dynamic(
+  () => import("@/modules/tasks/ui/TaskForm").then((m) => m.TaskForm),
+  { loading: () => <Skeleton className="h-64 w-full" /> },
+);
+
 function toDateInputValue(date: Date | undefined) {
-  return date ? format(date, "yyyy-MM-dd") : "";
+  return date ? formatDateInputValue(date) : "";
 }
 
 export function TaskDetails({ taskId }: { taskId: string }) {
   const t = useTranslations("tasks.details");
   const tForm = useTranslations("tasks.form");
   const tList = useTranslations("tasks.list");
-  const locale = useLocale() as Locale;
+  const tSync = useTranslations("tasks.sync");
+  const tErrors = useTranslations("common.errors");
+  const locale = useLocale();
   const router = useRouter();
   const queryClient = useQueryClient();
   const [isEditing, setIsEditing] = useState(false);
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   const { data, isLoading, isError, error, refetch } = useQuery(
     TasksService.method.getTask,
     { id: taskId },
   );
 
-  // Every mutation below invalidates the whole query cache — simple and
-  // always correct (this task, the list, and the dashboard stats can all
-  // change from any of these actions) rather than hand-maintaining a
-  // precise set of query keys for a handful of screens.
+  // This task, the list and the dashboard stats can all change from any of
+  // these actions, so every TasksService query is invalidated (not the whole
+  // cache: other modules' data is unaffected; the outbox provider owns the
+  // global refetch after a drain).
   function invalidateAll() {
-    return queryClient.invalidateQueries();
+    return queryClient.invalidateQueries({ queryKey: tasksQueryKey() });
   }
 
   // These mutations render their own inline error below, so they opt out of
   // the global error toast (`meta.silent`).
-  const updateTask = useMutation(TasksService.method.updateTask, {
-    meta: { silent: true, feature: "tasks" },
-    onSuccess: () => {
-      setIsEditing(false);
-      return invalidateAll();
-    },
-  });
+  const updateTask = useUpdateTask();
+  const { updates } = useQueuedTasks();
+  const syncStatus = updates.find((u) => u.payload.taskId === taskId)?.status;
   const completeTask = useMutation(TasksService.method.completeTask, {
+    mutationKey: mutationKeyFor(TasksService.method.completeTask),
     meta: { silent: true, feature: "tasks" },
     onSuccess: () => {
       track("task_completed");
@@ -84,10 +95,12 @@ export function TaskDetails({ taskId }: { taskId: string }) {
     },
   });
   const reopenTask = useMutation(TasksService.method.reopenTask, {
+    mutationKey: mutationKeyFor(TasksService.method.reopenTask),
     meta: { silent: true, feature: "tasks" },
     onSuccess: invalidateAll,
   });
   const deleteTask = useMutation(TasksService.method.deleteTask, {
+    mutationKey: mutationKeyFor(TasksService.method.deleteTask),
     meta: { silent: true, feature: "tasks" },
     onSuccess: () => {
       void invalidateAll();
@@ -96,13 +109,7 @@ export function TaskDetails({ taskId }: { taskId: string }) {
   });
 
   if (isLoading) {
-    return (
-      <Skeleton
-        className="h-64 w-full max-w-lg"
-        aria-busy="true"
-        role="status"
-      />
-    );
+    return <LoadingSkeleton className="h-64 w-full max-w-lg" />;
   }
 
   // A missing/foreign task is a "not found"; anything else (network, server
@@ -133,6 +140,13 @@ export function TaskDetails({ taskId }: { taskId: string }) {
   }
 
   const task = data.task;
+  // The server's text is diagnostic English: the user sees the translated
+  // kind, and the mutation cache already sent the raw error to Sentry.
+  const actionError =
+    updateTask.error ??
+    completeTask.error ??
+    reopenTask.error ??
+    deleteTask.error;
 
   if (isEditing) {
     return (
@@ -147,20 +161,21 @@ export function TaskDetails({ taskId }: { taskId: string }) {
           ),
         }}
         isSubmitting={updateTask.isPending}
-        submitError={updateTask.error?.message}
+        onCancel={() => setIsEditing(false)}
+        submitErrorKind={
+          updateTask.error ? toAppError(updateTask.error).kind : undefined
+        }
         onSubmit={(values: TaskFormValues) =>
-          updateTask.mutate({
-            id: task.id,
-            title: values.title,
-            description: values.description,
-            priority: values.priority,
-            dueDate: values.dueDate
-              ? timestampFromDate(new Date(values.dueDate))
-              : undefined,
-            updateMask: {
-              paths: ["title", "description", "priority", "due_date"],
+          updateTask.mutate(
+            {
+              taskId: task.id,
+              title: values.title,
+              description: values.description,
+              priority: values.priority,
+              dueDate: values.dueDate || undefined,
             },
-          })
+            { onSuccess: () => setIsEditing(false) },
+          )
         }
       />
     );
@@ -178,6 +193,15 @@ export function TaskDetails({ taskId }: { taskId: string }) {
       <div className="flex items-start justify-between gap-3">
         <h1 className="font-semibold text-xl">{task.title}</h1>
         <div className="flex shrink-0 items-center gap-2">
+          {syncStatus && (
+            <Badge
+              variant={syncStatus === "failed" ? "destructive" : "secondary"}
+            >
+              {syncStatus === "failed"
+                ? tSync("failedBadge")
+                : tSync("pendingBadge")}
+            </Badge>
+          )}
           <PriorityBadge priority={task.priority} />
           <StatusBadge status={task.status} />
         </div>
@@ -234,42 +258,22 @@ export function TaskDetails({ taskId }: { taskId: string }) {
           </Button>
         )}
 
-        <AlertDialog>
-          <AlertDialogTrigger render={<Button variant="destructive" />}>
-            {t("delete")}
-          </AlertDialogTrigger>
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>{t("deleteConfirmTitle")}</AlertDialogTitle>
-              <AlertDialogDescription>
-                {t("deleteConfirmDescription")}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel>{t("deleteCancelAction")}</AlertDialogCancel>
-              <AlertDialogAction
-                onClick={() => deleteTask.mutate({ id: task.id })}
-              >
-                {t("deleteConfirmAction")}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        </AlertDialog>
+        <Button variant="destructive" onClick={() => setConfirmingDelete(true)}>
+          {t("delete")}
+        </Button>
+        {confirmingDelete && (
+          <DeleteTaskDialog
+            open
+            onOpenChange={setConfirmingDelete}
+            onConfirm={() => deleteTask.mutate({ id: task.id })}
+          />
+        )}
       </div>
 
-      {(updateTask.isError ||
-        completeTask.isError ||
-        reopenTask.isError ||
-        deleteTask.isError) && (
+      {actionError && (
         <p role="alert" className="text-destructive text-sm">
           {tForm("error", {
-            message:
-              (
-                updateTask.error ??
-                completeTask.error ??
-                reopenTask.error ??
-                deleteTask.error
-              )?.message ?? "",
+            message: tErrors(errorMessageKey(toAppError(actionError).kind)),
           })}
         </p>
       )}

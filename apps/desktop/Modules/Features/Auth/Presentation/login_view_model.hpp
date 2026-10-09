@@ -1,9 +1,12 @@
 #pragma once
 
+#include "aedst/core/error.hpp"
 #include "aedst/core/secure_memory.hpp"
+#include "aedst/qmlsupport/singleton_slot.hpp"
 
 #include <QObject>
 #include <QString>
+#include <QtQml/qqmlregistration.h>
 
 #include <memory>
 
@@ -32,6 +35,8 @@ class LogoutUseCase;
 /// class never references Users or Profile.
 class LoginViewModel final : public QObject {
     Q_OBJECT
+    QML_ELEMENT
+    QML_SINGLETON
     Q_PROPERTY(QString email READ email WRITE setEmail NOTIFY emailChanged)
     // Write-only from QML: READ always returns an empty string so the secret is never
     // bound back into the UI; QML observes `hasPassword` instead.
@@ -49,6 +54,9 @@ class LoginViewModel final : public QObject {
     Q_PROPERTY(bool restoringSession READ restoringSession NOTIFY restoringSessionChanged)
 
 public:
+    static LoginViewModel* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<LoginViewModel>::create(engine, script);
+    }
     LoginViewModel(std::shared_ptr<LoginUseCase> login, std::shared_ptr<LogoutUseCase> logout,
                    std::shared_ptr<analytics::AnalyticsTracker> analytics, navigation::Router* router,
                    QObject* parent = nullptr);
@@ -72,6 +80,10 @@ public:
     void setRestoringSession(bool restoring);
     /// Shows an error that did not come from a user action (for example a startup restore failure).
     void showError(const QString& message);
+
+    /// The text the user sees for a failure, chosen by its error CODE and translated (qsTr catalogs). The server's own
+    /// message is English-only and may carry technical detail; it is logged, never shown.
+    [[nodiscard]] static QString messageFor(const core::Error& error);
 
     Q_INVOKABLE void login();
     /// Wipes the held password (also done on success, logout and destruction).

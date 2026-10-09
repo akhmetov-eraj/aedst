@@ -3,7 +3,9 @@ import {
   logIn,
   mockApi,
   signInThroughUi,
+  submitIdpForm,
   test,
+  WEB_ORIGIN,
 } from "./support/fixtures";
 
 test.describe("route protection", () => {
@@ -49,50 +51,110 @@ test.describe("route protection", () => {
 });
 
 test.describe("sign in / out", () => {
-  test("shows an accessible error for wrong credentials", async ({
+  test("wrong credentials stay on the identity provider and create no session", async ({
     page,
+    context,
     user,
   }) => {
     await page.goto("/en");
-    await page.getByLabel("Email").fill(user.email);
-    await page.getByLabel("Password").fill("wrong-password");
-    await page.getByRole("button", { name: "Log in" }).click();
+    await page.getByRole("link", { name: "Sign in", exact: true }).click();
+    await submitIdpForm(page, user.email, "wrong-password", "Continue");
 
     await expect(
       page.getByRole("alert").filter({ hasText: "invalid credentials" }),
     ).toBeVisible();
-    await expect(page).toHaveURL(/\/en$/);
+    expect(
+      (await context.cookies()).filter((c) =>
+        c.name.startsWith("aedst_session"),
+      ),
+    ).toEqual([]);
   });
 
-  test("validates the form before submitting", async ({ page }) => {
-    await page.goto("/en");
-    await page.getByRole("button", { name: "Log in" }).click();
-
-    await expect(page.getByText("Enter a valid email address.")).toBeVisible();
-    await expect(page.getByLabel("Email")).toHaveAttribute(
-      "aria-invalid",
-      "true",
-    );
-  });
-
-  test("registers a new account and lands on the dashboard", async ({
+  test("the sign-in link starts an Authorization Code + PKCE request", async ({
     page,
   }) => {
     await page.goto("/en");
-    await page.getByRole("button", { name: "Create one" }).click();
-    await page
-      .getByLabel("Email")
-      .fill(`new-${Date.now()}-${Math.random()}@example.com`);
-    await page.getByLabel("Password").fill("a-long-password");
-    await page.getByRole("button", { name: "Create account" }).click();
+    await page.getByRole("link", { name: "Sign in", exact: true }).click();
+
+    await expect(page).toHaveURL(/127\.0\.0\.1:8181\/oidc\/authorize/);
+    const params = new URL(page.url()).searchParams;
+    expect(params.get("response_type")).toBe("code");
+    expect(params.get("code_challenge_method")).toBe("S256");
+    expect(params.get("state")).toBeTruthy();
+    expect(params.get("nonce")).toBeTruthy();
+    expect(params.get("scope")).toContain("offline_access");
+    expect(params.get("scope")).toContain(
+      "urn:zitadel:iam:org:project:id:aedst-api-e2e:aud",
+    );
+    expect(params.get("redirect_uri")).toBe(`${WEB_ORIGIN}/api/auth/callback`);
+  });
+
+  test("a callback with a forged state is refused with an explanation", async ({
+    page,
+    context,
+  }) => {
+    await page.goto("/en");
+    await page.getByRole("link", { name: "Sign in", exact: true }).click();
+    await expect(page).toHaveURL(/\/oidc\/authorize/);
+
+    // An attacker-supplied code/state pair that was not started by this browser.
+    await page.goto("/api/auth/callback?code=stolen&state=forged");
+
+    await expect(page).toHaveURL(/\/en\?auth_error=invalid/);
+    await expect(page.locator("p[role=alert]")).toContainText(
+      "Sign-in could not be verified",
+    );
+    expect(
+      (await context.cookies()).filter((c) =>
+        c.name.startsWith("aedst_session"),
+      ),
+    ).toEqual([]);
+  });
+
+  test("a callback without a started login says the sign-in expired", async ({
+    page,
+  }) => {
+    await page.goto("/api/auth/callback?code=x&state=y");
+
+    await expect(page).toHaveURL(/\/en\?auth_error=expired/);
+    await expect(page.locator("p[role=alert]")).toContainText("took too long");
+  });
+
+  test("creates a new account at the identity provider and lands on the dashboard", async ({
+    page,
+  }) => {
+    await page.goto("/en");
+    await page.getByRole("link", { name: "Create one" }).click();
+    await expect(
+      page.getByRole("heading", { name: "Create account" }),
+    ).toBeVisible();
+    await submitIdpForm(
+      page,
+      `new-${Date.now()}-${Math.random()}@example.com`,
+      "a-long-password",
+      "Register",
+    );
 
     await expect(page).toHaveURL(/\/en\/tasks$/);
     await expect(page.getByText("No tasks yet")).toBeVisible();
   });
 
-  test("signing out ends the session for good", async ({ page, signedIn }) => {
+  test("shows who is signed in from the ID token", async ({
+    page,
+    signedIn,
+  }) => {
+    await expect(
+      page.getByText(`Signed in as ${signedIn.email}`),
+    ).toBeVisible();
+  });
+
+  test("signing out ends the session at the identity provider and locally", async ({
+    page,
+    signedIn,
+  }) => {
     expect(signedIn.email).toBeTruthy();
     await page.getByRole("button", { name: "Sign out" }).click();
+    // RP-initiated logout bounces through the IdP's end_session endpoint.
     await expect(page).toHaveURL(/\/en$/);
 
     await page.goto("/en/tasks");
@@ -113,8 +175,11 @@ test.describe("session storage", () => {
     const session = cookies.filter((c) => c.name.startsWith("aedst_session"));
     expect(session.map((c) => c.name).sort()).toEqual([
       "aedst_session",
+      "aedst_session_id",
       "aedst_session_refresh",
     ]);
+    // The single-use pre-auth cookie is gone once the login completed.
+    expect(cookies.map((c) => c.name)).not.toContain("aedst_oidc");
     for (const cookie of session) {
       expect(cookie.httpOnly).toBe(true);
       // WebKit's automation API reports Lax cookies as "None"; the header
@@ -150,7 +215,7 @@ test.describe("session storage", () => {
     await expect(page).toHaveURL(/cursors=/);
 
     for (const origin of origins) {
-      expect(origin).toBe("http://127.0.0.1:3100");
+      expect(origin).toBe(WEB_ORIGIN);
     }
   });
 });
@@ -165,7 +230,9 @@ test.describe("session refresh", () => {
     await page.reload();
 
     await expect(page).toHaveURL(/\/en\/tasks/);
-    await expect(page.getByText("Seed task 25")).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: /Seed task 25/ }),
+    ).toBeVisible();
   });
 
   test("an expired access token is renewed transparently on a client-side request", async ({

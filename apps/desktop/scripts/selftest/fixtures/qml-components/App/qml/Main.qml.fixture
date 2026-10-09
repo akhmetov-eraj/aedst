@@ -1,0 +1,21 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Controls as QQC2
+
+// Fixture for scripts/check-qml-components.sh: the raw controls below MUST be reported, the Aedst ones must not.
+Item {
+    Label { text: "raw label" }
+    Text { text: "raw text" }
+    TextField { placeholderText: "raw field" }
+    BusyIndicator { running: true }
+    QQC2.ComboBox { model: [] }
+    ListView {
+        delegate: ItemDelegate { text: "raw row" }
+    }
+    AedstButton { text: "fine" }
+    AedstLabel { text: "fine, and Text.ElideRight is not a type use"; elide: Text.ElideRight }
+    // Button { } in a comment is ignored
+    Rectangle { color: "transparent" }
+    // aedst-allow: fixture - a documented exception is accepted
+    Button { text: "allowed" }
+}

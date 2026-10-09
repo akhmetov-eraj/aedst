@@ -16,14 +16,15 @@ T.Popup {
     focus: true
     x: (parent ? parent.width : 0) / 2 - width / 2
     y: (parent ? parent.height : 0) / 2 - height / 2
-    implicitWidth: 480
+    // Never wider than the window minus a margin on each side (the window's minimum width is 480).
+    implicitWidth: Math.min(480, (parent ? parent.width : 480) - 2 * Theme.spacingLg)
     closePolicy: T.Popup.CloseOnEscape | T.Popup.CloseOnPressOutside
 
     Accessible.role: Accessible.Dialog
     Accessible.name: title
 
     Overlay.modal: Rectangle {
-        color: Qt.rgba(0, 0, 0, 0.45)
+        color: Theme.scrim
     }
 
     enter: Transition {

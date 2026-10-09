@@ -22,10 +22,9 @@ import QtQuick.Layouts
 //   }
 //
 // Accessibility: the root is a pane whose name/description follow the current
-// state text, so a screen reader announces "Loading…" / the error text when the
-// state changes; Error and Offline use the alert-message role. (Qt 6.8 offers no
-// dedicated live-region/announce API, so none is used.) Content children are
-// hidden, and therefore unfocusable, outside the Success state.
+// state text; Error and Offline use the alert-message role. Every change of state is also spoken through
+// Accessible.announce (assertive for Error and Offline, polite otherwise), so the change is heard without moving
+// focus. Content children are hidden, and therefore unfocusable, outside the Success state.
 Item {
     id: root
 
@@ -75,6 +74,17 @@ Item {
 
     implicitWidth: 320
     implicitHeight: 200
+
+    onViewStateChanged: announceState()
+    Component.onCompleted: announceState()
+    function announceState() {
+        if (!root.visible || root.isSuccess || root.statusTitle.length === 0) {
+            return
+        }
+        Accessible.announce(root.statusDescription.length > 0 ? root.statusTitle + ". " + root.statusDescription
+                                                              : root.statusTitle,
+            root.isAlert ? Accessible.Assertive : Accessible.Polite)
+    }
 
     Accessible.role: root.isAlert ? Accessible.AlertMessage : Accessible.Pane
     Accessible.name: root.statusTitle

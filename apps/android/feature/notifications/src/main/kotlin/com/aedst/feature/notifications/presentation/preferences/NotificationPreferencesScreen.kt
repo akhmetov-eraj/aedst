@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
@@ -16,48 +15,54 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aedst.core.ui.adaptive.AedstAdaptiveContent
+import com.aedst.core.ui.adaptive.AedstContentWidth
+import com.aedst.core.ui.adaptive.AedstWindowSizePreviews
 import com.aedst.core.ui.components.AedstErrorSnackbarEffect
+import com.aedst.core.ui.components.AedstIconButton
 import com.aedst.core.ui.components.AedstSnackbarHost
 import com.aedst.core.ui.components.AedstSwitch
 import com.aedst.core.ui.components.AedstTopAppBar
 import com.aedst.core.ui.components.FullScreenLoading
+import com.aedst.core.ui.theme.AedstSpacing
+import com.aedst.core.ui.theme.AedstTheme
 import com.aedst.feature.notifications.R
 import com.aedst.feature.notifications.domain.NotificationPreferences
 
 @Composable
-fun NotificationPreferencesRoute(onBack: () -> Unit, viewModel: NotificationPreferencesViewModel = hiltViewModel()) {
+internal fun NotificationPreferencesRoute(
+    onBack: () -> Unit,
+    viewModel: NotificationPreferencesViewModel = hiltViewModel(),
+) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    NotificationPreferencesScreen(
-        state = state,
-        onChange = viewModel::update,
-        onErrorShown = viewModel::errorShown,
-        onBack = onBack,
-    )
+    NotificationPreferencesScreen(state = state, onIntent = viewModel::onIntent, onBack = onBack)
 }
 
 @Composable
 internal fun NotificationPreferencesScreen(
     state: NotificationPreferencesState,
-    onChange: ((NotificationPreferences) -> NotificationPreferences) -> Unit,
-    onErrorShown: () -> Unit,
+    onIntent: (NotificationPreferencesIntent) -> Unit,
     onBack: () -> Unit,
 ) {
     val snackbarHostState = remember { SnackbarHostState() }
-    AedstErrorSnackbarEffect(state.error, snackbarHostState, onShown = onErrorShown)
+    AedstErrorSnackbarEffect(
+        state.error,
+        snackbarHostState,
+        onShown = { onIntent(NotificationPreferencesIntent.ErrorShown) },
+    )
 
     Scaffold(
         topBar = {
             AedstTopAppBar(
                 title = stringResource(R.string.notifications_preferences),
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.notifications_back),
-                        )
+                    AedstIconButton(
+                        onClick = onBack,
+                        contentDescription = stringResource(R.string.notifications_back),
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                     }
                 },
             )
@@ -69,37 +74,59 @@ internal fun NotificationPreferencesScreen(
             FullScreenLoading(Modifier.padding(padding))
             return@Scaffold
         }
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
-            AedstSwitch(
-                checked = prefs.pushEnabled,
-                onCheckedChange = { value -> onChange { it.copy(pushEnabled = value) } },
-                label = stringResource(R.string.notifications_pref_push),
-                modifier = Modifier.fillMaxWidth(),
-            )
-            AedstSwitch(
-                checked = prefs.taskCompleted,
-                onCheckedChange = { value -> onChange { it.copy(taskCompleted = value) } },
-                label = stringResource(R.string.notifications_pref_task_completed),
-                enabled = prefs.pushEnabled,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            AedstSwitch(
-                checked = prefs.taskDueSoon,
-                onCheckedChange = { value -> onChange { it.copy(taskDueSoon = value) } },
-                label = stringResource(R.string.notifications_pref_task_due_soon),
-                enabled = prefs.pushEnabled,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            AedstSwitch(
-                checked = prefs.mediaReady,
-                onCheckedChange = { value -> onChange { it.copy(mediaReady = value) } },
-                label = stringResource(R.string.notifications_pref_media_ready),
-                enabled = prefs.pushEnabled,
-                modifier = Modifier.fillMaxWidth(),
-            )
+        AedstAdaptiveContent(modifier = Modifier.padding(padding), maxWidth = AedstContentWidth.form) {
+            PreferenceSwitches(prefs) { transform -> onIntent(NotificationPreferencesIntent.Update(transform)) }
         }
+    }
+}
+
+@Composable
+private fun PreferenceSwitches(
+    prefs: NotificationPreferences,
+    onChange: ((NotificationPreferences) -> NotificationPreferences) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxSize().padding(AedstSpacing.lg),
+        verticalArrangement = Arrangement.spacedBy(AedstSpacing.lg),
+    ) {
+        AedstSwitch(
+            checked = prefs.pushEnabled,
+            onCheckedChange = { value -> onChange { it.copy(pushEnabled = value) } },
+            label = stringResource(R.string.notifications_pref_push),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        AedstSwitch(
+            checked = prefs.taskCompleted,
+            onCheckedChange = { value -> onChange { it.copy(taskCompleted = value) } },
+            label = stringResource(R.string.notifications_pref_task_completed),
+            enabled = prefs.pushEnabled,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        AedstSwitch(
+            checked = prefs.taskDueSoon,
+            onCheckedChange = { value -> onChange { it.copy(taskDueSoon = value) } },
+            label = stringResource(R.string.notifications_pref_task_due_soon),
+            enabled = prefs.pushEnabled,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        AedstSwitch(
+            checked = prefs.mediaReady,
+            onCheckedChange = { value -> onChange { it.copy(mediaReady = value) } },
+            label = stringResource(R.string.notifications_pref_media_ready),
+            enabled = prefs.pushEnabled,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+@AedstWindowSizePreviews
+@Composable
+private fun NotificationPreferencesScreenPreview() {
+    AedstTheme {
+        NotificationPreferencesScreen(
+            state = NotificationPreferencesState(),
+            onIntent = {},
+            onBack = {},
+        )
     }
 }

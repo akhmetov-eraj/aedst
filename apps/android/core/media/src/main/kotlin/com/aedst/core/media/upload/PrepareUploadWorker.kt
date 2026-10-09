@@ -8,6 +8,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.aedst.core.common.AedstError
+import com.aedst.core.common.DispatcherProvider
 import com.aedst.core.media.data.MediaUploadApi
 import com.aedst.core.media.processing.ImageCompressor
 import com.aedst.core.media.processing.VideoCompressor
@@ -15,17 +16,21 @@ import com.aedst.core.network.toAedstError
 import dagger.assisted.Assisted
 import dagger.assisted.AssistedInject
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import okio.HashingSource
+import okio.blackholeSink
+import okio.buffer
+import okio.source
 import java.io.File
-import java.security.MessageDigest
 
 /**
  * Step 1/3: copy the picked item into app storage, compressing images (ImageCompressor) and videos
  * (VideoCompressor), hash it, and call `CreateUpload` for a presigned URL. Outputs everything the next steps need.
  *
- * The staged file lives in `filesDir/media-uploads/` (not the cache dir) so the OS cannot evict it between steps;
- * [CompleteUploadWorker] deletes it, as does a terminal failure (see `MediaUploadScheduler.cleanUp`).
+ * The staged file lives in `filesDir/media-uploads/` (not the cache dir) so the OS cannot evict it between steps (see
+ * [UploadStaging]); [CompleteUploadWorker] deletes it on success, and so does every other way this upload can end:
+ * a terminal failure of any step, a cancel, the start-up sweep and sign-out.
  */
 @HiltWorker
 class PrepareUploadWorker @AssistedInject constructor(
@@ -34,6 +39,8 @@ class PrepareUploadWorker @AssistedInject constructor(
     private val uploadApi: MediaUploadApi,
     private val imageCompressor: ImageCompressor,
     private val videoCompressor: VideoCompressor,
+    private val dispatchers: DispatcherProvider,
+    private val staging: UploadStaging,
 ) : CoroutineWorker(appContext, params) {
 
     override suspend fun doWork(): Result {
@@ -52,6 +59,7 @@ class PrepareUploadWorker @AssistedInject constructor(
             )
             Result.success(
                 workDataOf(
+                    UploadWorkData.KEY_UPLOAD_ID to uploadId,
                     UploadWorkData.KEY_FILE_PATH to staged.file.absolutePath,
                     UploadWorkData.KEY_CONTENT_TYPE to staged.contentType,
                     UploadWorkData.KEY_MEDIA_ID to target.mediaId,
@@ -65,10 +73,23 @@ class PrepareUploadWorker @AssistedInject constructor(
             throw cancellation
         } catch (security: SecurityException) {
             // Picker grant lost (e.g. after a reboot without a persisted grant): not retryable.
-            UploadWorkData.resultFor(AedstError.Validation(security.javaClass.simpleName), runAttemptCount)
+            failed(uploadId, AedstError.InvalidInput(security.javaClass.simpleName))
         } catch (@Suppress("TooGenericExceptionCaught") throwable: Throwable) {
-            UploadWorkData.resultFor(throwable.toAedstError(), runAttemptCount)
+            failed(uploadId, throwable.toAedstError())
+        } finally {
+            // Only an app-initiated cancel (the user, sign-out) ends the upload; a constraint stop is retried later.
+            if (wasCancelledByApp) discard(uploadId)
         }
+    }
+
+    /** A retryable error keeps the staged copy for the next attempt; a terminal one removes it. */
+    private suspend fun failed(uploadId: String, error: AedstError): Result {
+        if (!UploadWorkData.willRetry(error, runAttemptCount)) discard(uploadId)
+        return UploadWorkData.resultFor(error, runAttemptCount)
+    }
+
+    private suspend fun discard(uploadId: String) = withContext(NonCancellable + dispatchers.io) {
+        staging.delete(uploadId)
     }
 
     private data class Staged(val file: File, val contentType: String, val filename: String)
@@ -78,11 +99,10 @@ class PrepareUploadWorker @AssistedInject constructor(
         val mimeType = resolver.getType(source) ?: DEFAULT_CONTENT_TYPE
         val displayName = displayName(source) ?: uploadId
         val baseName = displayName.substringBeforeLast('.')
-        val directory = File(applicationContext.filesDir, STAGING_DIR).apply { mkdirs() }
-        val destination = File(directory, uploadId)
+        val destination = staging.stem(uploadId)
 
         return when {
-            mimeType.startsWith("image/") && mimeType !in PASSTHROUGH_IMAGE_TYPES -> withContext(Dispatchers.Default) {
+            mimeType.startsWith("image/") && mimeType !in PASSTHROUGH_IMAGE_TYPES -> withContext(dispatchers.default) {
                 val result = imageCompressor.compress(resolver, source, destination)
                 Staged(result.file, result.contentType, baseName + result.extension)
             }
@@ -91,7 +111,7 @@ class PrepareUploadWorker @AssistedInject constructor(
                 videoCompressor.compress(source, file)
                 Staged(file, VideoCompressor.CONTENT_TYPE, baseName + VideoCompressor.EXTENSION)
             }
-            else -> withContext(Dispatchers.IO) {
+            else -> withContext(dispatchers.io) {
                 val file = File(destination.path + "." + displayName.substringAfterLast('.', "bin"))
                 requireNotNull(resolver.openInputStream(source)).use { input ->
                     file.outputStream().use { input.copyTo(it) }
@@ -106,23 +126,16 @@ class PrepareUploadWorker @AssistedInject constructor(
         ?.use { cursor -> if (cursor.moveToFirst()) cursor.getString(0) else null }
         ?.takeIf(String::isNotBlank)
 
-    private suspend fun sha256Hex(file: File): String = withContext(Dispatchers.IO) {
-        val digest = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { input ->
-            val buffer = ByteArray(DIGEST_BUFFER_BYTES)
-            while (true) {
-                val read = input.read(buffer)
-                if (read < 0) break
-                digest.update(buffer, 0, read)
-            }
+    // okio HashingSource streams the file through SHA-256; no hand-written read loop.
+    private suspend fun sha256Hex(file: File): String = withContext(dispatchers.io) {
+        HashingSource.sha256(file.source()).use { hashing ->
+            hashing.buffer().readAll(blackholeSink())
+            hashing.hash.hex()
         }
-        digest.digest().joinToString("") { "%02x".format(it) }
     }
 
     companion object {
-        const val STAGING_DIR = "media-uploads"
         private const val DEFAULT_CONTENT_TYPE = "application/octet-stream"
-        private const val DIGEST_BUFFER_BYTES = 64 * 1024
 
         /** Animated or vector formats: re-encoding would drop animation/quality; let the server make variants. */
         private val PASSTHROUGH_IMAGE_TYPES = setOf("image/gif", "image/svg+xml")

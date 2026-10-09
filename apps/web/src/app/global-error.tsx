@@ -2,11 +2,15 @@
 
 import { useEffect, useState } from "react";
 
+// The root layout (which normally imports the stylesheet) is what failed, so
+// the fallback loads it itself or renders unstyled.
+import "@app/styles/globals.css";
+
 import {
   fallbackMessages,
   pickFallbackLocale,
 } from "@/app/config/i18n/fallback-messages";
-import { defaultLocale, getLocaleDirection } from "@/app/config/i18n/locales";
+import { defaultLocale, getLocaleDirection } from "@/shared/i18n/locales";
 import { reportError } from "@/shared/lib/errors/report-error";
 
 // The final fallback — catches errors the root layout itself throws, which
@@ -45,22 +49,24 @@ export default function GlobalError({
       <head>
         <title>{messages.errorTitle}</title>
       </head>
-      <body className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center font-sans">
-        <p className="text-sm font-medium text-neutral-600">
-          {messages.errorLabel}
-        </p>
-        <h1 className="text-2xl font-semibold text-neutral-900">
-          {messages.errorTitle}
-        </h1>
-        <p className="max-w-md text-sm text-neutral-600">
-          {messages.errorDescription}
-        </p>
-        <a
-          href="/"
-          className="text-sm font-medium text-neutral-900 underline underline-offset-4"
-        >
-          {messages.goHome}
-        </a>
+      <body>
+        <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center font-sans">
+          <p className="text-sm font-medium text-muted-foreground">
+            {messages.errorLabel}
+          </p>
+          <h1 className="text-2xl font-semibold text-foreground">
+            {messages.errorTitle}
+          </h1>
+          <p className="max-w-md text-sm text-muted-foreground">
+            {messages.errorDescription}
+          </p>
+          <a
+            href="/"
+            className="text-sm font-medium text-foreground underline underline-offset-4"
+          >
+            {messages.goHome}
+          </a>
+        </main>
       </body>
     </html>
   );

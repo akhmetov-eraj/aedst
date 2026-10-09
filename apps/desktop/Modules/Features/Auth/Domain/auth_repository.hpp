@@ -14,7 +14,7 @@ struct Credentials {
     core::SecretString password;
 };
 
-/// Domain-owned port; Data/AuthRepositoryImpl implements it. Presentation only
+/// Domain-owned port; Data/ConnectAuthRepository implements it. Presentation only
 /// ever reaches this through a use case.
 class AuthRepository {
 public:
@@ -34,7 +34,7 @@ public:
     /// Interactive sign-in in the system browser (OpenID Connect, Authorization Code + PKCE).
     /// The default - for repositories backed by the first-party password API - refuses.
     virtual void signInWithBrowser(core::Completion<Session> done) {
-        done(core::fail(core::Error::invalidArgument("Browser sign-in is not available")));
+        done(core::fail(core::Error::invalidInput("Browser sign-in is not available")));
     }
     /// Abandons a running browser step; completes the pending signInWithBrowser() with Cancelled.
     virtual void cancelBrowserSignIn() {}

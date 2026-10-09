@@ -1,4 +1,5 @@
 /** An unsigned JWT-shaped string — enough for code that only reads `exp`/`sub`. */
+
 export function fakeJwt({
   sub = "user-1",
   expiresInSeconds,

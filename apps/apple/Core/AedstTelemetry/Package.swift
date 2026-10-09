@@ -6,13 +6,13 @@ import PackageDescription
 //
 // Versions: latest stable, verified 2026-10-07 via the GitHub releases API
 // (`/repos/<owner>/<repo>/releases/latest`):
-//   sentry-cocoa 9.30.0  (iOS 15 / macOS 12 floor — same as the app)
-//   posthog-ios  3.90.2  (iOS 13 / macOS 10.15)
+//   sentry-cocoa 9.30.0  (its own OS floor is below the app's iOS 18 / macOS 15)
+//   posthog-ios  3.90.2  (its own OS floor is below the app's iOS 18 / macOS 15)
 let package = Package(
     name: "AedstTelemetry",
     platforms: [
-        .iOS(.v15),
-        .macOS(.v12),
+        .iOS(.v18),
+        .macOS(.v15),
     ],
     products: [
         .library(name: "AedstTelemetry", targets: ["AedstTelemetry"]),
@@ -36,7 +36,7 @@ let package = Package(
         ),
         .testTarget(
             name: "AedstTelemetryTests",
-            dependencies: ["AedstTelemetry"],
+            dependencies: ["AedstTelemetry", "AedstCore", "AedstAnalytics"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]

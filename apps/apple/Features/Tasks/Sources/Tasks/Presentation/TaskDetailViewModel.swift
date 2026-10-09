@@ -1,11 +1,11 @@
 import AedstAnalytics
 import AedstCore
 import Foundation
-import Perception
+import Observation
 
 /// One task: load, complete/reopen (the status state machine), delete.
 @MainActor
-@Perceptible
+@Observable
 public final class TaskDetailViewModel {
     public let taskID: String
     public private(set) var task: TaskItem?
@@ -15,6 +15,7 @@ public final class TaskDetailViewModel {
 
     private let repository: any TaskRepository
     private let analytics: AnalyticsClient
+    private let clock: any AedstClock
     private let onChange: (TaskItem) -> Void
     private let onDelete: (String) -> Void
 
@@ -23,14 +24,21 @@ public final class TaskDetailViewModel {
         taskID: String,
         repository: any TaskRepository,
         analytics: AnalyticsClient = NoopAnalyticsClient(),
+        clock: any AedstClock = SystemClock(),
         onChange: @escaping (TaskItem) -> Void = { _ in },
         onDelete: @escaping (String) -> Void = { _ in }
     ) {
         self.taskID = taskID
         self.repository = repository
         self.analytics = analytics
+        self.clock = clock
         self.onChange = onChange
         self.onDelete = onDelete
+    }
+
+    /// `true` when `task` is past its due date, judged by the injected clock (never the wall clock).
+    public func isOverdue(_ task: TaskItem) -> Bool {
+        task.isOverdue(at: clock.now)
     }
 
     /// Fetches the task.

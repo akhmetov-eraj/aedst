@@ -5,7 +5,6 @@ package postgres_test
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
 	"strings"
 	"testing"
 	"time"
@@ -15,24 +14,24 @@ import (
 	"github.com/aedst/server/internal/modules/search/infrastructure/events"
 	"github.com/aedst/server/internal/modules/search/infrastructure/postgres"
 	tasksapi "github.com/aedst/server/internal/modules/tasks/api"
-	"github.com/aedst/server/internal/platform/messaging"
+	platformevents "github.com/aedst/server/internal/platform/events"
 	"github.com/aedst/server/internal/platform/postgrestest"
 	"github.com/aedst/server/internal/shared/ids"
 )
 
 type harness struct {
-	t   *testing.T
-	bus *messaging.Bus
-	svc *application.Service
+	t        *testing.T
+	registry *platformevents.Registry
+	svc      *application.Service
 }
 
 func newHarness(t *testing.T) harness {
 	t.Helper()
 	pool := postgrestest.NewPool(t, "search")
 	repo := postgres.NewRepository(pool)
-	bus := messaging.NewBus()
-	events.Subscribe(bus, pool, repo, slog.New(slog.DiscardHandler))
-	return harness{t: t, bus: bus, svc: application.NewService(repo)}
+	registry := platformevents.NewRegistry()
+	events.Subscribe(registry, pool, repo)
+	return harness{t: t, registry: registry, svc: application.NewService(repo)}
 }
 
 func (h harness) publish(eventType string, payload any) {
@@ -41,7 +40,7 @@ func (h harness) publish(eventType string, payload any) {
 	if err != nil {
 		h.t.Fatal(err)
 	}
-	if err := h.bus.Publish(context.Background(), messaging.Event{ID: ids.New(), Type: eventType, Version: 1, OccurredAt: time.Now(), Payload: raw}); err != nil {
+	if err := h.registry.Dispatch(context.Background(), platformevents.Event{ID: ids.New(), Type: eventType, Version: 1, OccurredAt: time.Now(), Payload: raw}); err != nil {
 		h.t.Fatalf("publish %s: %v", eventType, err)
 	}
 }

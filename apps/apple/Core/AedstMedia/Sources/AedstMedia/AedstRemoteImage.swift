@@ -1,19 +1,20 @@
 import AedstDesignSystem
+import Nuke
+import NukeUI
 import SwiftUI
 
-/// Remote image with a skeleton while loading, a placeholder on failure, and
-/// caching/downsampling through `RemoteImageLoader`. Pass a `cacheKey` (media
-/// id + variant) whenever the URL is presigned and therefore changes per call.
+/// Remote image with a skeleton while loading and a placeholder on failure,
+/// loaded through `AedstImagePipeline` (Nuke: disk + memory cache, downsampled
+/// decode). Pass a `cacheKey` (media id + variant) whenever the URL is presigned
+/// and therefore changes per call. No transition animation is applied, so Reduce
+/// Motion is respected by construction.
 public struct AedstRemoteImage: View {
     private let url: URL?
     private let cacheKey: String?
     private let maxPointSize: CGFloat
     private let contentMode: ContentMode
     private let accessibilityLabel: String?
-    private let loader: RemoteImageLoader
 
-    @State private var image: DecodedImage?
-    @State private var failed = false
     @Environment(\.displayScale) private var displayScale
 
     /// `maxPointSize` is the largest side the image is shown at, in points.
@@ -22,47 +23,54 @@ public struct AedstRemoteImage: View {
         cacheKey: String? = nil,
         maxPointSize: CGFloat = 600,
         contentMode: ContentMode = .fill,
-        accessibilityLabel: String? = nil,
-        loader: RemoteImageLoader = .shared
+        accessibilityLabel: String? = nil
     ) {
         self.url = url
         self.cacheKey = cacheKey
         self.maxPointSize = maxPointSize
         self.contentMode = contentMode
         self.accessibilityLabel = accessibilityLabel
-        self.loader = loader
     }
 
     public var body: some View {
         ZStack {
-            if let image {
-                Image(decorative: image.cgImage, scale: displayScale)
-                    .resizable()
-                    .aspectRatio(contentMode: contentMode)
-                    .accessibilityHidden(accessibilityLabel == nil)
-                    .accessibilityLabel(Text(accessibilityLabel ?? ""))
-            } else if failed || url == nil {
-                Image(systemName: "photo")
-                    .foregroundStyle(AedstColor.mutedForeground)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(AedstColor.muted)
-                    .accessibilityLabel(Text(AedstCommonStrings.imageUnavailable))
+            if let request {
+                LazyImage(request: request) { state in
+                    if let image = state.image {
+                        image
+                            .resizable()
+                            .aspectRatio(contentMode: contentMode)
+                            .accessibilityHidden(accessibilityLabel == nil)
+                            .accessibilityLabel(Text(accessibilityLabel ?? ""))
+                    } else if state.error != nil {
+                        failureView
+                    } else {
+                        AedstSkeleton()
+                    }
+                }
+                .pipeline(AedstImagePipeline.shared)
             } else {
-                AedstSkeleton()
+                failureView
             }
         }
         .clipped()
-        .task(id: url) { await load() }
     }
 
-    private func load() async {
-        guard let url else { return }
-        failed = false
-        let pixels = Int((maxPointSize * displayScale).rounded(.up))
-        do {
-            image = try await loader.image(url: url, cacheKey: cacheKey, maxPixelSize: pixels)
-        } catch {
-            if !Task.isCancelled { failed = true }
-        }
+    private var request: ImageRequest? {
+        guard let url else { return nil }
+        var request = ImageRequest(url: url)
+        request.imageID = cacheKey
+        request.thumbnail = ImageRequest.ThumbnailOptions(
+            maxPixelSize: Float((maxPointSize * displayScale).rounded(.up))
+        )
+        return request
+    }
+
+    private var failureView: some View {
+        Image(systemName: "photo")
+            .foregroundStyle(AedstColor.mutedForeground)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(AedstColor.muted)
+            .accessibilityLabel(Text(AedstCommonStrings.imageUnavailable))
     }
 }

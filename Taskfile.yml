@@ -13,6 +13,7 @@ includes:
 
 tasks:
   default:
+    desc: List available tasks.
     cmds:
       - task --list
 
@@ -20,6 +21,7 @@ tasks:
     desc: Install dependencies and git hooks for the current machine.
     cmds:
       - lefthook install
+      - pnpm install --dir scripts --ignore-workspace --frozen-lockfile --silent
       - pnpm --dir apps/web install --frozen-lockfile
       - pnpm --dir docs install --frozen-lockfile
       - task: generate
@@ -56,29 +58,158 @@ tasks:
       - task: server:build
       - task: web:build
       - task: android:build
+      - task: apple:build
       - task: desktop:build
 
+  audit:status:
+    desc: Validate docs/audit/2026-10-08-backlog.md (every item has a status, none skipped) and print counters.
+    cmds:
+      - node scripts/check-backlog.mjs
+
   check:
-    desc: Cross-platform static checks (naming, boundaries, knip, migration lint, tokens).
+    desc: Cheap cross-platform static checks (naming, file size, colors, i18n, boundaries, knip, migrations, tokens, infra fmt).
     cmds:
       - task: check:naming
+      - task: check:file-size
+      - task: check:colors
+      - task: check:i18n
       - task: check:boundaries
+      - task: check:features
+      - task: check:behavior
+      - task: check:analytics
+      - task: check:hooks
+      - task: check:docs
+      - task: check:gates
       - task: web:knip
       - task: server:lint:migrations
       - task: tokens:check
+      - task: infra:fmt
+
+  check:gates:
+    desc: Library-First enforcement gates that need no platform toolchain (web forms/selftest, apple static custom rules, desktop static gates, server lint selftest), each with its negative self-test.
+    cmds:
+      - pnpm --dir apps/web check:forms
+      - pnpm --dir apps/web check:selftest
+      - bash apps/apple/scripts/check-swiftlint-rules-static.sh
+      - bash apps/apple/scripts/check-apple-sensitive-apis.sh
+      - bash apps/apple/scripts/check-dependencies.sh
+      - bash apps/desktop/scripts/check-forbidden-apis.sh
+      - bash apps/desktop/scripts/check-qml-components.sh
+      - bash apps/desktop/scripts/check-qml-accessibility.sh
+      - bash apps/desktop/scripts/check-migration-hashes.sh
+      - node apps/desktop/scripts/check-i18n-extract.mjs
+      - bash apps/desktop/scripts/selftest/run-selftests.sh
+      - task: server:lint:selftest
+      - bash apps/android/scripts/test-gates.sh
 
   check:naming:
     desc: File/directory naming conventions (CONVENTIONS.md).
     cmds:
       - bash scripts/check-naming.sh
 
-  check:boundaries:
-    desc: Feature module boundary checks for all apps.
+  check:file-size:
+    desc: File-size policy (CONVENTIONS.md, File size; red over 500 lines fails). Limits in scripts/file-size.config.
     cmds:
-      - bash apps/web/scripts/check-feature-boundaries.sh
-      - bash apps/android/scripts/check-feature-boundaries.sh
-      - bash apps/apple/scripts/check-feature-boundaries.sh
-      - bash apps/desktop/scripts/check-feature-boundaries.sh
+      - bash scripts/check-file-size.sh {{.CLI_ARGS}}
+
+  check:colors:
+    desc: No color literals in hand-written UI code (use design tokens). Allowlist in scripts/color-literals.allowlist.
+    cmds:
+      - node scripts/check-color-literals.mjs {{.CLI_ARGS}}
+
+  check:i18n:
+    desc: i18n key and placeholder parity across web, android, apple and desktop (en, ru, tg, uz, ar). Pass --cross for the cross-platform report.
+    cmds:
+      - node scripts/check-i18n-parity.mjs {{.CLI_ARGS}}
+
+  check:boundaries:
+    desc: Feature module boundary checks for all five platforms (web, android, apple, desktop scripts + server architecturetest).
+    cmds:
+      - bash scripts/check-boundaries.sh {{.CLI_ARGS}}
+
+  check:docs:
+    desc: Markdown links resolve, repo paths in scripts/workflows/prompts exist, no Cyrillic outside docs/archive and locales. Exceptions in scripts/check-docs.allowlist.
+    cmds:
+      - node --test scripts/check-docs.test.mjs
+      - node scripts/check-docs.mjs
+
+  check:features:
+    desc: features.yaml parity matrix (feature x platform x status) and the per-feature shape (layers, locales, tests, navigation, ids, flagged, outbox) match the tree. Pass --require-complete for the release gate (no `missing`).
+    cmds:
+      - node --test scripts/test/check-features-shape.test.mjs
+      - node --test scripts/test/check-backlog.test.mjs
+      - node scripts/check-features.mjs {{.CLI_ARGS}}
+
+  check:behavior:
+    desc: Shared behaviour fixtures (docs/contract/behavior) agree with the reference model.
+    cmds:
+      - node scripts/check-behavior-fixtures.mjs
+
+  check:analytics:
+    desc: Analytics event names emitted by web, Android, Apple and Desktop match docs/contract/analytics-events.json.
+    cmds:
+      - node scripts/check-analytics-events.mjs
+
+  new:module:
+    desc: "Scaffold a feature module on every platform and register it: task new:module -- NAME=<id> [--platforms=server,web] [--dry-run] [--remove]. See docs/agent/new-module.md."
+    cmds:
+      - node scripts/new-module.mjs {{.CLI_ARGS}}
+
+  template:new:
+    desc: "Turn this template into a product: task template:new -- --name <brand> --profile core|mobile|full (--out <dir> | --in-place) [--dry-run]. See README, 'Using this repo as a template'."
+    cmds:
+      - node scripts/template-new.mjs {{.CLI_ARGS}}
+
+  check:hooks:
+    desc: Smoke-test the Claude Code hooks (.claude/hooks, apps/server/.claude/hooks) and settings.json files by piping sample JSON into them.
+    cmds:
+      - bash scripts/check-hooks.sh
+
+  doctor:
+    desc: Detect installed toolchains and print which verification level (static / tests / build) is possible per platform.
+    cmds:
+      - bash scripts/doctor.sh
+
+  # --- verify:<platform>: print the exact commands that verify a platform --------
+  # These only print; run them yourself (or use the platform tasks). See docs/content/status.md.
+  verify:server:
+    desc: Print the commands that verify the server.
+    silent: true
+    cmds:
+      - |
+        echo "task server:check                              # gen:check, lint (incl. tidy:check), arch, vuln, unit tests: the fast gate CI runs"
+        echo "task server:build server:test:race             # build and race-detector unit tests (race needs cgo)"
+        echo "task server:test:integration                 # needs Docker, or AEDST_TEST_DATABASE_URL pointing at a Postgres"
+  verify:web:
+    desc: Print the commands that verify the web app.
+    silent: true
+    cmds:
+      - |
+        echo "pnpm --dir apps/web install --frozen-lockfile"
+        echo "task web:lint web:knip web:test:coverage web:build web:check:bundle"
+        echo "task web:test:e2e           # Playwright, needs browsers"
+  verify:android:
+    desc: Print the commands that verify Android (needs JDK 21 and the Android SDK).
+    silent: true
+    cmds:
+      - |
+        echo "task android:generate android:lint android:test android:build"
+        echo "task android:androidtest    # emulator/device"
+  verify:apple:
+    desc: Print the commands that verify Apple (macOS, Xcode 26.6).
+    silent: true
+    cmds:
+      - |
+        echo "task apple:generate apple:lint apple:test apple:build   # macOS only; Tuist install/generate and xcodebuild"
+        echo "then launch the app in a simulator"
+  verify:desktop:
+    desc: Print the commands that verify Desktop (CMake, vcpkg, Qt 6).
+    silent: true
+    cmds:
+      - |
+        echo "export VCPKG_ROOT=...; export QT_ROOT_DIR=...   # see apps/desktop/qt-version.txt"
+        echo "task desktop:lint                               # desktop-ci lint job set; missing tools print SKIPPED"
+        echo "task desktop:test PRESET=msvc-debug             # builds, then ctest; presets: msvc-*, gcc-*, clang-*, coverage"
 
   deps:update:
     desc: Update every platform to the latest stable dependencies (pass platforms as CLI_ARGS, e.g. `task deps:update -- server web`).
@@ -95,6 +226,26 @@ tasks:
     cmds:
       - task: server:dev
 
+  # --- infrastructure as code (OpenTofu; infra/ does not exist yet) -------
+  # Single IaC tool: OpenTofu (decisions.md). These no-op until infra/ exists.
+  infra:fmt:
+    desc: tofu fmt -check -recursive on infra/ (no-op while infra/ is absent).
+    cmds:
+      - |
+        if [ ! -d infra ]; then echo "infra/ absent: nothing to format"; exit 0; fi
+        command -v tofu >/dev/null 2>&1 || { echo "tofu not installed (mise install)" >&2; exit 1; }
+        tofu fmt -check -recursive infra
+
+  infra:validate:
+    desc: tofu init -backend=false + validate for every infra/ root module (no-op while infra/ is absent).
+    cmds:
+      - |
+        if [ ! -d infra ]; then echo "infra/ absent: nothing to validate"; exit 0; fi
+        command -v tofu >/dev/null 2>&1 || { echo "tofu not installed (mise install)" >&2; exit 1; }
+        for d in $(find infra -name '*.tf' -not -path '*/.terraform/*' -exec dirname {} \; | sort -u); do
+          (cd "$d" && tofu init -backend=false -input=false >/dev/null && tofu validate) || exit 1
+        done
+
   # --- design tokens (packages/design-tokens, may not exist yet) ---------
   tokens:check:
     desc: Fail if generated design-token outputs drift from their source.
@@ -104,17 +255,35 @@ tasks:
       - pnpm --dir packages/design-tokens install --frozen-lockfile
       - pnpm --dir packages/design-tokens check
 
+  # --- docs site (docs/, Nextra) ---------------------------------------------
+  docs:dev:
+    desc: Start the docs site dev server.
+    cmds:
+      - pnpm --dir docs dev
+  docs:test:
+    desc: Unit tests for the docs site generators (llms.txt, llms-full.txt, front matter).
+    cmds:
+      - pnpm --dir docs test
+  docs:build:
+    desc: Build the docs site (Nextra + pagefind index).
+    cmds:
+      - pnpm --dir docs build
+
   # --- web -----------------------------------------------------------------
   web:generate:
+    desc: Regenerate the web Connect clients from the protos (pnpm connect:generate).
     dir: apps/web
     cmds: [pnpm connect:generate]
   web:lint:
+    desc: Web Biome lint and TypeScript typecheck.
     dir: apps/web
     cmds: ["pnpm lint", "pnpm typecheck"]
   web:knip:
+    desc: Web unused files/exports/dependencies and the approved-library allowlist (knip).
     dir: apps/web
     cmds: [pnpm knip]
   web:test:
+    desc: Web unit and integration tests (Vitest).
     dir: apps/web
     cmds: [pnpm test]
   web:test:coverage:
@@ -134,23 +303,29 @@ tasks:
     dir: apps/web
     cmds: [pnpm lighthouse]
   web:build:
+    desc: Production build of the web app (Next.js).
     dir: apps/web
     cmds: [pnpm build]
   web:dev:
+    desc: Start the web dev server.
     dir: apps/web
     cmds: [pnpm dev]
 
   # --- android -------------------------------------------------------------
   android:generate:
+    desc: Generate Android Connect/protobuf code (buf, via make generate).
     dir: apps/android
     cmds: [make generate]
   android:lint:
+    desc: Android ktlint, detekt and Android Lint (needs JDK 21 and the Android SDK).
     dir: apps/android
     cmds: ["./gradlew ktlintCheck detekt lintDebug"]
   android:test:
+    desc: Android JVM unit tests (testDebugUnitTest).
     dir: apps/android
     cmds: ["./gradlew testDebugUnitTest"]
   android:build:
+    desc: Assemble the Android debug APKs (needs JDK 21 and the Android SDK).
     dir: apps/android
     cmds: ["./gradlew assembleDebug"]
   android:androidtest:
@@ -164,45 +339,65 @@ tasks:
 
   # --- apple (macOS only) --------------------------------------------------
   apple:generate:
+    desc: Apple Connect/protobuf codegen (macOS only).
     platforms: [darwin]
     dir: apps/apple
     cmds: [make generate]
   apple:lint:
+    desc: Apple SwiftLint and swift-format lint (macOS only).
     platforms: [darwin]
     dir: apps/apple
     cmds: [make lint]
   apple:test:
+    desc: Apple package unit tests (macOS only; never run in the authoring environment).
     platforms: [darwin]
     dir: apps/apple
     cmds: [make test]
   apple:project:
+    desc: Generate the Xcode project/workspace with Tuist (macOS only).
     platforms: [darwin]
     dir: apps/apple
     cmds: [make project]
+  apple:build:
+    desc: Build both Apple app schemes through Tuist (macOS only, needs Xcode; never compiled in the authoring environment).
+    platforms: [darwin]
+    dir: apps/apple
+    cmds: [make tuist-build]
   apple:release-ios:
-    desc: Archive + export the iOS app (UPLOAD=1 for TestFlight). Needs APPLE_TEAM_ID; see docs/content/apple-release.md.
+    desc: fastlane (match + gym + deliver) iOS release; needs `bundle install`, APPLE_TEAM_ID, ASC_*, MATCH_*; see docs/content/apple/release.md.
     platforms: [darwin]
     dir: apps/apple
     cmds: [make release-ios]
   apple:release-macos:
-    desc: Archive, export, notarize and staple the macOS app (DISTRIBUTION=app-store for the Mac App Store).
+    desc: fastlane macOS Developer ID build, notarized and stapled (DISTRIBUTION=app-store for the Mac App Store).
     platforms: [darwin]
     dir: apps/apple
     cmds: [make release-macos]
+  apple:signing-sync:
+    desc: ADMIN, local - create/refresh all match certificates and profiles (fastlane match_sync).
+    platforms: [darwin]
+    dir: apps/apple
+    cmds: [make signing-sync]
+  apple:format:
+    desc: swift-format in place (Generated/.build excluded).
+    platforms: [darwin]
+    dir: apps/apple
+    cmds: [make format]
 
   # --- desktop (CMake presets; needs VCPKG_ROOT and QT_ROOT_DIR) -------------
   desktop:lint:
+    desc: Desktop static checks (the desktop-ci lint job set); steps whose tool is missing print SKIPPED.
     dir: apps/desktop
     cmds:
-      - bash scripts/check-feature-boundaries.sh
-      - bash scripts/check-proto-freshness.sh
-      - bash scripts/check-protovalidate-pin.sh
+      - bash scripts/verify-desktop-local.sh --lint
   desktop:build:
+    desc: Configure and build the desktop app with a CMake preset (PRESET, default debug; needs VCPKG_ROOT and QT_ROOT_DIR).
     dir: apps/desktop
     cmds:
       - cmake --preset {{.PRESET | default "debug"}}
       - cmake --build --preset {{.PRESET | default "debug"}}
   desktop:test:
+    desc: Build, then run the desktop ctest suite for a preset.
     dir: apps/desktop
     cmds:
       - task: desktop:build

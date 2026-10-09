@@ -51,7 +51,9 @@ public struct AedstToastModifier: ViewModifier {
                 .padding(AedstSpacing.lg)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .task(id: toast) {
-                    try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+                    AedstAnnouncer.post(AedstAnnouncementPolicy.spokenText(title: toast.title, message: toast.message))
+                    let shown = AedstAnnouncementPolicy.displayDuration(base: duration, voiceOverRunning: voiceOverEnabled)
+                    try? await Task.sleep(for: .seconds(shown))
                     withAnimation(reduceMotion ? nil : .default) { self.toast = nil }
                 }
                 .accessibilityElement(children: .combine)

@@ -36,9 +36,13 @@ internal object UploadWorkData {
     fun decodeHeaders(json: String?): Map<String, String> =
         json?.let { runCatching { Json.decodeFromString(headersSerializer, it) }.getOrNull() }.orEmpty()
 
+    /** Whether a step that failed with [error] on attempt [runAttemptCount] is tried again (else the chain fails). */
+    fun willRetry(error: AedstError, runAttemptCount: Int): Boolean =
+        error.isRetryable && runAttemptCount + 1 < MAX_ATTEMPTS
+
     /** Retry retryable errors while attempts remain; otherwise fail the chain with the error *kind* (no PII). */
     fun resultFor(error: AedstError, runAttemptCount: Int): ListenableWorker.Result =
-        if (error.isRetryable && runAttemptCount + 1 < MAX_ATTEMPTS) {
+        if (willRetry(error, runAttemptCount)) {
             ListenableWorker.Result.retry()
         } else {
             ListenableWorker.Result.failure(

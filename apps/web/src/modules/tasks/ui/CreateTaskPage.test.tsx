@@ -5,9 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import { CreateTaskPage } from "@/modules/tasks/ui/CreateTaskPage";
 import { TasksService } from "@/shared/api/connect/generated/aedst/tasks/v1/tasks_pb";
 import { makeTask } from "@/test/fixtures";
-import { rpcErrorHandler, rpcHandler } from "@/test/mocks/connect";
 import { routerMock } from "@/test/mocks/navigation";
-import { server } from "@/test/mocks/server";
+import { backend, Code, rpc, rpcError } from "@/test/mocks/transport";
 import { messages, renderWithProviders } from "@/test/render";
 
 const t = messages.tasks.form;
@@ -16,8 +15,8 @@ describe("CreateTaskPage", () => {
   it("creates the task and opens it", async () => {
     const created = makeTask({ title: "Ship v1" });
     let received: { title?: string; description?: string } = {};
-    server.use(
-      rpcHandler(TasksService.method.createTask, (input) => {
+    backend.use(
+      rpc(TasksService.method.createTask, (input) => {
         received = input;
         return { task: created };
       }),
@@ -53,10 +52,10 @@ describe("CreateTaskPage", () => {
   });
 
   it("shows a server rejection inline instead of also toasting it", async () => {
-    server.use(
-      rpcErrorHandler(
+    backend.use(
+      rpcError(
         TasksService.method.createTask,
-        "invalid_argument",
+        Code.InvalidArgument,
         "title too long",
       ),
     );
@@ -68,9 +67,9 @@ describe("CreateTaskPage", () => {
     await userEvent.type(screen.getByLabelText(t.titleLabel), "x");
     await userEvent.click(screen.getByRole("button", { name: t.create }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "title too long",
-    );
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(messages.common.errors.kinds.invalidInput);
+    expect(alert).not.toHaveTextContent("title too long");
     expect(onUserFacingError).not.toHaveBeenCalled();
   });
 

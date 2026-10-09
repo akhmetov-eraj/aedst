@@ -51,7 +51,7 @@ public:
         const std::scoped_lock lock(mutex);
         ++calls;
         if (failing) {
-            return core::fail(core::Error::network("offline"));
+            return core::fail(core::Error::unavailable("offline"));
         }
         return body;
     }

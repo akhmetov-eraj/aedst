@@ -1,6 +1,6 @@
 // Package domain holds the notifications module's entities. It imports
 // nothing outside the standard library and shared primitives (see
-// docs/content/modules.md).
+// docs/content/server/modules.md).
 package domain
 
 import (

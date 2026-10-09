@@ -8,6 +8,11 @@ Item {
 
     default property alias content: contentHost.data
     property real ratio: 16 / 9
+    /// Name read out for the framed content (for example an image description); empty leaves it to the child.
+    property string accessibleName
+
+    Accessible.role: Accessible.Grouping
+    Accessible.name: root.accessibleName
 
     implicitHeight: implicitWidth / ratio
 

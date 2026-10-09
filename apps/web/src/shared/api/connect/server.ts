@@ -1,9 +1,8 @@
 import "server-only";
 
-import { createClient, type Interceptor } from "@connectrpc/connect";
+import type { Interceptor } from "@connectrpc/connect";
 import { addStaticKeyToTransport } from "@connectrpc/connect-query";
 import { createConnectTransport } from "@connectrpc/connect-web";
-import { AuthService } from "@/shared/api/connect/generated/aedst/auth/v1/auth_pb";
 import { TRANSPORT_STATIC_KEY } from "@/shared/api/connect/transport-key";
 import { serverEnv } from "@/shared/env/server";
 import { getAccessToken } from "@/shared/lib/auth/session";
@@ -38,9 +37,4 @@ export function getServerTransport() {
     createBaseTransport([bearerFromSession]),
     TRANSPORT_STATIC_KEY,
   );
-}
-
-/** Unauthenticated client for the public AuthService procedures. */
-export function createServerAuthClient() {
-  return createClient(AuthService, createBaseTransport());
 }

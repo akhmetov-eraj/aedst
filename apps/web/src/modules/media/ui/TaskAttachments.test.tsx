@@ -9,8 +9,7 @@ import {
   MediaStatus,
   VariantKind,
 } from "@/shared/api/connect/generated/aedst/media/v1/media_pb";
-import { rpcHandler } from "@/test/mocks/connect";
-import { server } from "@/test/mocks/server";
+import { backend, rpc } from "@/test/mocks/transport";
 import { messages, renderWithProviders } from "@/test/render";
 
 const t = messages.media;
@@ -27,16 +26,16 @@ const image = {
   height: 1200,
   variants: [
     {
-      kind: VariantKind.THUMBNAIL,
-      url: "https://storage.example/320.webp",
-      width: 320,
-      height: 240,
+      kind: VariantKind.AVATAR_256,
+      url: "https://storage.example/avatar_256",
+      width: 256,
+      height: 256,
     },
     {
-      kind: VariantKind.OPTIMIZED,
-      url: "https://storage.example/1600.webp",
-      width: 1600,
-      height: 1200,
+      kind: VariantKind.FEED_800X600,
+      url: "https://storage.example/feed_800x600",
+      width: 800,
+      height: 600,
     },
   ],
 };
@@ -72,8 +71,8 @@ const processing = {
 describe("TaskAttachments", () => {
   it("lists the task's files and opens each kind with the right native player", async () => {
     let listedFor = "";
-    server.use(
-      rpcHandler(MediaService.method.listMedia, (input) => {
+    backend.use(
+      rpc(MediaService.method.listMedia, (input) => {
         listedFor = input.taskId;
         return { media: [image, video, pdf, processing] };
       }),
@@ -85,8 +84,8 @@ describe("TaskAttachments", () => {
     });
     expect(listedFor).toBe(TASK_ID);
     expect(within(openImage).getByRole("img")).toHaveAttribute(
-      "srcset",
-      expect.stringContaining("320w"),
+      "src",
+      "https://storage.example/avatar_256",
     );
     expect(screen.getByText(t.attachments.processing)).toBeInTheDocument();
 
@@ -94,7 +93,7 @@ describe("TaskAttachments", () => {
     const dialog = await screen.findByRole("dialog");
     expect(
       within(dialog).getByRole("img", { name: "photo.jpg" }),
-    ).toHaveAttribute("src", "https://storage.example/1600.webp");
+    ).toHaveAttribute("src", "https://storage.example/photo.jpg");
     await userEvent.keyboard("{Escape}");
 
     await userEvent.click(
@@ -135,11 +134,11 @@ describe("TaskAttachments", () => {
 
   it("deletes an attachment", async () => {
     const deleted: string[] = [];
-    server.use(
-      rpcHandler(MediaService.method.listMedia, () => ({
+    backend.use(
+      rpc(MediaService.method.listMedia, () => ({
         media: deleted.length ? [] : [pdf],
       })),
-      rpcHandler(MediaService.method.deleteMedia, (input) => {
+      rpc(MediaService.method.deleteMedia, (input) => {
         deleted.push(input.id);
         return {};
       }),
@@ -151,7 +150,42 @@ describe("TaskAttachments", () => {
         name: t.attachments.delete.replace("{name}", "notes.pdf"),
       }),
     );
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: t.attachments.deleteConfirmAction,
+      }),
+    );
     await waitFor(() => expect(deleted).toEqual([pdf.id]));
     expect(await screen.findByText(t.attachments.empty)).toBeInTheDocument();
+  });
+
+  it("asks before deleting and keeps the attachment on cancel", async () => {
+    const deleted: string[] = [];
+    backend.use(
+      rpc(MediaService.method.listMedia, () => ({ media: [pdf] })),
+      rpc(MediaService.method.deleteMedia, (input) => {
+        deleted.push(input.id);
+        return {};
+      }),
+    );
+    renderWithProviders(<TaskAttachments taskId={TASK_ID} />);
+
+    await userEvent.click(
+      await screen.findByRole("button", {
+        name: t.attachments.delete.replace("{name}", "notes.pdf"),
+      }),
+    );
+    expect(
+      await screen.findByText(t.attachments.deleteConfirmTitle),
+    ).toBeInTheDocument();
+    await userEvent.click(
+      screen.getByRole("button", { name: t.attachments.deleteCancelAction }),
+    );
+    expect(deleted).toEqual([]);
+    expect(
+      screen.getByRole("button", {
+        name: t.attachments.delete.replace("{name}", "notes.pdf"),
+      }),
+    ).toBeInTheDocument();
   });
 });

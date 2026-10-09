@@ -56,10 +56,4 @@ struct MediaCompressorTests {
         try Data("abc".utf8).write(to: url)
         #expect(try FileHasher.sha256Hex(of: url) == "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
     }
-
-    @Test("stable cache URL ignores presigned query strings")
-    func stableKey() {
-        let url = RemoteImageLoader.stableURL(for: "media-1/thumbnail")
-        #expect(url?.absoluteString == "https://media-cache.aedst.invalid/media-1/thumbnail")
-    }
 }

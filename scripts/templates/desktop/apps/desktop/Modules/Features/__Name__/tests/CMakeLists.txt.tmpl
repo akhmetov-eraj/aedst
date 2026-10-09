@@ -1,0 +1,9 @@
+find_package(GTest REQUIRED)
+include(GoogleTest)
+
+add_executable(AedstFeature{{Name}}Tests {{name}}_list_state_test.cpp)
+target_link_libraries(AedstFeature{{Name}}Tests PRIVATE Aedst::Feature::{{Name}} GTest::gtest_main)
+aedst_set_warnings(AedstFeature{{Name}}Tests)
+
+add_test(NAME AedstFeature{{Name}}.UnitTests COMMAND AedstFeature{{Name}}Tests)
+set_tests_properties(AedstFeature{{Name}}.UnitTests PROPERTIES LABELS "unit")

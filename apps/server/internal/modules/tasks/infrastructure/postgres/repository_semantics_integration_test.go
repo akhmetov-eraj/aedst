@@ -14,7 +14,6 @@ import (
 	"github.com/aedst/server/internal/modules/tasks/application"
 	"github.com/aedst/server/internal/modules/tasks/domain"
 	"github.com/aedst/server/internal/modules/tasks/infrastructure/postgres"
-	"github.com/aedst/server/internal/platform/outbox"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
 	sharedtime "github.com/aedst/server/internal/shared/time"
@@ -32,16 +31,12 @@ func newTask(t *testing.T, userID ids.ID, title string) domain.Task {
 
 func countOutbox(t *testing.T, pool *pgxpool.Pool) int {
 	t.Helper()
-	var n int
-	if err := pool.QueryRow(context.Background(), `SELECT count(*) FROM platform.outbox WHERE module = 'tasks' AND event_type = 'tasks.v1.TaskCompleted'`).Scan(&n); err != nil {
-		t.Fatalf("count outbox: %v", err)
-	}
-	return n
+	return completedDeliveries(t, pool)
 }
 
 // Completing twice — sequentially, or from several devices at once — moves the
 // task to done once and publishes exactly one TaskCompleted event. A second
-// event would have a different event_id, slip past the consumers' inbox and
+// event would have a different event_id, get its own delivery jobs and
 // produce a duplicate notification.
 func TestRepository_Complete_IsIdempotent(t *testing.T) {
 	pool := newTestPool(t)
@@ -74,7 +69,7 @@ func TestRepository_Complete_IsIdempotent(t *testing.T) {
 	}
 
 	if n := countOutbox(t, pool); n != 1 {
-		t.Fatalf("outbox rows = %d after completing the same task many times, want exactly 1", n)
+		t.Fatalf("TaskCompleted deliveries = %d after completing the same task many times, want exactly 1", n)
 	}
 	final, err := repo.FindByIDAndUserID(ctx, created.ID, userID)
 	if err != nil {
@@ -99,7 +94,7 @@ func TestRepository_Complete_OtherUsersTaskIsNotFound(t *testing.T) {
 		t.Fatalf("Complete() by another user = %v, want KindNotFound", err)
 	}
 	if n := countOutbox(t, pool); n != 0 {
-		t.Fatalf("outbox rows = %d, want 0", n)
+		t.Fatalf("TaskCompleted deliveries = %d, want 0", n)
 	}
 }
 
@@ -244,7 +239,7 @@ func TestRepository_Reminder_IsAtomicWithTheTaskChange(t *testing.T) {
 	ctx := context.Background()
 	userID := ids.New()
 	future := time.Now().Add(24 * time.Hour)
-	writer := outbox.NewWriter(outbox.NewPostgresRepository(pool, "tasks"))
+	writer := newPublisher(t, pool)
 
 	failing := &fakeReminders{err: context.DeadlineExceeded}
 	repo := postgres.NewRepository(pool, writer, sharedtime.Real{}, postgres.WithReminders(failing))

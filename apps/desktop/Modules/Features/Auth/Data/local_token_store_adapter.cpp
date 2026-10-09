@@ -12,8 +12,8 @@ namespace {
 persistence::StoredTokens toStored(const Session& session) {
     return {
         .userId = session.userId,
-        .accessToken = session.accessToken,
-        .refreshToken = session.refreshToken,
+        .accessToken = session.accessToken.reveal(),
+        .refreshToken = session.refreshToken.reveal(),
         .accessTokenExpiresAtEpochSeconds =
             std::chrono::duration_cast<std::chrono::seconds>(session.accessTokenExpiresAt.time_since_epoch()).count(),
     };
@@ -67,8 +67,8 @@ void LocalTokenStoreAdapter::save(const Session& session, core::Completion<void>
     persistence::StoredTokens stored = toStored(session);
     CachedSession next{
         .userId = session.userId,
-        .accessToken = core::SecretString{session.accessToken},
-        .refreshToken = core::SecretString{session.refreshToken},
+        .accessToken = session.accessToken,
+        .refreshToken = session.refreshToken,
         .accessTokenExpiresAt = session.accessTokenExpiresAt,
     };
     store_->save(stored, [weak = weak_from_this(), next = std::move(next), done = std::move(done)](
@@ -103,8 +103,8 @@ core::Outcome<std::optional<Session>> LocalTokenStoreAdapter::load() const {
     }
     return std::optional<Session>{Session{
         .userId = cached_->userId,
-        .accessToken = cached_->accessToken.reveal(),
-        .refreshToken = cached_->refreshToken.reveal(),
+        .accessToken = cached_->accessToken,
+        .refreshToken = cached_->refreshToken,
         .accessTokenExpiresAt = cached_->accessTokenExpiresAt,
     }};
 }

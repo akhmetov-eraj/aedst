@@ -11,12 +11,15 @@ add_library(AedstCore STATIC
     include/aedst/core/outcome.hpp
     include/aedst/core/use_case.hpp
     include/aedst/core/clock.hpp
+    include/aedst/core/guarded.hpp
     include/aedst/core/logger.hpp
     include/aedst/core/correlation.hpp
     include/aedst/core/redaction.hpp
     include/aedst/core/secure_memory.hpp
     src/clock.cpp
+    src/guarded.cpp
     src/logger.cpp
+    src/redacting_sink.hpp
     src/correlation.cpp
     src/redaction.cpp
 )

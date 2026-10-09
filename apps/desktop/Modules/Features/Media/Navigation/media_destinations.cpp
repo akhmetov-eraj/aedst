@@ -1,22 +1,24 @@
 #include "Navigation/media_destinations.hpp"
 
-#include "aedst/navigation/nav_graph.hpp"
+#include "aedst/navigation/route.hpp"
 
-#include <QString>
-#include <QUrl>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace aedst::feature::media {
-namespace {
 
-[[nodiscard]] QUrl toUrl(std::string_view url) {
-    return QUrl(QString::fromUtf8(url.data(), static_cast<qsizetype>(url.size())));
-}
-
-} // namespace
-
-void registerMediaDestinations(navigation::NavGraph& graph) {
-    graph.registerDestination(navigation::routes::kMedia, toUrl(kMediaLibraryViewUrl));
-    graph.registerDestination(navigation::routes::kMediaViewer, toUrl(kMediaViewerViewUrl));
+std::unique_ptr<plugin::IFeaturePlugin> makeMediaPlugin() {
+    return std::make_unique<plugin::StaticFeaturePlugin>(
+        plugin::PluginDescriptor{.id = "media",
+                                 .version = "1.0.0",
+                                 .apiVersion = plugin::kPluginApiVersion,
+                                 .requiredCapabilities = {},
+                                 .featureFlag = {}},
+        std::vector<plugin::RouteContribution>{
+            {std::string(navigation::routes::kMedia), std::string(kMediaLibraryViewUrl), {"media"}},
+            {std::string(navigation::routes::kMediaViewer), std::string(kMediaViewerViewUrl)},
+        });
 }
 
 } // namespace aedst::feature::media

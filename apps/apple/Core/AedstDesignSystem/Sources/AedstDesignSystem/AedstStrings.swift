@@ -5,23 +5,11 @@ import Foundation
 /// (en, ru, ar, tg, uz). Feature copy stays in each feature's own catalog.
 enum AedstStrings {
     static func errorPrefix(_ message: String) -> String {
-        String(format: String(localized: "dsErrorPrefix", bundle: .module), message)
-    }
-
-    static func chartSummary(_ pointCount: Int) -> String {
-        String(format: String(localized: "dsChartSummary", bundle: .module), pointCount)
+        String(localized: "dsErrorPrefix \(message)", bundle: .module)
     }
 
     static func percent(_ value: Int) -> String {
-        String(format: String(localized: "dsPercent", bundle: .module), value)
-    }
-
-    static func collapses(_ title: String) -> String {
-        String(format: String(localized: "dsCollapses", bundle: .module), title)
-    }
-
-    static func expands(_ title: String) -> String {
-        String(format: String(localized: "dsExpands", bundle: .module), title)
+        String(localized: "dsPercent \(value)", bundle: .module)
     }
 
     static var errorTitle: String { String(localized: "dsErrorTitle", bundle: .module) }
@@ -32,17 +20,8 @@ enum AedstStrings {
     static var checkbox: String { String(localized: "dsCheckbox", bundle: .module) }
     static var checked: String { String(localized: "dsChecked", bundle: .module) }
     static var unchecked: String { String(localized: "dsUnchecked", bundle: .module) }
-    static var close: String { String(localized: "dsClose", bundle: .module) }
-    static var oneTimePasscode: String { String(localized: "dsOneTimePasscode", bundle: .module) }
-    static var empty: String { String(localized: "dsEmpty", bundle: .module) }
-    static var previousPage: String { String(localized: "dsPreviousPage", bundle: .module) }
-    static var nextPage: String { String(localized: "dsNextPage", bundle: .module) }
     static var progress: String { String(localized: "dsProgress", bundle: .module) }
-    static var select: String { String(localized: "dsSelect", bundle: .module) }
-    static var slider: String { String(localized: "dsSlider", bundle: .module) }
     static var switchControl: String { String(localized: "dsSwitch", bundle: .module) }
-    static var on: String { String(localized: "dsOn", bundle: .module) }
-    static var off: String { String(localized: "dsOff", bundle: .module) }
 }
 
 /// Design-system strings other packages may reuse (localized in this package's catalog).

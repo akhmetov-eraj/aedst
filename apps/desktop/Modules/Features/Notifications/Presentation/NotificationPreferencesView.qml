@@ -29,13 +29,13 @@ Page {
         spacing: Theme.spacingMd
         enabled: NotificationsViewModel.preferencesLoaded && !NotificationsViewModel.isSavingPreferences
 
-        Label {
+        AedstLabel {
             text: qsTr("Notification preferences")
             font: Theme.titleFont
             color: Theme.foreground
         }
 
-        Text {
+        AedstLabel {
             Layout.fillWidth: true
             text: qsTr("While AEDST is running it checks for new notifications in the background and shows them on your desktop. The inbox always lists everything.")
             font: Theme.smallFont

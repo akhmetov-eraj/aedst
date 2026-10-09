@@ -36,9 +36,9 @@ fun <T> AedstSelect(
     options: List<T>,
     selected: T?,
     onSelectedChange: (T) -> Unit,
+    optionLabel: (T) -> String,
     modifier: Modifier = Modifier,
     label: String? = null,
-    optionLabel: (T) -> String,
     enabled: Boolean = true,
     placeholder: String = "Select…",
 ) {
@@ -50,7 +50,7 @@ fun <T> AedstSelect(
         modifier = modifier.fillMaxWidth().semantics { if (!enabled) disabled() },
     ) {
         OutlinedTextField(
-            value = selected?.let(optionLabel) ?: "",
+            value = selected?.let(optionLabel).orEmpty(),
             onValueChange = {},
             modifier = Modifier.fillMaxWidth().menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable, enabled),
             readOnly = true,

@@ -66,7 +66,7 @@ public struct AedstCardFooter<Content: View>: View {
 #Preview("AedstCard — Light") {
     AedstCard {
         AedstCardHeader("Weekly summary", subtitle: "12 tasks completed")
-        Text("You're ahead of schedule this week.")
+        Text("You're ahead of schedule this week.") // i18n-ok: preview
             .font(AedstTypography.body)
         AedstCardFooter {
             AedstButton("View details", variant: .secondary, size: .sm) {}

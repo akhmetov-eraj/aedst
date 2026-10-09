@@ -41,7 +41,8 @@ func makeDependencies(
         secureStore: secureStore,
         clock: clock,
         connectivity: StubConnectivity(connectivity),
-        biometrics: biometrics
+        biometrics: biometrics,
+        outboxStorage: .memory
     )
 }
 

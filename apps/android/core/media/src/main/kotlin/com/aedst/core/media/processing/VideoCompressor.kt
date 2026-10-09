@@ -13,8 +13,8 @@ import androidx.media3.transformer.Effects
 import androidx.media3.transformer.ExportException
 import androidx.media3.transformer.ExportResult
 import androidx.media3.transformer.Transformer
+import com.aedst.core.common.DispatcherProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -29,11 +29,14 @@ import kotlin.coroutines.resumeWithException
  * Transformer must be driven from a Looper thread, so it is built and started on the main thread; the encode itself
  * runs on Media3's own threads and this function only suspends until the listener fires.
  */
-class VideoCompressor @Inject constructor(@ApplicationContext private val context: Context) {
+class VideoCompressor @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val dispatchers: DispatcherProvider,
+) {
 
     @OptIn(UnstableApi::class)
     suspend fun compress(source: Uri, destination: File, shortSide: Int = DEFAULT_SHORT_SIDE): File =
-        withContext(Dispatchers.Main) {
+        withContext(dispatchers.main) {
             suspendCancellableCoroutine { continuation ->
                 val transformer = Transformer.Builder(context)
                     .setVideoMimeType(MimeTypes.VIDEO_H264)

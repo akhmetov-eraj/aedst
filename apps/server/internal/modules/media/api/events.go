@@ -2,7 +2,7 @@ package api
 
 import "time"
 
-// Integration events the media module publishes through its outbox (same
+// Integration events the media module publishes via platform/events (same
 // evolution rules as tasks/api/events.go: fields are only added within a
 // version).
 const (

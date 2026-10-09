@@ -4,11 +4,10 @@ import PackageDescription
 let package = Package(
     name: "Auth",
     defaultLocalization: "en",
-    // iOS/macOS only: `LoginViewModel`/`LoginView` use Perception's
-    // `@Perceptible`/`@Perception.Bindable` (the latter is unavailable on visionOS).
+    // Kept iOS/macOS-only: those are the only app targets; widen deliberately.
     platforms: [
-        .iOS(.v15),
-        .macOS(.v12),
+        .iOS(.v18),
+        .macOS(.v15),
     ],
     products: [
         .library(name: "Auth", targets: ["Auth"]),
@@ -20,8 +19,6 @@ let package = Package(
         .package(path: "../../Core/AedstNavigation"),
         .package(path: "../../Core/AedstAnalytics"),
         .package(path: "../../Core/AedstTesting"),
-        // Observation backport — see Core/AedstNavigation/Package.swift for the version-range rationale.
-        .package(url: "https://github.com/pointfreeco/swift-perception", "2.0.11"..<"2.0.12"),
     ],
     targets: [
         .target(
@@ -32,7 +29,6 @@ let package = Package(
                 "AedstDesignSystem",
                 "AedstNavigation",
                 "AedstAnalytics",
-                .product(name: "Perception", package: "swift-perception"),
             ],
             resources: [.process("Resources")],
             swiftSettings: [.swiftLanguageMode(.v6)]

@@ -1,0 +1,3 @@
+# Fixture: a Core module that depends on a feature. MUST be reported.
+add_library(AedstLeaky STATIC)
+target_link_libraries(AedstLeaky PUBLIC Aedst::Feature::Bad)

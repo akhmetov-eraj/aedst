@@ -10,7 +10,7 @@ namespace aedst::feature::auth {
 OidcAuthRepository::OidcAuthRepository(std::shared_ptr<oidc::OidcSession> session) : session_(std::move(session)) {}
 
 void OidcAuthRepository::login(const Credentials& /*credentials*/, core::Completion<Session> done) {
-    done(core::fail(core::Error::invalidArgument("Password sign-in is disabled; sign in with the browser")));
+    done(core::fail(core::Error::invalidInput("Password sign-in is disabled; sign in with the browser")));
 }
 
 void OidcAuthRepository::signInWithBrowser(core::Completion<Session> done) {

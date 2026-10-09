@@ -11,7 +11,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -26,36 +25,49 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.aedst.core.ui.adaptive.AedstAdaptiveContent
+import com.aedst.core.ui.adaptive.AedstContentWidth
+import com.aedst.core.ui.adaptive.AedstWindowSizePreviews
+import com.aedst.core.ui.components.AedstDivider
 import com.aedst.core.ui.components.AedstTextField
 import com.aedst.core.ui.components.FullScreenLoading
 import com.aedst.core.ui.components.userMessage
+import com.aedst.core.ui.theme.AedstSpacing
+import com.aedst.core.ui.theme.AedstTheme
 import com.aedst.feature.search.R
 import com.aedst.feature.search.domain.SearchHit
 
 @Composable
-fun SearchRoute(onOpenLink: (String) -> Unit, viewModel: SearchViewModel = hiltViewModel()) {
+internal fun SearchRoute(onOpenLink: (String) -> Unit, viewModel: SearchViewModel = hiltViewModel()) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    SearchScreen(state = state, onQueryChange = viewModel::onQueryChange, onOpenLink = onOpenLink)
+    SearchScreen(state = state, onIntent = viewModel::onIntent, onOpenLink = onOpenLink)
 }
 
 @Composable
-internal fun SearchScreen(state: SearchState, onQueryChange: (String) -> Unit, onOpenLink: (String) -> Unit) {
+internal fun SearchScreen(state: SearchState, onIntent: (SearchIntent) -> Unit, onOpenLink: (String) -> Unit) {
+    // Wide windows (tablet, foldable, desktop mode) get one readable column instead of full-width result rows.
+    AedstAdaptiveContent(maxWidth = AedstContentWidth.list) {
+        SearchContent(state, onIntent, onOpenLink)
+    }
+}
+
+@Composable
+private fun SearchContent(state: SearchState, onIntent: (SearchIntent) -> Unit, onOpenLink: (String) -> Unit) {
     val focusRequester = remember { FocusRequester() }
-    Column(modifier = Modifier.fillMaxSize().padding(top = 16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().padding(top = AedstSpacing.lg)) {
         AedstTextField(
             value = state.query,
-            onValueChange = onQueryChange,
+            onValueChange = { onIntent(SearchIntent.QueryChanged(it)) },
             placeholder = stringResource(R.string.search_placeholder),
             leadingIcon = { Icon(Icons.Filled.Search, contentDescription = null) },
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = AedstSpacing.lg)
                 .focusRequester(focusRequester),
         )
-        Box(modifier = Modifier.fillMaxSize().padding(top = 8.dp)) {
+        Box(modifier = Modifier.fillMaxSize().padding(top = AedstSpacing.sm)) {
             when (val result = state.result) {
                 SearchResultState.Idle -> Centered(stringResource(R.string.search_hint))
                 SearchResultState.Loading -> FullScreenLoading()
@@ -84,8 +96,8 @@ private fun HitList(hits: List<SearchHit>, onOpenLink: (String) -> Unit) {
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onOpenLink(hit.link) }
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
+                    .padding(horizontal = AedstSpacing.lg, vertical = AedstSpacing.md),
+                verticalArrangement = Arrangement.spacedBy(AedstSpacing.xs),
             ) {
                 Text(
                     hit.title,
@@ -101,14 +113,22 @@ private fun HitList(hits: List<SearchHit>, onOpenLink: (String) -> Unit) {
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            HorizontalDivider()
+            AedstDivider()
         }
     }
 }
 
 @Composable
 private fun Centered(text: String) {
-    Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+    Box(modifier = Modifier.fillMaxSize().padding(AedstSpacing.xxl), contentAlignment = Alignment.Center) {
         Text(text, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+@AedstWindowSizePreviews
+@Composable
+private fun SearchScreenWindowSizesPreview() {
+    AedstTheme {
+        SearchScreen(state = SearchState(query = "report"), onIntent = {}, onOpenLink = {})
     }
 }

@@ -81,7 +81,7 @@ stable kind (`network`, `unauthenticated`, `permission_denied`, ...), de-duplica
 within 3 s, and emits `errorRaised(kind, message, retryable, blocking)`; `Main.qml`
 turns it into a toast (transient) or banner (blocking) with localized titles.
 `Unauthenticated` emits `sessionExpired` and signs the user out once.
-`core::ErrorCode::PermissionDenied` was added so a forbidden admin call no longer
+`core::ErrorCode::PermissionDenied` (now `Forbidden`, see docs/contract/behavior/error-kinds.json) was added so a forbidden admin call no longer
 maps to "unauthenticated" (which would have signed the user out).
 
 ### 6. Qt logging bridge

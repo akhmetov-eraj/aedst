@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Data/auth_repository_impl.hpp"
+#include "Data/connect_auth_repository.hpp"
 #include "Data/local_token_store_adapter.hpp"
 #include "Domain/refresh_token_use_case.hpp"
 #include "Presentation/login_view_model.hpp"
@@ -9,12 +9,15 @@
 #include "aedst/core/outcome.hpp"
 #include "aedst/crash/consent_store.hpp"
 #include "aedst/designsystem/theme_controller.hpp"
+#include "aedst/navigation/deep_link_gate.hpp"
 #include "aedst/navigation/nav_graph.hpp"
 #include "aedst/navigation/route.hpp"
 #include "aedst/navigation/router.hpp"
 #include "aedst/network/auth_interceptor.hpp"
 #include "aedst/network/connect_client.hpp"
 #include "aedst/oidc/oidc_config.hpp"
+#include "aedst/outbox/outbox_handler.hpp"
+#include "aedst/outbox/outbox_service.hpp"
 #include "aedst/persistence/async_token_store.hpp"
 #include "aedst/persistence/database_worker.hpp"
 #include "aedst/telemetry/error_center.hpp"
@@ -27,8 +30,13 @@
 #include <QUrl>
 
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <string>
+
+namespace aedst::capabilities {
+class CapabilitiesService;
+} // namespace aedst::capabilities
 
 namespace aedst::media {
 class MediaRemoteDataSource;
@@ -62,6 +70,8 @@ class AdminViewModel;
 
 namespace aedst::app {
 
+class PluginHost;
+
 struct AppConfig {
     QUrl apiBaseUrl;
     std::filesystem::path dataDirectory;
@@ -75,6 +85,9 @@ struct AppConfig {
     /// OpenID Connect (ZITADEL). When configured, sign-in happens in the system browser and password
     /// login is not offered; otherwise the first-party e-mail/password API is used (until its sunset).
     oidc::OidcConfig oidc;
+    /// Semantic version of this build (AEDST_VERSION); sent as `X-Aedst-Client: desktop/<version>` on every API request.
+    /// Empty or not a semver = no header.
+    std::string appVersion;
 };
 
 /// Manual DI composition root — the desktop counterpart of apps/apple's
@@ -102,6 +115,9 @@ public:
     ~AppDependencies();
 
     [[nodiscard]] navigation::Router& router() noexcept;
+    /// Opens an in-app link now when signed in; before sign-in (a cold-start `aedst://` link) it waits and is opened
+    /// on top of the home screen once the session is up. The Router still validates the link.
+    bool openDeepLink(const QString& link);
     [[nodiscard]] designsystem::ThemeController& theme() noexcept;
     [[nodiscard]] feature::auth::LoginViewModel& loginViewModel() noexcept;
     [[nodiscard]] feature::tasks::TaskListViewModel& taskListViewModel() noexcept;
@@ -112,6 +128,10 @@ public:
     [[nodiscard]] feature::media::MediaViewerViewModel& mediaViewerViewModel() noexcept;
     [[nodiscard]] feature::admin::AdminViewModel& adminViewModel() noexcept;
     [[nodiscard]] telemetry::ErrorCenter& errorCenter() noexcept;
+    /// The offline write queue; main() feeds it the reachability from ConnectivityMonitor.
+    [[nodiscard]] outbox::OutboxService& outbox() noexcept;
+    /// Server capability negotiation; main() starts it and refreshes it when connectivity returns.
+    [[nodiscard]] capabilities::CapabilitiesService& capabilities() noexcept;
     [[nodiscard]] telemetry::TelemetrySettings& telemetrySettings() noexcept;
     [[nodiscard]] telemetry::PostHogAnalyticsTracker& analytics() noexcept;
     [[nodiscard]] SessionInfo& session() noexcept;
@@ -121,6 +141,10 @@ public:
     /// Opens the API connection (TCP + TLS + HTTP/2 negotiation) ahead of the first
     /// request. Call once the first screen is on its way; best-effort.
     void prewarmNetwork();
+
+    /// Runs at the end of every sign-out (explicit, expired or revoked), after the feature state was cleared: the
+    /// shell drops caches that hold the signed-out user's data (media thumbnails, decoded images).
+    void setSignedOutHook(std::function<void()> hook);
 
     /// Tasks when a session is stored, login otherwise.
     [[nodiscard]] navigation::Route initialRoute() const;
@@ -144,9 +168,21 @@ private:
     void restoreFirstPartySession();
     void refreshStoredSession();
     void onSignedOut();
+    /// The server refuses this app version: lock the router on the blocking upgrade screen.
+    void onUpgradeRequired();
     void updateSessionInfo();
+    /// Capability negotiation (app_dependencies_capabilities.cpp): builds the service, makes it the plugins'
+    /// capability source and routes its answers to the shell, the plugin host and the upgrade screen.
+    void createCapabilities(std::string version, std::shared_ptr<persistence::DatabaseWorker> worker,
+                            persistence::Dispatcher dispatcher);
+
+    // FIRST member, so it is destroyed LAST: every other member that holds a DatabaseWorker reference (token store,
+    // outbox queue, KV store) is gone by then, and the final release - the join of the database thread - happens here
+    // on the GUI thread, never on the worker itself (a self-join would deadlock).
+    std::shared_ptr<persistence::DatabaseWorker> databaseWorker_;
 
     std::string rolesClaim_;
+    std::function<void()> signedOutHook_;
 
     // Infrastructure (Core)
     std::shared_ptr<persistence::AsyncTokenStore> asyncTokenStore_;
@@ -157,15 +193,20 @@ private:
     std::unique_ptr<telemetry::TelemetrySettings> telemetrySettings_;
     std::shared_ptr<telemetry::ErrorCenter> errorCenter_;
     std::shared_ptr<navigation::NavGraph> navGraph_;
+    std::unique_ptr<PluginHost> plugins_;
     std::unique_ptr<navigation::Router> router_;
+    std::unique_ptr<navigation::DeepLinkGate> deepLinks_;
     std::unique_ptr<designsystem::ThemeController> theme_;
     std::unique_ptr<QNetworkAccessManager> network_;
     std::unique_ptr<SessionInfo> session_;
+    std::shared_ptr<outbox::OutboxHandlers> outboxHandlers_;
+    std::unique_ptr<outbox::OutboxService> outbox_;
 
     // Auth
     std::shared_ptr<feature::auth::LocalTokenStoreAdapter> tokenAdapter_;
     std::shared_ptr<network::AuthInterceptor> authInterceptor_;
     std::shared_ptr<network::ConnectClient> connectClient_;
+    std::unique_ptr<capabilities::CapabilitiesService> capabilities_;
     std::shared_ptr<oidc::OidcSession> oidcSession_;
     std::shared_ptr<feature::auth::AuthRepository> authRepository_;
     std::shared_ptr<feature::auth::RefreshTokenUseCase> refreshToken_;

@@ -1,7 +1,10 @@
 #pragma once
 
+#include "aedst/qmlsupport/singleton_slot.hpp"
+
 #include <QObject>
 #include <QString>
+#include <QtQml/qqmlregistration.h>
 
 #include <functional>
 #include <memory>
@@ -87,8 +90,13 @@ private:
 /// layer) is connected to the signal.
 class InAppNotificationService final : public QObject, public NotificationService {
     Q_OBJECT
+    QML_NAMED_ELEMENT(Notifications)
+    QML_SINGLETON
 
 public:
+    static InAppNotificationService* create(QQmlEngine* engine, QJSEngine* script) {
+        return aedst::qmlsupport::SingletonSlot<InAppNotificationService>::create(engine, script);
+    }
     explicit InAppNotificationService(QObject* parent = nullptr);
 
     [[nodiscard]] bool isAvailable() const override;

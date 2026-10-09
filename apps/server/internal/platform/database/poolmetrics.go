@@ -19,7 +19,7 @@ import (
 //	aedst_db_pool_acquire_wait_seconds_total{pool}
 //
 // A rising empty-acquire rate or acquired == max is the earliest sign that a
-// pool (not the database) is the bottleneck — see docs/content/scaling.md.
+// pool (not the database) is the bottleneck — see docs/content/server/scaling.md.
 func RegisterPoolMetrics(name string, pool *pgxpool.Pool) error {
 	meter := otel.Meter("github.com/aedst/server/internal/platform/database")
 	poolAttr := attribute.String("pool", name)

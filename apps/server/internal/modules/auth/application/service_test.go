@@ -16,7 +16,7 @@ import (
 
 // fakeCredentials/fakeSessions/fakeTokens/fakeHasher are in-memory test
 // doubles for application's ports, demonstrating that use cases are testable
-// without a database or a real JWT library (see docs/architecture.md — "Most
+// without a database or a real JWT library (see docs/content/server/architecture.md — "Most
 // business logic should be tested without infrastructure").
 
 type fakeCredentials struct {

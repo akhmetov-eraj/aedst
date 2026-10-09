@@ -1,5 +1,5 @@
 // Package jobs holds tasks' River job kinds (deferred work owned solely by
-// this module, see docs/decisions/0005-river-for-jobs.md). DueReminderWorker
+// this module, see docs/content/decisions/0005-river-for-jobs.md). DueReminderWorker
 // is registered with the shared River client in cmd/server and enqueued by the
 // repository inside the transaction that sets a task's due date.
 package jobs

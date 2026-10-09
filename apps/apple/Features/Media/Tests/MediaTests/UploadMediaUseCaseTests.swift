@@ -47,7 +47,7 @@ final class FakeUploader: FileUploading, @unchecked Sendable {
     ) async throws -> Int {
         lock.withLock { _uploads.append((destination, headers, taskDescription)) }
         progress(1)
-        guard (200..<300).contains(status) else { throw AedstError.network(reason: "HTTP \(status)") }
+        guard (200..<300).contains(status) else { throw AedstError.unavailable(reason: "HTTP \(status)") }
         return status
     }
 }

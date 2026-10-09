@@ -1,7 +1,7 @@
 //go:build integration
 
 // Integration tests against a real PostgreSQL container — see
-// docs/content/database.md. Run with
+// docs/content/server/database.md. Run with
 // `go test -tags=integration ./internal/modules/tasks/...` (or
 // `task test:integration`); skipped by the default `go test ./...`.
 package postgres_test
@@ -9,7 +9,7 @@ package postgres_test
 import (
 	"context"
 	"encoding/json"
-	"log/slog"
+	"sync"
 	"testing"
 	"time"
 
@@ -19,8 +19,8 @@ import (
 	"github.com/aedst/server/internal/modules/tasks/application"
 	"github.com/aedst/server/internal/modules/tasks/domain"
 	"github.com/aedst/server/internal/modules/tasks/infrastructure/postgres"
-	"github.com/aedst/server/internal/platform/messaging"
-	"github.com/aedst/server/internal/platform/outbox"
+	"github.com/aedst/server/internal/platform/events"
+	"github.com/aedst/server/internal/platform/events/eventstest"
 	"github.com/aedst/server/internal/platform/postgrestest"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
 	"github.com/aedst/server/internal/shared/ids"
@@ -33,12 +33,33 @@ func newTestPool(t *testing.T) *pgxpool.Pool {
 	return postgrestest.NewPool(t, "tasks")
 }
 
-// / newRepository wires a Repository with the real outbox writer, matching how
+// newPublisher is the real events.Publisher over a River client on pool (as in
+// cmd/server), with a capturing consumer per task event so every published
+// event is observable as a delivery job (an event nobody consumes writes
+// nothing).
+func newPublisher(t *testing.T, pool *pgxpool.Pool) events.Publisher {
+	t.Helper()
+	return eventstest.New(t, pool).Capture(
+		api.TaskCreatedEventType, api.TaskUpdatedEventType, api.TaskDeletedEventType,
+		api.TaskCompletedEventType, api.TaskDueSoonEventType,
+	).Publisher
+}
+
+// newRepository wires a Repository with the real publisher, matching how
 // cmd/server constructs one.
 func newRepository(t *testing.T, pool *pgxpool.Pool) *postgres.Repository {
 	t.Helper()
-	writer := outbox.NewWriter(outbox.NewPostgresRepository(pool, "tasks"))
-	return postgres.NewRepository(pool, writer, sharedtime.Real{})
+	return postgres.NewRepository(pool, newPublisher(t, pool), sharedtime.Real{})
+}
+
+// completedDeliveries counts TaskCompleted deliveries (one capturing consumer).
+func completedDeliveries(t *testing.T, pool *pgxpool.Pool) int {
+	t.Helper()
+	got, err := eventstest.Deliveries(context.Background(), pool, api.TaskCompletedEventType)
+	if err != nil {
+		t.Fatalf("read deliveries: %v", err)
+	}
+	return len(got)
 }
 
 func TestRepository_CreateAndFind(t *testing.T) {
@@ -157,7 +178,7 @@ func TestRepository_Delete(t *testing.T) {
 		t.Fatalf("Create() error = %v", err)
 	}
 
-	if err := repo.Delete(ctx, task.ID, userID); err != nil {
+	if err := repo.Delete(ctx, task.ID, userID, ""); err != nil {
 		t.Fatalf("Delete() error = %v", err)
 	}
 
@@ -166,7 +187,7 @@ func TestRepository_Delete(t *testing.T) {
 		t.Fatalf("FindByIDAndUserID() after delete = %v, want KindNotFound", err)
 	}
 
-	if err := repo.Delete(ctx, task.ID, userID); sharederrors.KindOf(err) != sharederrors.KindNotFound {
+	if err := repo.Delete(ctx, task.ID, userID, ""); sharederrors.KindOf(err) != sharederrors.KindNotFound {
 		t.Fatalf("second Delete() = %v, want KindNotFound", err)
 	}
 }
@@ -223,15 +244,26 @@ func TestRepository_Create_IdempotentReplay(t *testing.T) {
 	}
 }
 
-// TestRepository_Complete_OutboxToSubscriber proves the whole pipeline on a
-// real database: completing a task atomically writes the outbox row and the
-// River dispatch job; running the dispatch worker delivers the event to a bus
-// subscriber and marks the row published.
-func TestRepository_Complete_OutboxToSubscriber(t *testing.T) {
+// TestRepository_Complete_EventToConsumer proves the whole pipeline on a real
+// database and a real River client: completing a task atomically inserts the
+// delivery job (the outbox is river_job), and River runs the subscribed
+// consumer with the event's id, key and payload.
+func TestRepository_Complete_EventToConsumer(t *testing.T) {
 	pool := newTestPool(t)
-	repo := newRepository(t, pool)
-	outboxRepo := outbox.NewPostgresRepository(pool, "tasks")
+	rt := eventstest.Start(t, pool)
+	repo := postgres.NewRepository(pool, rt.Publisher, sharedtime.Real{})
 	ctx := context.Background()
+
+	var (
+		mu        sync.Mutex
+		delivered []events.Event
+	)
+	rt.Registry.Subscribe(api.TaskCompletedEventType, "test.completed", func(_ context.Context, e events.Event) error {
+		mu.Lock()
+		defer mu.Unlock()
+		delivered = append(delivered, e)
+		return nil
+	})
 
 	userID := ids.New()
 	now := time.Now().UTC().Truncate(time.Second)
@@ -247,56 +279,35 @@ func TestRepository_Complete_OutboxToSubscriber(t *testing.T) {
 		t.Fatalf("Complete() error = %v", err)
 	}
 
-	var eventID ids.ID
-	if err := pool.QueryRow(ctx, `SELECT event_id FROM platform.outbox WHERE module = 'tasks' AND event_type = 'tasks.v1.TaskCompleted'`).Scan(&eventID); err != nil {
-		t.Fatalf("expected exactly one outbox row: %v", err)
+	jobs, err := eventstest.Deliveries(ctx, pool, api.TaskCompletedEventType)
+	if err != nil || len(jobs) != 1 {
+		t.Fatalf("TaskCompleted deliveries = %d, %v; want exactly one", len(jobs), err)
 	}
-	row, err := outboxRepo.Get(ctx, eventID)
-	if err != nil {
-		t.Fatalf("outbox Get() error = %v", err)
+	if jobs[0].PartitionKey != created.ID.String() || jobs[0].Consumer != "test.completed" {
+		t.Fatalf("delivery = %+v, want consumer test.completed for task %s", jobs[0], created.ID)
 	}
-	if row.EventType != api.TaskCompletedEventType || row.PartitionKey != created.ID || row.PublishedAt != nil {
-		t.Fatalf("outbox row = %+v, want an unpublished %s for task %s", row, api.TaskCompletedEventType, created.ID)
+
+	deadline := time.Now().Add(20 * time.Second)
+	for {
+		mu.Lock()
+		n := len(delivered)
+		mu.Unlock()
+		if n == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("consumer was not run by River")
+		}
+		time.Sleep(50 * time.Millisecond)
 	}
+	mu.Lock()
+	defer mu.Unlock()
 	var payload api.TaskCompletedEvent
-	if err := json.Unmarshal(row.Payload, &payload); err != nil || payload.Title != "Complete me" || payload.UserID != userID.String() {
+	if err := json.Unmarshal(delivered[0].Payload, &payload); err != nil || payload.Title != "Complete me" || payload.UserID != userID.String() {
 		t.Fatalf("payload = %+v (err %v), want the completed task's title and owner", payload, err)
 	}
-
-	// Committing an event costs one INSERT: no queue job per event.
-	var jobs int
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM river_job WHERE kind LIKE 'outbox.%'`).Scan(&jobs); err != nil || jobs != 0 {
-		t.Fatalf("outbox jobs = %d (err %v), want 0", jobs, err)
-	}
-
-	bus := messaging.NewBus()
-	var delivered messaging.Event
-	bus.Subscribe(api.TaskCompletedEventType, "test", func(_ context.Context, e messaging.Event) error { delivered = e; return nil })
-	relay, err := outbox.NewRelay(outboxRepo, bus, outbox.RelayConfig{Module: "tasks"}, slog.New(slog.DiscardHandler))
-	if err != nil {
-		t.Fatalf("NewRelay() error = %v", err)
-	}
-	if n, err := relay.RelayOnce(ctx); err != nil || n != 2 {
-		t.Fatalf("RelayOnce() = %d, %v; want 2 (TaskCreated + TaskCompleted), nil", n, err)
-	}
-	if delivered.ID != eventID {
-		t.Fatalf("subscriber received %+v, want event %s", delivered, eventID)
-	}
-	row, _ = outboxRepo.Get(ctx, eventID)
-	if row.PublishedAt == nil {
-		t.Fatal("row not marked published after delivery")
-	}
-	if n, _ := relay.RelayOnce(ctx); n != 0 {
-		t.Fatalf("published row was claimed again (%d rows)", n)
-	}
-
-	backlog, err := outboxRepo.Backlog(ctx)
-	if err != nil || backlog.Pending != 0 || !backlog.Oldest.IsZero() {
-		t.Fatalf("Backlog() = %+v, %v; want empty", backlog, err)
-	}
-	purged, err := outboxRepo.PurgePublished(ctx, time.Now().Add(time.Minute), 100)
-	if err != nil || purged != 2 {
-		t.Fatalf("PurgePublished() = %d, %v; want 2, nil", purged, err)
+	if delivered[0].ID.String() != jobs[0].EventID || delivered[0].PartitionKey != created.ID || delivered[0].Type != api.TaskCompletedEventType {
+		t.Fatalf("event = %+v, want id %s key %s", delivered[0], jobs[0].EventID, created.ID)
 	}
 }
 
@@ -308,10 +319,8 @@ func TestRepository_Complete_NotFoundWritesNothing(t *testing.T) {
 	if _, err := repo.Complete(ctx, ids.New(), ids.New(), time.Now()); sharederrors.KindOf(err) != sharederrors.KindNotFound {
 		t.Fatalf("Complete() of a missing task = %v, want KindNotFound", err)
 	}
-	var outboxRows int
-	_ = pool.QueryRow(ctx, `SELECT count(*) FROM platform.outbox WHERE module = 'tasks' AND event_type = 'tasks.v1.TaskCompleted'`).Scan(&outboxRows)
-	if outboxRows != 0 {
-		t.Fatalf("outbox rows = %d, want 0", outboxRows)
+	if n := completedDeliveries(t, pool); n != 0 {
+		t.Fatalf("TaskCompleted deliveries = %d, want 0", n)
 	}
 }
 

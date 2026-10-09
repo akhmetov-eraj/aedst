@@ -1,17 +1,21 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
+import { readBoundedBody } from "@/app/api/rpc/read-bounded-body";
 
 import { siteConfig } from "@/app/config/seo";
+import { CLIENT_HEADER, CLIENT_ID } from "@/shared/api/connect/client-id";
 import { serverEnv } from "@/shared/env/server";
 import { refreshSession } from "@/shared/lib/auth/refresh-session";
 import { isAccessTokenExpired } from "@/shared/lib/auth/session-claims";
 import {
   ACCESS_COOKIE,
+  clearAccessCookie,
   clearSessionCookies,
   REFRESH_COOKIE,
   type SessionTokens,
   writeSessionCookies,
 } from "@/shared/lib/auth/session-cookies";
+import { reportError } from "@/shared/lib/errors/report-error";
 
 /**
  * The browser's only door to apps/server (backend-for-frontend): the page
@@ -23,17 +27,17 @@ import {
 
 const MAX_BODY_BYTES = 1_000_000;
 
-// Only the app's own services, and never the AuthService procedures that
-// mint/revoke tokens — those go through Server Actions, which write the
-// cookies. Letting them through here would hand raw tokens back to the page.
+// The upstream timeout bounds only the wait for response headers; once they
+// arrive a stream (server-streaming RPC) may legitimately run for minutes, so
+// from then on only silence between chunks is limited.
+const HEADERS_TIMEOUT_MS = 15_000;
+const STREAM_IDLE_TIMEOUT_MS = 60_000;
+
+// Only the app's own services. There is no AuthService here: sign-in, refresh
+// and sign-out are OpenID Connect against the IdP (app/api/auth, proxy.ts),
+// and no token ever travels through this proxy in a response.
 const ALLOWED_PROCEDURE =
-  /^aedst\.(?:tasks|auth|notifications|search|media|admin)\.v1\.[A-Za-z]+Service\/[A-Za-z]+$/;
-const TOKEN_PROCEDURES = new Set([
-  "aedst.auth.v1.AuthService/Register",
-  "aedst.auth.v1.AuthService/Login",
-  "aedst.auth.v1.AuthService/RefreshToken",
-  "aedst.auth.v1.AuthService/Logout",
-]);
+  /^aedst\.(?:tasks|notifications|search|media|admin|capabilities)\.v1\.[A-Za-z]+Service\/[A-Za-z]+$/;
 
 const FORWARDED_REQUEST_HEADERS = [
   "content-type",
@@ -96,15 +100,74 @@ async function forward(
       headers.set(name, value);
     }
   }
+  headers.set(CLIENT_HEADER, CLIENT_ID);
   if (accessToken) {
     headers.set("authorization", `Bearer ${accessToken}`);
   }
-  return await fetch(`${serverEnv.API_BASE_URL}/${procedure}`, {
-    method: "POST",
-    headers,
-    body,
-    cache: "no-store",
-    signal: AbortSignal.timeout(15_000),
+  const controller = new AbortController();
+  const headersTimer = setTimeout(() => controller.abort(), HEADERS_TIMEOUT_MS);
+  let upstream: Response;
+  try {
+    upstream = await fetch(`${serverEnv.API_BASE_URL}/${procedure}`, {
+      method: "POST",
+      headers,
+      body,
+      cache: "no-store",
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(headersTimer);
+  }
+  return withIdleTimeout(upstream, controller);
+}
+
+/** Re-wraps the body so a stalled upstream is aborted after the idle limit. */
+function withIdleTimeout(
+  upstream: Response,
+  controller: AbortController,
+): Response {
+  if (!upstream.body) {
+    return upstream;
+  }
+  const reader = upstream.body.getReader();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let sink: ReadableStreamDefaultController<Uint8Array> | undefined;
+  const arm = () => {
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      controller.abort();
+      sink?.error(new Error("upstream stream idle"));
+    }, STREAM_IDLE_TIMEOUT_MS);
+  };
+  arm();
+  const body = new ReadableStream<Uint8Array>({
+    start(out) {
+      sink = out;
+    },
+    async pull(out) {
+      try {
+        const { done, value } = await reader.read();
+        if (done) {
+          clearTimeout(timer);
+          out.close();
+          return;
+        }
+        arm();
+        out.enqueue(value);
+      } catch (error) {
+        clearTimeout(timer);
+        out.error(error);
+      }
+    },
+    async cancel(reason) {
+      clearTimeout(timer);
+      await reader.cancel(reason);
+    },
+  });
+  return new Response(body, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers: upstream.headers,
   });
 }
 
@@ -131,16 +194,12 @@ export async function POST(
   }
 
   const procedure = (await params).path.join("/");
-  if (!ALLOWED_PROCEDURE.test(procedure) || TOKEN_PROCEDURES.has(procedure)) {
+  if (!ALLOWED_PROCEDURE.test(procedure)) {
     return connectError(404, "not_found", "unknown procedure");
   }
 
-  const declaredLength = Number(request.headers.get("content-length") ?? 0);
-  if (declaredLength > MAX_BODY_BYTES) {
-    return connectError(413, "resource_exhausted", "request too large");
-  }
-  const body = await request.arrayBuffer();
-  if (body.byteLength > MAX_BODY_BYTES) {
+  const body = await readBoundedBody(request, MAX_BODY_BYTES);
+  if (!body) {
     return connectError(413, "resource_exhausted", "request too large");
   }
 
@@ -149,8 +208,17 @@ export async function POST(
   const refreshToken = jar.get(REFRESH_COOKIE)?.value;
   let rotated: SessionTokens | null = null;
   let sessionEnded = false;
+  let refreshStale = false;
+  let refreshUnavailable = false;
+  // At most one refresh per request (session-refresh.json): a failed
+  // proactive refresh must not be repeated when the API then answers 401.
+  let refreshAttempted = false;
 
   async function rotate(): Promise<boolean> {
+    if (refreshAttempted) {
+      return false;
+    }
+    refreshAttempted = true;
     if (!refreshToken) {
       sessionEnded = true;
       return false;
@@ -162,6 +230,8 @@ export async function POST(
       return true;
     }
     sessionEnded = result.status === "rejected";
+    refreshStale = result.status === "stale";
+    refreshUnavailable = result.status === "unavailable";
     return false;
   }
 
@@ -175,13 +245,24 @@ export async function POST(
     if (upstream.status === 401 && !rotated && (await rotate())) {
       upstream = await forward(procedure, request, body, accessToken);
     }
-  } catch {
+  } catch (error) {
+    reportError(error, { source: "bff", procedure });
     return connectError(503, "unavailable", "upstream unavailable");
+  }
+
+  if (upstream.status === 401 && refreshUnavailable) {
+    // The IdP is down, not the session: a retryable error, so the client
+    // keeps the user signed in instead of treating this as a sign-out.
+    return connectError(503, "unavailable", "session refresh unavailable");
   }
 
   const response = toClientResponse(upstream);
   if (upstream.status === 401 && sessionEnded) {
     clearSessionCookies(response.cookies);
+  } else if (upstream.status === 401 && refreshStale) {
+    // The refresh token may merely have lost a rotation race to another
+    // replica: drop the dead access token but keep the refresh cookie.
+    clearAccessCookie(response.cookies);
   } else if (rotated) {
     writeSessionCookies(response.cookies, rotated);
   }

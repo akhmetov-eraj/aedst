@@ -2,8 +2,8 @@ import { playbackSources, posterUrl } from "@/modules/media/thumbnail/variants";
 import type { Media } from "@/shared/api/connect/generated/aedst/media/v1/media_pb";
 
 /**
- * Native `<video>`: poster frame from the media pipeline, the optimized
- * rendition first and the original as a fallback source, the browser's own
+ * Native `<video>`: poster frame from the media pipeline (stored poster or
+ * the `feed_800x600` rendition of it), the original as the source, the browser's own
  * accessible controls, and `preload="metadata"` so nothing streams until
  * the user presses play. No player library — progressive MP4/WebM needs
  * none; add one (hls.js / Shaka) only when the server starts emitting

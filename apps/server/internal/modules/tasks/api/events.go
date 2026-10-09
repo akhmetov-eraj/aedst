@@ -2,10 +2,10 @@ package api
 
 import "time"
 
-// Integration events this module publishes through its outbox. These types
+// Integration events this module publishes via platform/events (a River job per consumer, inserted in the producing transaction). These types
 // are the published contract: other modules subscribe to the event type on
-// the bus and decode the JSON payload into these structs, importing only this
-// package (see docs/content/events.md and ADR-0006). JSON rather than a
+// the registry and decode the JSON payload into these structs, importing only this
+// package (see docs/content/server/events.md and ADR-0006). JSON rather than a
 // protobuf contract while every consumer is in-process; when an event has to
 // cross a service boundary, promote it to api/proto/aedst/tasks/v1/events.proto
 // with the same field names and bump the version.
@@ -15,8 +15,8 @@ import "time"
 // change publishes a new version (…v2) alongside the old one until every
 // consumer has moved.
 //
-// Ordering: the relay delivers at-least-once and NOT in order (a batch is
-// published concurrently). Every snapshot event therefore carries the task's
+// Ordering: River delivers at-least-once and NOT in order (jobs run
+// concurrently and are retried independently). Every snapshot event therefore carries the task's
 // Version; a projection applies an event only if its version is newer than
 // what it already stored (see the search module).
 const (

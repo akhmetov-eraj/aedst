@@ -37,6 +37,17 @@ public enum AppLink: Equatable, Sendable {
         }
     }
 
+    /// The `AppFeature` id that must be enabled for this link to open.
+    public var feature: String {
+        switch self {
+        case .tasks, .task: AppFeature.tasks
+        case .media, .mediaItem: AppFeature.media
+        case .notifications: AppFeature.notifications
+        case .search: AppFeature.search
+        case .admin: AppFeature.admin
+        }
+    }
+
     static func isValidID(_ id: String) -> Bool {
         (1...64).contains(id.count)
             && id.unicodeScalars.allSatisfy { CharacterSet.alphanumerics.contains($0) && $0.isASCII || $0 == "-" || $0 == "_" }

@@ -21,7 +21,7 @@ T.Popup {
     focus: true
     x: (parent ? parent.width : 0) / 2 - width / 2
     y: (parent ? parent.height : 0) / 2 - height / 2
-    implicitWidth: 420
+    implicitWidth: Math.min(420, (parent ? parent.width : 420) - 2 * Theme.spacingLg)
     closePolicy: T.Popup.CloseOnEscape
 
     Accessible.role: Accessible.Dialog
@@ -29,7 +29,7 @@ T.Popup {
     Accessible.description: description
 
     Overlay.modal: Rectangle {
-        color: Qt.rgba(0, 0, 0, 0.45)
+        color: Theme.scrim
     }
 
     background: Rectangle {

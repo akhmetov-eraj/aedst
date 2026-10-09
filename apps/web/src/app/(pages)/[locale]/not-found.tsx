@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
+import { PageMain } from "@/app/shell/PageMain";
 
-import { Link } from "@/app/config/i18n/navigation";
+import { Link } from "@/shared/i18n/navigation";
 import { buttonVariants } from "@/shared/ui/button";
 
 // Without a title, assistive tech announces the raw URL and axe flags
@@ -18,7 +19,7 @@ export default async function LocaleNotFound() {
   const t = await getTranslations("common");
 
   return (
-    <div className="flex flex-1 flex-col items-center justify-center gap-4 px-4 py-24 text-center">
+    <PageMain className="items-center justify-center gap-4 px-4 py-24 text-center">
       <p className="text-sm font-medium text-muted-foreground">404</p>
       <h1 className="text-2xl font-semibold text-foreground">
         {t("errors.notFoundTitle")}
@@ -29,6 +30,6 @@ export default async function LocaleNotFound() {
       <Link href="/" className={buttonVariants()}>
         {t("actions.goHome")}
       </Link>
-    </div>
+    </PageMain>
   );
 }

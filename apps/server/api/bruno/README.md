@@ -12,8 +12,8 @@ proprietary export format).
 1. Install the [Bruno desktop app](https://www.usebruno.com/downloads) (or use the `bru` CLI — see below).
 2. **Open Collection** → select this folder (`apps/server/api/bruno`).
 3. Select the **local** environment (top-right dropdown) — it points `{{baseUrl}}` at `http://localhost:8080`.
-4. Start the server: `make dev` from `apps/server` (see [`../../README.md`](../../README.md)).
-5. Run `Auth/Register` first — it creates a throwaway user and captures `userId`/`accessToken`/`refreshToken` as runtime variables that every other request in this collection reuses.
+4. Start the server: `task dev` from `apps/server` (see [`../../README.md`](../../README.md)).
+5. (Needs the server started with `AEDST_AUTH_FIRST_PARTY_ENABLED=true`: first-party auth is off by default, otherwise `AuthService` returns UNIMPLEMENTED. With an IdP, set the `accessToken` variable to its bearer token instead.) Run `Auth/Register` first — it creates a throwaway user and captures `userId`/`accessToken`/`refreshToken` as runtime variables that every other request in this collection reuses.
 
 ## Layout
 
@@ -42,7 +42,7 @@ The collection sends `Connect-Protocol-Version: 1` on every request
 depth, `AEDST_REQUIRE_CONNECT_PROTOCOL_HEADER`).
 
 (`Users/` and `Profile/` were removed along with those modules — see
-[ADR-0007](../../../docs/content/decisions/0007-merge-users-into-auth.md).)
+[ADR-0007](../../../../docs/content/decisions/0007-merge-users-into-auth.md).)
 
 Every request's own `docs` block explains its preconditions and, for the
 negative tests, exactly which server-side check it's exercising and where
@@ -77,6 +77,6 @@ npx @usebruno/cli run apps/server/api/bruno --env local -r
 `Register` populates the shared variables before anything that needs them
 runs. Not wired into `.github/workflows/server-ci.yml` yet — doing so needs
 the full `docker compose` stack (Postgres/Valkey) plus a running
-`aedst-server` up first, the same prerequisite `make integration-test`
+`aedst-server` up first, the same prerequisite `task test:integration`
 already has locally but that CI doesn't run either; a natural follow-up
 once that gap is closed, not scope-crept into this collection's setup.

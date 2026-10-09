@@ -10,6 +10,9 @@ set(CPACK_DEBIAN_PACKAGE_NAME "aedst-desktop")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "AEDST <dev@aedst.com>")
 set(CPACK_DEBIAN_PACKAGE_SECTION "net")
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+# The bundled Qt lives in /usr/lib/<multiarch>/aedst-desktop (cmake/AedstLinuxBundle.cmake): tell dpkg-shlibdeps where to
+# resolve those libraries so they are not reported as missing and not turned into bogus Depends on system Qt packages.
+set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS_PRIVATE_DIRS "${CPACK_PACKAGING_INSTALL_PREFIX}/${CMAKE_INSTALL_LIBDIR}/aedst-desktop")
 set(CPACK_DEBIAN_FILE_NAME DEB-DEFAULT)
 # libsecret is dlopen()/optional in AedstPlatform (falls back to an encrypted file store
 # when no secret-service is running), so it is a Recommends, not a hard Depends.
@@ -19,6 +22,11 @@ set(CPACK_RPM_PACKAGE_NAME "aedst-desktop")
 set(CPACK_RPM_PACKAGE_LICENSE "Proprietary")
 set(CPACK_RPM_PACKAGE_GROUP "Applications/Internet")
 set(CPACK_RPM_PACKAGE_URL "${PROJECT_HOMEPAGE_URL}")
+# The bundled Qt/ICU libraries are private: rpm must neither PROVIDE them (the package would then satisfy, and on update
+# replace, other packages' libQt6Core.so.6 dependency) nor REQUIRE them from the distribution (they ship in this package).
+set(CPACK_RPM_PACKAGE_AUTOPROV "no")
+set(CPACK_RPM_SPEC_MORE_DEFINE "%global __provides_exclude_from ^%{_libdir}/aedst-desktop/.*$
+%global __requires_exclude ^lib(Qt6|icu).*\.so.*$")
 set(CPACK_RPM_FILE_NAME RPM-DEFAULT)
 set(CPACK_RPM_PACKAGE_RELEASE 1)
 # Do not claim ownership of system directories (/usr, /usr/bin, ...): avoids file

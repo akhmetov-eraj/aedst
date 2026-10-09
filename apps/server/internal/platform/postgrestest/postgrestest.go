@@ -160,3 +160,19 @@ func createDatabase(t *testing.T, ctx context.Context, serverDSN string) string 
 	u.Path = "/" + name
 	return u.String()
 }
+
+// TryMigrateTo is MigrateTo that returns the error instead of failing the
+// test, for asserting that a migration refuses to run.
+func TryMigrateTo(t *testing.T, dsn, module string, version int64) error {
+	t.Helper()
+	sqlDB, err := sql.Open("pgx", dsn)
+	if err != nil {
+		t.Fatalf("open migration connection: %v", err)
+	}
+	defer func() { _ = sqlDB.Close() }()
+	if err := goose.SetDialect("postgres"); err != nil {
+		t.Fatalf("goose.SetDialect: %v", err)
+	}
+	goose.SetTableName("goose_" + module)
+	return goose.UpTo(sqlDB, filepath.Join(serverRoot(), "migrations", module), version)
+}

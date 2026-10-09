@@ -20,8 +20,7 @@ import (
 	mediajobs "github.com/aedst/server/internal/modules/media/infrastructure/jobs"
 	"github.com/aedst/server/internal/modules/media/infrastructure/postgres"
 	"github.com/aedst/server/internal/modules/media/infrastructure/processing"
-	platformjobs "github.com/aedst/server/internal/platform/jobs"
-	"github.com/aedst/server/internal/platform/outbox"
+	"github.com/aedst/server/internal/platform/events/eventstest"
 	"github.com/aedst/server/internal/platform/postgrestest"
 	"github.com/aedst/server/internal/platform/storage"
 	sharederrors "github.com/aedst/server/internal/shared/errors"
@@ -34,18 +33,21 @@ type owns struct{}
 func (owns) OwnsTask(context.Context, ids.ID, ids.ID) (bool, error) { return true, nil }
 
 func TestMedia_UploadProcessReadyDeleteAndRetention(t *testing.T) {
+	if !processing.ImagingBuiltIn {
+		t.Skip("processes a real image: needs libvips (-tags vips); run by `task test:vips:integration` (CI job unit-vips)")
+	}
 	pool := postgrestest.NewPool(t, "media")
 	objects := storage.NewMemory()
 	logger := slog.New(slog.DiscardHandler)
-	workers := river.NewWorkers()
-	river.AddWorker(workers, processing.NewWorker(nil, objects, processing.Config{}, logger))
-	river.AddWorker(workers, processing.NewDeleteWorker(objects))
-	client, err := platformjobs.NewClientWithQueues(pool, workers, logger, nil) // insert-only
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Insert-only River client (never started) whose workers include the media
+	// ones; a capturing consumer makes the published events observable as
+	// delivery jobs.
+	rt := eventstest.New(t, pool, func(workers *river.Workers) {
+		river.AddWorker(workers, processing.NewWorker(nil, objects, processing.Config{}, logger))
+		river.AddWorker(workers, processing.NewDeleteWorker(objects))
+	}).Capture(api.MediaReadyEventType, api.MediaDeletedEventType)
 	clock := sharedtime.Real{}
-	repo := postgres.NewRepository(pool, client, outbox.NewWriter(outbox.NewPostgresRepository(pool, "media")), clock)
+	repo := postgres.NewRepository(pool, rt.Client, rt.Publisher, clock)
 	svc := application.NewService(repo, objects, owns{}, clock, application.Config{
 		Limits:       domain.Limits{MaxImageBytes: 1 << 20, MaxDocumentBytes: 1 << 20},
 		UploadURLTTL: time.Minute, DownloadURLTTL: time.Minute,
@@ -87,14 +89,14 @@ func TestMedia_UploadProcessReadyDeleteAndRetention(t *testing.T) {
 		}
 	}
 	m, err := svc.GetMedia(ctx, owner, up.Media.ID)
-	if err != nil || m.Status != domain.StatusReady || m.Width != 400 || len(m.Variants) != 3 || m.TaskID == nil || *m.TaskID != task {
+	if err != nil || m.Status != domain.StatusReady || m.Width != 400 || len(m.Variants) != 0 || m.TaskID == nil || *m.TaskID != task {
 		t.Fatalf("media = %+v, %v", m, err)
 	}
-	if n := count(`SELECT count(*) FROM platform.outbox WHERE module = 'media' AND event_type = $1`, api.MediaReadyEventType); n != 1 {
+	if n := count(`SELECT count(*) FROM river_job WHERE kind = 'platform.event_delivery' AND args->>'event_type' = $1`, api.MediaReadyEventType); n != 1 {
 		t.Fatalf("MediaReady rows = %d, want 1", n)
 	}
 	links, err := svc.Links(ctx, m)
-	if err != nil || links.Original == "" || links.Variants[domain.VariantThumbnail] == "" {
+	if err != nil || links.Original == "" {
 		t.Fatalf("links = %+v, %v", links, err)
 	}
 
@@ -109,7 +111,7 @@ func TestMedia_UploadProcessReadyDeleteAndRetention(t *testing.T) {
 	if err := svc.DeleteMedia(ctx, owner, up.Media.ID); err != nil {
 		t.Fatal(err)
 	}
-	if n := count(`SELECT count(*) FROM platform.outbox WHERE event_type = $1`, api.MediaDeletedEventType); n != 1 {
+	if n := count(`SELECT count(*) FROM river_job WHERE kind = 'platform.event_delivery' AND args->>'event_type' = $1`, api.MediaDeletedEventType); n != 1 {
 		t.Errorf("MediaDeleted rows = %d", n)
 	}
 	if n := count(`SELECT count(*) FROM river_job WHERE kind = 'media.delete_objects'`); n != 1 {

@@ -1,19 +1,11 @@
+import { i18nNamespaces } from "@/app/config/modules/registry";
+
 /**
- * Registry of feature modules that ship their own translation catalogs
- * (`src/modules/<module>/i18n/<locale>.json`). Adding a module here is
- * the only wiring needed to get it merged into the request-scoped
- * `messages` object under its own namespace — see `messages.ts`.
- *
- * Kept as an explicit array (not a filesystem scan) so the dynamic
- * `import(\`@/modules/${module}/i18n/${locale}.json\`)` in messages.ts
- * stays statically analyzable by the bundler.
+ * Feature modules that ship their own translation catalogs
+ * (`src/modules/<module>/i18n/<locale>.json`), derived from the module
+ * manifests (`manifest.i18nNamespaces`) via the registry: adding a module's
+ * manifest there is the only wiring needed to get it merged into the
+ * request-scoped `messages` object under its own namespace — see `messages.ts`.
+ * The type-level mirror is `messages.d.ts`.
  */
-export const i18nModules = [
-  "home",
-  "auth",
-  "tasks",
-  "search",
-  "notifications",
-  "media",
-  "admin",
-] as const;
+export const i18nModules = i18nNamespaces;

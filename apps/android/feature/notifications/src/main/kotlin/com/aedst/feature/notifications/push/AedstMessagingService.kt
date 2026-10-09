@@ -16,7 +16,7 @@ import javax.inject.Inject
  * Work is handed to the application scope: FCM gives this service ~10–20 s, which is plenty for one RPC.
  */
 @AndroidEntryPoint
-class AedstMessagingService : FirebaseMessagingService() {
+internal class AedstMessagingService : FirebaseMessagingService() {
 
     @Inject lateinit var notifier: PushNotifier
 

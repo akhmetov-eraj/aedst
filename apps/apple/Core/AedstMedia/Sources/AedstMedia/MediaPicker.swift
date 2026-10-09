@@ -41,10 +41,11 @@ public enum PickedFileCopier {
 #if os(iOS)
 import PhotosUI
 
-/// Photo/video picker for iOS 15+: `PHPickerViewController` runs out of
-/// process and needs **no photo-library permission** (no
-/// `NSPhotoLibraryUsageDescription`). SwiftUI's `PhotosPicker` is iOS 16+, so
-/// it is deliberately not used: one code path for every supported OS.
+/// Photo/video picker: `PHPickerViewController` runs out of process and needs
+/// **no photo-library permission** (no `NSPhotoLibraryUsageDescription`).
+/// SwiftUI's `PhotosPicker` would also work at the current OS floor; the
+/// UIKit picker is kept because it already returns the `PickedFile` values
+/// this module's callers consume.
 public struct AedstMediaPicker: UIViewControllerRepresentable {
     private let selectionLimit: Int
     private let onPick: ([PickedFile]) -> Void

@@ -4,4 +4,5 @@
  * the same transport in query keys — which is what lets a query prefetched
  * on the server be found by the client's `useQuery` after hydration.
  */
+
 export const TRANSPORT_STATIC_KEY = "aedst-api";

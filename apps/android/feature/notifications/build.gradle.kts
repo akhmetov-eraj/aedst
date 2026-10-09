@@ -20,4 +20,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.compose.activity)
     implementation(libs.compose.material.icons.extended)
+
+    // Screen tests run on Robolectric + the Compose test rule (JUnit 4, no Jupiter-native equivalent).
+    testImplementation(libs.junit.vintage.engine)
 }

@@ -1,4 +1,7 @@
-import { expect, test } from "./support/fixtures";
+import commonMessages from "../src/app/config/i18n/common/en.json" with {
+  type: "json",
+};
+import { expect, test, WEB_ORIGIN } from "./support/fixtures";
 
 test.describe("Content-Security-Policy", () => {
   test("uses a per-request nonce and forbids inline scripts", async ({
@@ -46,9 +49,12 @@ test.describe("Content-Security-Policy", () => {
     });
 
     await page.goto("/en");
-    // The submit button is disabled until React hydrates — so this proves the
-    // scripts really ran under the nonce policy.
-    await expect(page.getByRole("button", { name: "Log in" })).toBeEnabled();
+    // React marks the DOM it hydrated, which only happens when Next's scripts
+    // really ran under the nonce policy (the sign-in links work without JS,
+    // so they prove nothing about hydration).
+    await page.waitForFunction(() =>
+      Object.keys(document.body).some((key) => key.startsWith("__react")),
+    );
 
     expect(violations).toEqual([]);
   });
@@ -92,7 +98,10 @@ test.describe("BFF proxy", () => {
 
     const anonymous = await request.post(
       "/api/rpc/aedst.tasks.v1.TasksService/ListTasks",
-      { data: {}, headers: { origin: "http://127.0.0.1:3100" } },
+      {
+        data: {},
+        headers: { origin: WEB_ORIGIN, "connect-protocol-version": "1" },
+      },
     );
     expect(anonymous.status()).toBe(401);
   });
@@ -105,7 +114,7 @@ test.describe("BFF proxy", () => {
       "/api/rpc/aedst.auth.v1.AuthService/Login",
       {
         data: { email: user.email, password: user.password, deviceId: "x" },
-        headers: { origin: "http://127.0.0.1:3100" },
+        headers: { origin: WEB_ORIGIN },
       },
     );
     expect(response.status()).toBe(404);
@@ -114,24 +123,41 @@ test.describe("BFF proxy", () => {
 });
 
 test.describe("SEO", () => {
-  test("the home page publishes JSON-LD, canonical alternates and a description", async ({
+  test("the home page publishes JSON-LD graphs, a canonical, alternates and a description", async ({
     page,
   }) => {
     await page.goto("/en");
 
-    const jsonLd = await page
-      .locator('script[type="application/ld+json"]')
-      .textContent();
-    expect(JSON.parse(jsonLd ?? "{}")).toMatchObject({
-      "@context": "https://schema.org",
-      "@type": "WebApplication",
+    const documents = (
+      await page.locator('script[type="application/ld+json"]').allTextContents()
+    ).map((text) => JSON.parse(text));
+    const nodes = documents.flatMap((doc) => doc["@graph"] ?? [doc]);
+    const byType = (type: string) =>
+      nodes.find((node) => node["@type"] === type);
+
+    expect(
+      documents.every((doc) => doc["@context"] === "https://schema.org"),
+    ).toBe(true);
+    expect(byType("Organization")).toMatchObject({
+      name: "AEDST",
+      "@id": expect.stringMatching(/#organization$/),
+    });
+    expect(byType("WebSite")).toMatchObject({
+      inLanguage: "en",
+      publisher: { "@id": byType("Organization")["@id"] },
+    });
+    expect(byType("WebApplication")).toMatchObject({
       name: "AEDST",
       inLanguage: "en",
     });
 
     await expect(page.locator('meta[name="description"]')).toHaveAttribute(
       "content",
-      /task manager/i,
+      commonMessages.appDescription,
+    );
+    await expect(page.locator('link[rel="canonical"]')).toHaveAttribute(
+      "href",
+      /\/en$/,
     );
     const alternates = await page
       .locator('link[rel="alternate"][hreflang]')
@@ -142,28 +168,71 @@ test.describe("SEO", () => {
     await expect(page.locator("html")).toHaveAttribute("lang", "en");
   });
 
-  test("signed-in pages are explicitly noindex", async ({ page, signedIn }) => {
+  test("signed-in pages are explicitly noindex and publish no alternates", async ({
+    page,
+    signedIn,
+  }) => {
     expect(signedIn.email).toBeTruthy();
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute(
       "content",
       /noindex/,
     );
+    await expect(page.locator('link[rel="alternate"][hreflang]')).toHaveCount(
+      0,
+    );
   });
 
-  test("robots.txt hides private areas and lists the sitemap", async ({
+  test("a trailing slash is a 308 to the canonical form", async ({
+    request,
+  }) => {
+    const response = await request.get("/en/", { maxRedirects: 0 });
+    expect(response.status()).toBe(308);
+    expect(response.headers().location).toMatch(/\/en$/);
+  });
+
+  test("robots.txt hides private areas, lists the sitemap and sets per-bot AI rules", async ({
     request,
   }) => {
     const body = await (await request.get("/robots.txt")).text();
     expect(body).toContain("Disallow: /api/");
+    expect(body).toContain("Disallow: /offline/");
+    expect(body).toContain("Disallow: /en/forbidden");
     expect(body).toContain("Disallow: /en/tasks");
     expect(body).toContain("Sitemap:");
+
+    // Default policy (siteConfig.aiCrawlers): answer engines in, training out.
+    const group = (agent: string) =>
+      body
+        .split(/\n\s*\n/)
+        .find((block) => block.includes(`User-Agent: ${agent}`)) ?? "";
+    expect(group("OAI-SearchBot")).toContain("Allow: /");
+    expect(group("Claude-User")).toContain("Allow: /");
+    expect(group("PerplexityBot")).toContain("Disallow: /en/tasks");
+    expect(group("GPTBot")).toMatch(/Disallow: \/\s*$/m);
+    expect(group("Google-Extended")).not.toContain("Allow:");
+    expect(group("ClaudeBot")).toMatch(/Disallow: \/\s*$/m);
   });
 
-  test("sitemap lists every locale", async ({ request }) => {
+  test("sitemap lists every locale with a real lastmod", async ({
+    request,
+  }) => {
     const body = await (await request.get("/sitemap.xml")).text();
     for (const locale of ["en", "ru", "tj", "uz", "ar"]) {
       expect(body).toContain(`/${locale}<`);
     }
+    expect(body).toMatch(/<lastmod>\d{4}-\d{2}-\d{2}/);
+  });
+
+  test("llms.txt is served as plain text and lists the public pages", async ({
+    request,
+  }) => {
+    const response = await request.get("/llms.txt");
+    expect(response.status()).toBe(200);
+    expect(response.headers()["content-type"]).toContain("text/plain");
+    const body = await response.text();
+    expect(body).toMatch(/^# AEDST/);
+    expect(body).toContain("/en)");
+    expect(body).toContain("/sitemap.xml)");
   });
 });
 
@@ -218,12 +287,13 @@ test.describe("analytics consent", () => {
     // The choice is saved by a Server Action; wait for its cookie before
     // reloading, or the reload races the write.
     await expect
-      .poll(
-        async () =>
-          (await page.context().cookies()).find(
-            (c) => c.name === "aedst_consent",
-          )?.value,
-      )
+      .poll(async () => {
+        const raw = (await page.context().cookies()).find(
+          (c) => c.name === "aedst_consent",
+        )?.value;
+        // The record is JSON `{version, choice, at}`, URL-encoded.
+        return raw ? JSON.parse(decodeURIComponent(raw)).choice : undefined;
+      })
       .toBe("denied");
     await page.reload();
     await expect(banner).toBeHidden(); // the choice is remembered
@@ -260,7 +330,7 @@ test.describe("hardening for the new surfaces", () => {
   test("never caches API responses", async ({ request }) => {
     const response = await request.post(
       "/api/rpc/aedst.tasks.v1.TasksService/GetTaskStats",
-      { data: {}, headers: { origin: "http://127.0.0.1:3100" } },
+      { data: {}, headers: { origin: WEB_ORIGIN } },
     );
     expect(response.headers()["cache-control"]).toContain("no-store");
   });

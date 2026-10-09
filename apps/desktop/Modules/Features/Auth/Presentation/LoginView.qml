@@ -103,7 +103,7 @@ Page {
         Accessible.role: Accessible.Grouping
         Accessible.name: qsTr("Sign in form")
 
-        Label {
+        AedstLabel {
             Layout.alignment: Qt.AlignHCenter
             text: qsTr("Sign in to AEDST")
             font: Theme.titleFont
@@ -119,7 +119,7 @@ Page {
         }
 
         // A stored session is being restored at startup (refresh token -> access token).
-        BusyIndicator {
+        AedstCircularProgress {
             id: restoringIndicator
             objectName: "restoringIndicator"
             Layout.alignment: Qt.AlignHCenter
@@ -143,7 +143,7 @@ Page {
             onClicked: root.startBrowserSignIn()
         }
 
-        Label {
+        AedstLabel {
             id: browserHint
             objectName: "browserHint"
             Layout.fillWidth: true
@@ -165,7 +165,7 @@ Page {
             onClicked: LoginViewModel.cancelBrowserSignIn()
         }
 
-        Label {
+        AedstLabel {
             id: browserError
             objectName: "browserError"
             Layout.fillWidth: true

@@ -1,49 +1,25 @@
 package com.aedst.core.navigation
 
 /**
- * Well-known route paths every feature can navigate to without depending on
- * another feature's Gradle module — the navigation-contract equivalent of a
- * server module publishing a stable RPC method name instead of another module
- * importing its handler package directly.
+ * Server in-app links (`Notification.link`, `SearchHit.link`, e.g. `/tasks/<id>`) and their mapping to typed
+ * [AedstKey]s — the navigation-contract equivalent of a server module publishing a stable RPC method name instead
+ * of another module importing its handler package.
  *
- * In-app links from the server (`Notification.link`, `SearchHit.link`, e.g.
- * `/tasks/<id>`) are these routes with a leading slash; [routeForLink] turns
- * one into a route after validating it.
+ * A link is validated into a *route* ([routeForLink], the link without the leading slash) and then resolved to a key
+ * ([keyForRoute]); [keyForLink] does both. Anything else yields `null`.
  */
 object AedstRoutes {
-    const val AUTH_LOGIN = "auth/login"
-    const val AUTH_ACCOUNT = "auth/account"
-
-    const val TASKS = "tasks"
-    const val TASK_ID_ARG = "taskId"
-    const val TASK_DETAIL = "tasks/{$TASK_ID_ARG}"
-
-    /** Separate prefix so it never collides with [TASK_DETAIL]'s `{taskId}` placeholder. */
-    const val TASK_CREATE = "task-create"
-
-    const val SEARCH = "search"
-
-    const val NOTIFICATIONS = "notifications"
-    const val NOTIFICATION_PREFERENCES = "notification-preferences"
-
-    const val MEDIA = "media"
-    const val MEDIA_ID_ARG = "mediaId"
-    const val MEDIA_DETAIL = "media/{$MEDIA_ID_ARG}"
-
-    /** Only registered for users with the `admin` role (see `SessionUser.isAdmin`). */
-    const val ADMIN = "admin"
-
     /** Intent extra (and FCM `data` key) carrying a server in-app link such as `/tasks/<id>`. */
     const val EXTRA_LINK = "link"
 
-    /** Signed-in landing destination. */
-    const val HOME = TASKS
+    private const val TASKS = "tasks"
+    private const val SEARCH = "search"
+    private const val NOTIFICATIONS = "notifications"
+    private const val MEDIA = "media"
+    private const val ADMIN = "admin"
 
-    fun taskDetail(taskId: String): String = "tasks/$taskId"
-
-    fun mediaDetail(mediaId: String): String = "media/$mediaId"
-
-    private val LINK_PREFIXES = listOf("tasks", "media", "notifications", "search", "admin")
+    private const val MAX_SEGMENTS = 2
+    private val LINK_PREFIXES = listOf(TASKS, MEDIA, NOTIFICATIONS, SEARCH, ADMIN)
     private val SAFE_SEGMENT = Regex("^[A-Za-z0-9_-]{1,64}$")
 
     /**
@@ -55,8 +31,39 @@ object AedstRoutes {
         if (link.isNullOrBlank() || !link.startsWith("/") || link.startsWith("//")) return null
         val path = link.substringBefore('?').substringBefore('#').trim('/')
         val segments = path.split('/')
-        if (segments.isEmpty() || segments.size > 2 || segments.first() !in LINK_PREFIXES) return null
+        if (segments.isEmpty() || segments.size > MAX_SEGMENTS || segments.first() !in LINK_PREFIXES) return null
         if (!segments.all(SAFE_SEGMENT::matches)) return null
         return path
     }
+
+    /** Resolves a route accepted by [routeForLink] to its key, or `null` for routes without a screen. */
+    fun keyForRoute(route: String?): AedstKey? {
+        if (route.isNullOrBlank()) return null
+        val segments = route.split('/')
+        val id = segments.getOrNull(1)
+        return when (segments.first()) {
+            TASKS -> if (segments.size == 1) TaskListKey else id?.let(::TaskDetailKey)
+            MEDIA -> if (segments.size == 1) MediaLibraryKey else id?.let(::MediaDetailKey)
+            NOTIFICATIONS -> NotificationsKey.takeIf { segments.size == 1 }
+            SEARCH -> SearchKey.takeIf { segments.size == 1 }
+            ADMIN -> AdminKey.takeIf { segments.size == 1 }
+            else -> null
+        }.takeIf { segments.size <= MAX_SEGMENTS }
+    }
+
+    /**
+     * The capability id (`AedstFeature`) a route needs: its first segment (`tasks/<id>` -> `tasks`), so a link into a
+     * feature the server switched off can be dropped. `null` for a route this app does not know.
+     */
+    fun featureForRoute(route: String?): String? = route?.substringBefore('/')?.takeIf { it in LINK_PREFIXES }
+
+    /**
+     * The in-app link carried by an Android App Link (`ACTION_VIEW` of `https://<host>/tasks/<id>`): its path, so it goes
+     * through the same [routeForLink] validation as a notification link. Any other scheme is not an App Link and yields
+     * `null`; the host is the manifest's business (the intent filter only matches the verified host).
+     */
+    fun linkForAppLink(scheme: String?, path: String?): String? = path.takeIf { scheme == "https" }
+
+    /** Validates a server link and resolves it to the destination it opens, or `null`. */
+    fun keyForLink(link: String?): AedstKey? = keyForRoute(routeForLink(link))
 }

@@ -60,11 +60,11 @@ std::string_view envValue(const EnvironmentMap& env, std::string_view key) {
 
 core::Outcome<std::string> validatedExecutable(const AutostartConfig& config) {
     if (!config.executablePath.is_absolute()) {
-        return fail(Error::invalidArgument("autostart: executable path must be absolute"));
+        return fail(Error::invalidInput("autostart: executable path must be absolute"));
     }
     std::string exe = utf8String(config.executablePath);
     if (hasControlChars(exe) || exe.find('"') != std::string::npos) {
-        return fail(Error::invalidArgument("autostart: executable path contains forbidden characters"));
+        return fail(Error::invalidInput("autostart: executable path contains forbidden characters"));
     }
     return exe;
 }
@@ -72,11 +72,11 @@ core::Outcome<std::string> validatedExecutable(const AutostartConfig& config) {
 core::VoidOutcome validateArguments(const AutostartConfig& config) {
     for (const std::string& arg : config.arguments) {
         if (hasControlChars(arg)) {
-            return fail(Error::invalidArgument("autostart: argument contains control characters"));
+            return fail(Error::invalidInput("autostart: argument contains control characters"));
         }
     }
     if (hasControlChars(config.displayName)) {
-        return fail(Error::invalidArgument("autostart: display name contains control characters"));
+        return fail(Error::invalidInput("autostart: display name contains control characters"));
     }
     return core::ok();
 }
@@ -103,34 +103,6 @@ std::string quoteDesktopExecArg(std::string_view arg) {
         out.push_back(c);
         if (c == '\\') {
             out.push_back('\\');
-        }
-    }
-    return out;
-}
-
-std::string xmlEscape(std::string_view text) {
-    std::string out;
-    out.reserve(text.size());
-    for (const char c : text) {
-        switch (c) {
-        case '&':
-            out += "&amp;";
-            break;
-        case '<':
-            out += "&lt;";
-            break;
-        case '>':
-            out += "&gt;";
-            break;
-        case '"':
-            out += "&quot;";
-            break;
-        case '\'':
-            out += "&apos;";
-            break;
-        default:
-            out.push_back(c);
-            break;
         }
     }
     return out;
@@ -195,7 +167,7 @@ bool isValidAutostartId(std::string_view appId) {
 
 core::Outcome<std::filesystem::path> xdgAutostartFilePath(const EnvironmentMap& env, std::string_view appId) {
     if (!isValidAutostartId(appId)) {
-        return fail(Error::invalidArgument("autostart: invalid app id"));
+        return fail(Error::invalidInput("autostart: invalid app id"));
     }
     std::filesystem::path base;
     const std::string_view xdg = envValue(env, "XDG_CONFIG_HOME");
@@ -248,7 +220,7 @@ core::Outcome<std::string> renderWindowsRunCommand(const AutostartConfig& config
     std::string out = "\"" + *exe + "\"";
     for (const std::string& arg : native.arguments) {
         if (arg.find('"') != std::string::npos) {
-            return fail(Error::invalidArgument("autostart: argument contains a quote"));
+            return fail(Error::invalidInput("autostart: argument contains a quote"));
         }
         out.push_back(' ');
         out += windowsQuoteIfNeeded(arg);
@@ -271,7 +243,7 @@ bool XdgAutostartManager::isEnabled() const {
 
 core::VoidOutcome XdgAutostartManager::setEnabled(bool enabled) {
     if (!isAvailable()) {
-        return fail(Error::invalidArgument("autostart: not available"));
+        return fail(Error::invalidInput("autostart: not available"));
     }
     if (!enabled) {
         return removeIfPresent(filePath_);
@@ -304,7 +276,7 @@ bool WindowsRunKeyAutostartManager::isEnabled() const {
 
 core::VoidOutcome WindowsRunKeyAutostartManager::setEnabled(bool enabled) {
     if (!isValidAutostartId(config_.appId)) {
-        return fail(Error::invalidArgument("autostart: invalid app id"));
+        return fail(Error::invalidInput("autostart: invalid app id"));
     }
     QSettings settings(kRunKeyPath, QSettings::NativeFormat);
     const QString name = QString::fromStdString(config_.appId);

@@ -1,14 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <!-- Accessibility descriptions for design-system components -->
-    <string name="aedst_a11y_collapse">Yig‘ish</string>
-    <string name="aedst_a11y_expand">Yoyish</string>
     <string name="aedst_a11y_avatar">Avatar</string>
     <string name="aedst_a11y_avatar_named">Avatar: %1$s</string>
-    <string name="aedst_a11y_otp_progress">Bir martalik kod: %2$d ta raqamdan %1$d tasi kiritildi</string>
-    <string name="aedst_a11y_previous_page">Oldingi sahifa</string>
-    <string name="aedst_a11y_next_page">Keyingi sahifa</string>
-    <string name="aedst_a11y_page">%1$d-sahifa</string>
     <string name="aedst_a11y_hide_password">Parolni yashirish</string>
     <string name="aedst_a11y_show_password">Parolni ko‘rsatish</string>
     <string name="aedst_a11y_loading">Yuklanmoqda</string>
@@ -20,9 +14,22 @@
     <string name="aedst_error_not_found">So‘ralgan ma’lumot topilmadi.</string>
     <string name="aedst_error_validation">Kiritilgan ma’lumotlarni tekshiring.</string>
     <string name="aedst_error_unknown">Nimadir xato ketdi. Qayta urinib ko‘ring.</string>
+    <string name="aedst_error_storage">Bu qurilmada ma’lumotni o‘qib yoki saqlab bo‘lmadi.</string>
     <string name="aedst_error_forbidden">Sizda bu bo‘limga ruxsat yo‘q.</string>
     <string name="aedst_error_conflict">Ma’lumotlar o‘zgargan. Yangilab, qayta urinib ko‘ring.</string>
     <string name="aedst_error_rate_limited">So‘rovlar juda ko‘p. Biroz kutib, qayta urinib ko‘ring.</string>
+    <string name="aedst_error_upgrade_required">Davom etish uchun ilovani yangilang.</string>
+
+    <!-- Blocking screen shown when the server rejects this app version (CLIENT_UPGRADE_REQUIRED, ADR-0009) -->
+    <string name="aedst_upgrade_title">Yangilash talab qilinadi</string>
+    <string name="aedst_upgrade_body">AEDST ning bu versiyasi endi qo‘llab-quvvatlanmaydi. Davom etish uchun ilovani Google Play orqali yangilang.</string>
+    <string name="aedst_upgrade_action">Google Play’da yangilash</string>
 
     <string name="aedst_offline_banner">Internet aloqasi yo‘q</string>
+
+    <!-- Shared dialog actions -->
+    <string name="aedst_action_ok">OK</string>
+    <string name="aedst_action_cancel">Bekor qilish</string>
+    <string name="aedst_action_confirm">Tasdiqlash</string>
+    <string name="aedst_action_retry">Qayta urinish</string>
 </resources>

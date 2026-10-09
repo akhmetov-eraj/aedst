@@ -1,15 +1,23 @@
 #include "Navigation/admin_destinations.hpp"
 
-#include "aedst/navigation/nav_graph.hpp"
+#include "aedst/navigation/route.hpp"
 
-#include <QString>
-#include <QUrl>
+#include <memory>
+#include <string>
+#include <vector>
 
 namespace aedst::feature::admin {
 
-void registerAdminDestinations(navigation::NavGraph& graph) {
-    graph.registerDestination(navigation::routes::kAdmin,
-                              QUrl(QString::fromUtf8(kAdminViewUrl.data(), static_cast<qsizetype>(kAdminViewUrl.size()))));
+std::unique_ptr<plugin::IFeaturePlugin> makeAdminPlugin() {
+    return std::make_unique<plugin::StaticFeaturePlugin>(
+        plugin::PluginDescriptor{.id = "admin",
+                                 .version = "1.0.0",
+                                 .apiVersion = plugin::kPluginApiVersion,
+                                 .requiredCapabilities = {},
+                                 .featureFlag = {}},
+        std::vector<plugin::RouteContribution>{
+            {std::string(navigation::routes::kAdmin), std::string(kAdminViewUrl)},
+        });
 }
 
 } // namespace aedst::feature::admin

@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.aedst.core.media.R
 import com.aedst.core.media.upload.UploadProgress
 import com.aedst.core.ui.components.AedstLinearProgressIndicator
+import com.aedst.core.ui.theme.AedstSpacing
 
 /** One in-flight upload: local thumbnail, state text, progress bar and a cancel button. */
 @Composable
@@ -31,16 +32,16 @@ fun UploadProgressRow(upload: UploadProgress, onCancel: () -> Unit, modifier: Mo
     }
     Row(
         modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(AedstSpacing.md),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         LocalMediaThumbnail(
             uri = upload.sourceUri,
             isVideo = isVideo,
             contentDescription = null,
-            modifier = Modifier.size(48.dp),
+            modifier = Modifier.size(48.dp), // allow-dp: thumbnail size, not a spacing step
         )
-        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(AedstSpacing.xs)) {
             Text(text = stringResource(upload.state.labelRes()), style = MaterialTheme.typography.bodyMedium)
             if (upload.state != UploadProgress.State.FAILED) {
                 AedstLinearProgressIndicator(progress = upload.fraction, modifier = Modifier.fillMaxWidth())

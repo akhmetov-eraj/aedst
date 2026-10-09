@@ -7,6 +7,8 @@ import com.aedst.core.common.Outcome
 import com.aedst.feature.tasks.domain.Task
 import com.aedst.feature.tasks.domain.TaskRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,10 +36,15 @@ sealed interface TaskListIntent {
 }
 
 @HiltViewModel
-class TaskListViewModel @Inject constructor(private val repository: TaskRepository) : ViewModel() {
+internal class TaskListViewModel @Inject constructor(private val repository: TaskRepository) : ViewModel() {
 
     private val mutableState = MutableStateFlow(TaskListState())
     val state: StateFlow<TaskListState> = mutableState.asStateFlow()
+
+    // One job per operation: a newer request of the same kind cancels the older one, so a slow earlier response can
+    // never overwrite a later one (pull-to-refresh twice, refresh while a next page is loading).
+    private var refreshJob: Job? = null
+    private var loadMoreJob: Job? = null
 
     fun onIntent(intent: TaskListIntent) {
         when (intent) {
@@ -48,9 +55,13 @@ class TaskListViewModel @Inject constructor(private val repository: TaskReposito
     }
 
     private fun refresh() {
-        mutableState.update { it.copy(isLoading = true) }
-        viewModelScope.launch {
-            when (val outcome = repository.list()) {
+        loadMoreJob?.cancel()
+        refreshJob?.cancel()
+        mutableState.update { it.copy(isLoading = true, isLoadingMore = false) }
+        refreshJob = viewModelScope.launch {
+            val outcome = repository.list()
+            ensureActive() // a repository that finished anyway must not apply a superseded answer
+            when (outcome) {
                 is Outcome.Success -> mutableState.update {
                     it.copy(
                         tasks = outcome.value.tasks,
@@ -66,10 +77,13 @@ class TaskListViewModel @Inject constructor(private val repository: TaskReposito
 
     private fun loadMore() {
         val token = mutableState.value.nextPageToken ?: return
-        if (mutableState.value.isLoadingMore) return
+        // A page requested before the list was reloaded would be appended to the wrong list.
+        if (mutableState.value.isLoadingMore || refreshJob?.isActive == true) return
         mutableState.update { it.copy(isLoadingMore = true) }
-        viewModelScope.launch {
-            when (val outcome = repository.list(token)) {
+        loadMoreJob = viewModelScope.launch {
+            val outcome = repository.list(token)
+            ensureActive()
+            when (outcome) {
                 is Outcome.Success -> mutableState.update {
                     it.copy(
                         tasks = it.tasks + outcome.value.tasks,

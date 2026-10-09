@@ -46,7 +46,9 @@ func (s *Service) GetTask(ctx context.Context, userID, id ids.ID) (domain.Task, 
 }
 
 func (s *Service) ListTasks(ctx context.Context, params ListParams) (ListResult, error) {
-	params.Normalize()
+	if err := params.Normalize(); err != nil {
+		return ListResult{}, err
+	}
 	return s.repo.List(ctx, params)
 }
 
@@ -54,7 +56,7 @@ func (s *Service) ListTasks(ctx context.Context, params ListParams) (ListResult,
 // concurrent edits of different fields cannot overwrite each other). When
 // expectedVersion is non-nil the update is rejected with a Conflict unless the
 // task is still at that version.
-func (s *Service) UpdateTask(ctx context.Context, userID, id ids.ID, patch domain.Patch, expectedVersion *int) (domain.Task, error) {
+func (s *Service) UpdateTask(ctx context.Context, userID, id ids.ID, patch domain.Patch, expectedVersion *int, idempotencyKey string) (domain.Task, error) {
 	if err := patch.Normalize(); err != nil {
 		return domain.Task{}, err
 	}
@@ -67,14 +69,15 @@ func (s *Service) UpdateTask(ctx context.Context, userID, id ids.ID, patch domai
 		Patch:           patch,
 		ExpectedVersion: expectedVersion,
 		UpdatedAt:       s.clock.Now(),
+		IdempotencyKey:  idempotencyKey,
 	})
 }
 
 // DeleteTask deletes in one statement; the repository reports NotFound when
 // nothing matched (someone else's or a nonexistent id), so there is no
 // pre-read.
-func (s *Service) DeleteTask(ctx context.Context, userID, id ids.ID) error {
-	return s.repo.Delete(ctx, id, userID)
+func (s *Service) DeleteTask(ctx context.Context, userID, id ids.ID, idempotencyKey string) error {
+	return s.repo.Delete(ctx, id, userID, idempotencyKey)
 }
 
 // CompleteTask is idempotent: completing a task that is already done returns it

@@ -1,0 +1,7 @@
+// Fixture for scripts/check-migration-hashes.sh: migration 1 was edited after its hash was recorded. MUST fail.
+constexpr std::string_view kCreateA = R"sql(
+CREATE TABLE IF NOT EXISTS a (
+    id INTEGER PRIMARY KEY,
+    edited_afterwards TEXT
+);
+)sql";

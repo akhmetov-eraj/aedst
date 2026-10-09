@@ -21,7 +21,7 @@ Page {
         anchors.margins: Theme.spacingLg
         spacing: Theme.spacingMd
 
-        Label {
+        AedstLabel {
             text: qsTr("Administration")
             font: Theme.titleFont
             color: Theme.foreground
@@ -37,6 +37,7 @@ Page {
 
         AedstTabBar {
             id: tabs
+            objectName: "adminTabs"
             Layout.fillWidth: true
             visible: !AdminViewModel.forbidden
             model: [
@@ -78,12 +79,12 @@ Page {
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.margins: Theme.spacingMd
-                            Text {
+                            AedstLabel {
                                 text: modelData.label
                                 font: Theme.smallFont
                                 color: Theme.mutedForeground
                             }
-                            Text {
+                            AedstLabel {
                                 readonly property var raw: AdminViewModel.overview[modelData.key]
                                 text: raw === undefined ? "—"
                                     : modelData.key === "mediaBytes" ? (raw / (1024 * 1024)).toFixed(1)
@@ -115,7 +116,7 @@ Page {
                     ScrollBar.vertical: ScrollBar {}
                     Accessible.role: Accessible.List
                     Accessible.name: qsTr("Users")
-                    delegate: ItemDelegate {
+                    delegate: AedstListItem {
                         id: userRow
                         required property string userId
                         required property string email
@@ -125,9 +126,9 @@ Page {
                         highlighted: ListView.isCurrentItem
                         Accessible.name: userRow.email
                         contentItem: RowLayout {
-                            Text { Layout.fillWidth: true; text: userRow.displayName; textFormat: Text.PlainText; color: Theme.foreground; font: Theme.bodyFont; elide: Text.ElideRight }
-                            Text { Layout.fillWidth: true; text: userRow.email; textFormat: Text.PlainText; color: Theme.mutedForeground; font: Theme.smallFont; elide: Text.ElideRight }
-                            Text { text: qsTr("%n task(s)", "", Number(userRow.taskCount)); color: Theme.mutedForeground; font: Theme.captionFont }
+                            AedstLabel { Layout.fillWidth: true; text: userRow.displayName; textFormat: Text.PlainText; color: Theme.foreground; font: Theme.bodyFont; elide: Text.ElideRight }
+                            AedstLabel { Layout.fillWidth: true; text: userRow.email; textFormat: Text.PlainText; color: Theme.mutedForeground; font: Theme.smallFont; elide: Text.ElideRight }
+                            AedstLabel { text: qsTr("%n task(s)", "", Number(userRow.taskCount)); color: Theme.mutedForeground; font: Theme.captionFont }
                             AedstButton {
                                 text: qsTr("Notify")
                                 size: AedstButton.Size.Sm
@@ -148,7 +149,7 @@ Page {
                 ScrollBar.vertical: ScrollBar {}
                 Accessible.role: Accessible.List
                 Accessible.name: qsTr("Audit log")
-                delegate: ItemDelegate {
+                delegate: AedstListItem {
                     id: auditRow
                     required property string action
                     required property string targetKind
@@ -160,13 +161,13 @@ Page {
                     Accessible.name: auditRow.action
                     contentItem: ColumnLayout {
                         spacing: 2
-                        Text {
+                        AedstLabel {
                             text: auditRow.action + " · " + auditRow.targetKind + " " + auditRow.targetId
                             textFormat: Text.PlainText
                             font: Theme.bodyFont
                             color: Theme.foreground
                         }
-                        Text {
+                        AedstLabel {
                             text: Qt.formatDateTime(auditRow.createdAt, Locale.ShortFormat) + " · " + auditRow.actorId
                                 + (auditRow.reason.length > 0 ? " · " + auditRow.reason : "")
                             textFormat: Text.PlainText
@@ -188,7 +189,7 @@ Page {
                     function onBroadcastFailed(message) { broadcastStatus.text = message }
                 }
 
-                AedstTextField { id: broadcastTitle; Layout.fillWidth: true; label: qsTr("Title") }
+                AedstTextField { id: broadcastTitle; objectName: "broadcastTitle"; Layout.fillWidth: true; label: qsTr("Title") }
                 AedstTextArea { id: broadcastBody; Layout.fillWidth: true; label: qsTr("Message") }
                 AedstTextField {
                     id: broadcastLink
@@ -203,6 +204,7 @@ Page {
                 }
                 RowLayout {
                     AedstButton {
+                        objectName: "broadcastSend"
                         text: broadcastUser.text.length > 0 ? qsTr("Send to user") : qsTr("Send to everyone")
                         variant: broadcastUser.text.length > 0 ? AedstButton.Variant.Default : AedstButton.Variant.Destructive
                         busy: AdminViewModel.isBroadcasting
@@ -210,7 +212,7 @@ Page {
                         onClicked: AdminViewModel.broadcast(broadcastTitle.text, broadcastBody.text,
                                                             broadcastLink.text, broadcastUser.text)
                     }
-                    Text { id: broadcastStatus; font: Theme.smallFont; color: Theme.mutedForeground }
+                    AedstLabel { id: broadcastStatus; font: Theme.smallFont; color: Theme.mutedForeground }
                 }
                 Item { Layout.fillHeight: true }
             }

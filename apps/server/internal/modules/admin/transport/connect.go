@@ -32,7 +32,7 @@ func (h *Handler) GetOverview(ctx context.Context, _ *connect.Request[adminv1.Ge
 	return connect.NewResponse(&adminv1.GetOverviewResponse{
 		UsersTotal: o.UsersTotal, TasksTotal: o.TasksTotal, TasksDone: o.TasksDone, TasksOverdue: o.TasksOverdue,
 		MediaTotal: o.MediaTotal, MediaBytes: o.MediaBytes, PushDevices: o.PushDevices,
-		OutboxLagSeconds: o.OutboxLagSeconds, JobsPending: o.JobsPending,
+		OutboxLagSeconds: o.JobLagSeconds, JobsPending: o.JobsPending,
 	}), nil
 }
 

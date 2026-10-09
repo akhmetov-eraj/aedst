@@ -33,11 +33,16 @@
     "retry": "Qayta urinish",
     "processing": "Qayta ishlanmoqda…",
     "open": "{name} ni ochish",
-    "delete": "{name} ni o‘chirish"
+    "delete": "{name} ni o‘chirish",
+    "deleteConfirmTitle": "Bu biriktirma o'chirilsinmi?",
+    "deleteConfirmDescription": "{name} butunlay o'chiriladi. Buni bekor qilib bo'lmaydi.",
+    "deleteCancelAction": "Qoldirish",
+    "deleteConfirmAction": "O'chirish"
   },
   "player": {
     "processing": "Fayl hali qayta ishlanmoqda.",
     "failed": "Faylni qayta ishlab bo‘lmadi.",
-    "open": "{name} ni ochish"
+    "open": "{name} ni ochish",
+    "imageError": "Rasmni yuklab bo‘lmadi. Havola muddati tugagan bo‘lishi mumkin."
   }
 }

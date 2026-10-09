@@ -4,18 +4,20 @@ import { Head } from "nextra/components";
 import { getPageMap } from "nextra/page-map";
 import type { ReactNode } from "react";
 import "nextra-theme-docs/style.css";
+import { SITE_DESCRIPTION, SITE_NAME, configuredDocsUrl, docsLicense, docsRepositoryBase } from "../lib/site";
 
 export const metadata: Metadata = {
+  metadataBase: configuredDocsUrl() ? new URL(configuredDocsUrl() as string) : undefined,
   title: {
-    default: "AEDST docs",
+    default: SITE_NAME,
     template: "%s — AEDST docs",
   },
-  description: "Architecture, module boundaries and decision records for the AEDST monorepo.",
+  description: SITE_DESCRIPTION,
 };
 
-// No GitHub remote is configured for this repo yet (see `git remote -v`) —
-// update this once one exists so "Edit this page" links resolve.
-const docsRepositoryBase = "https://github.com/aedst/aedst/tree/main/docs/content";
+// Unset NEXT_PUBLIC_DOCS_REPO_BASE: no edit link is rendered.
+const docsRepositoryBaseUrl = docsRepositoryBase();
+
 
 const navbar = (
   <Navbar
@@ -27,7 +29,11 @@ const navbar = (
   />
 );
 
-const footer = <Footer>MIT {new Date().getFullYear()} © AEDST.</Footer>;
+const footer = (
+  <Footer>
+    © {new Date().getFullYear()} AEDST. {docsLicense()}
+  </Footer>
+);
 
 export default async function RootLayout({
   children,
@@ -41,9 +47,10 @@ export default async function RootLayout({
         <Layout
           navbar={navbar}
           pageMap={await getPageMap()}
-          docsRepositoryBase={docsRepositoryBase}
+          docsRepositoryBase={docsRepositoryBaseUrl}
           footer={footer}
-          editLink="Edit this page on GitHub"
+          editLink={docsRepositoryBaseUrl ? "Edit this page on GitHub" : null}
+          feedback={docsRepositoryBaseUrl ? undefined : { content: null }}
           sidebar={{ defaultMenuCollapseLevel: 1 }}
         >
           {children}

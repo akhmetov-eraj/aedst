@@ -27,6 +27,7 @@ public:
         PriorityRole,
         DueDateRole,
         OverdueRole,
+        PendingSyncRole,
     };
 
     explicit TaskListModel(QObject* parent = nullptr);

@@ -3,21 +3,24 @@ import AedstMedia
 import SwiftUI
 
 /// Square thumbnail for a media item. Source order:
-/// 1. server `THUMBNAIL` variant (or `POSTER` for video) — cached by media id,
-///    because the presigned URL changes on every fetch;
+/// 1. server imgproxy variant for `preset` (nearest preset, or `POSTER` for video) —
+///    cached by media id, because the signed URL changes on every fetch;
 /// 2. the original image (downsampled) when ready but no variant exists;
 /// 3. a locally generated video poster frame (`AVAssetImageGenerator`);
 /// 4. a kind icon (processing / failed / audio / document).
 public struct MediaThumbnailView: View {
     private let item: MediaItem
     private let side: CGFloat
+    private let preset: MediaVariant.Kind
     @State private var poster: DecodedImage?
     @Environment(\.displayScale) private var displayScale
 
-    /// `side` is the square's edge in points.
-    public init(item: MediaItem, side: CGFloat = 96) {
+    /// `side` is the square's edge in points; `preset` is the imgproxy preset for this
+    /// context (`.thumb64` tiny lists, `.avatar256` avatars and small tiles, `.card400` grids).
+    public init(item: MediaItem, side: CGFloat = 96, preset: MediaVariant.Kind = .card400) {
         self.item = item
         self.side = side
+        self.preset = preset
     }
 
     public var body: some View {
@@ -36,10 +39,11 @@ public struct MediaThumbnailView: View {
         .clipShape(RoundedRectangle(cornerRadius: AedstRadius.md, style: .continuous))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(item.filename))
+        .aedstSensitive()
     }
 
     @ViewBuilder private var content: some View {
-        if let variant = item.variant(.thumbnail) ?? item.variant(.poster) {
+        if let variant = item.imageVariant(preset) {
             AedstRemoteImage(url: variant.url, cacheKey: "\(item.id)/\(variant.kind.rawValue)", maxPointSize: side)
         } else if item.kind == .image, item.status == .ready, let url = item.url {
             AedstRemoteImage(url: url, cacheKey: "\(item.id)/original", maxPointSize: side)

@@ -71,6 +71,7 @@ function(aedst_add_proto_library target)
         VERBATIM)
 
     add_library(${target} STATIC ${generated_sources} ${generated_headers})
+    aedst_set_hardening(${target}) # generated code is first-party in the shipped binary: same exploit mitigations
     target_include_directories(${target} SYSTEM PUBLIC "$<BUILD_INTERFACE:${generated_dir}>")
     target_link_libraries(${target} PUBLIC protobuf::libprotobuf)
 

@@ -14,33 +14,47 @@ public struct KeychainError: Error, Sendable, Equatable, CustomStringConvertible
 /// Generic-password Keychain wrapper — the one place `SecItem*` calls happen.
 ///
 /// Security posture:
-/// - Items use `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`: readable only
-///   while the device is unlocked and never included in backups or migrated to
-///   another device. (Trade-off: no token access while locked, so background
-///   refresh is not possible — this app has none. Revisit if it gains background
-///   work; `...AfterFirstUnlockThisDeviceOnly` is the next-best choice.)
+/// - Items use `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly`: readable
+///   after the first unlock following a boot (so background refresh and
+///   push-triggered work can reach the session while the device is locked),
+///   and never included in backups or migrated to another device.
 /// - Not synchronised through iCloud Keychain (`kSecAttrSynchronizable = false`).
 /// - Writes are an atomic upsert (`SecItemUpdate`, falling back to
 ///   `SecItemAdd`): there is no window where the item is absent.
 /// - Failures are thrown, never swallowed.
+/// - On macOS items live in the **data protection keychain** (`kSecUseDataProtectionKeychain`), the same model as
+///   iOS: no per-app ACL prompts, `AfterFirstUnlock...` honoured, no file-based login keychain. It needs a signed
+///   app (application identifier / team entitlement); an unsigned process (a bare `swift test` on a CI runner)
+///   gets `errSecMissingEntitlement` (-34018) from it and must pass `usesDataProtectionKeychain: false`.
 /// - An optional `accessGroup` (e.g. `"$(AppIdentifierPrefix)com.aedst.shared"`)
 ///   lets extensions/Watch share the session; it needs the matching
 ///   `keychain-access-groups` entitlement, so it is `nil` (app-private) by default.
 public struct Keychain: SecureStore {
     private let service: String
     private let accessGroup: String?
+    private let usesDataProtectionKeychain: Bool
 
-    public init(service: String = "com.aedst.apple", accessGroup: String? = nil) {
+    /// Whether macOS items use the data protection keychain. Always `true` for the shipping app; ignored on iOS
+    /// (iOS has only this keychain).
+    public static let defaultUsesDataProtectionKeychain = true
+
+    public init(
+        service: String = "com.aedst.apple",
+        accessGroup: String? = nil,
+        usesDataProtectionKeychain: Bool = Keychain.defaultUsesDataProtectionKeychain
+    ) {
         self.service = service
         self.accessGroup = accessGroup
+        self.usesDataProtectionKeychain = usesDataProtectionKeychain
     }
 
     public func set(_ value: String, for key: String) throws {
         let data = Data(value.utf8)
         let attributes: [String: Any] = [
             kSecValueData as String: data,
-            // Also migrates items written by older builds with a weaker class.
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            // Also migrates items written by older builds under a different class
+            // (e.g. WhenUnlockedThisDeviceOnly) to this one.
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
         ]
 
         var status = SecItemUpdate(searchQuery(for: key) as CFDictionary, attributes as CFDictionary)
@@ -94,6 +108,11 @@ public struct Keychain: SecureStore {
         if let accessGroup {
             query[kSecAttrAccessGroup as String] = accessGroup
         }
+        #if os(macOS)
+        if usesDataProtectionKeychain {
+            query[kSecUseDataProtectionKeychain as String] = true
+        }
+        #endif
         return query
     }
 }

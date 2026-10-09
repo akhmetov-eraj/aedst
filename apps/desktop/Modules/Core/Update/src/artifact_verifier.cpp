@@ -45,11 +45,11 @@ bool constantTimeEquals(std::span<const std::uint8_t> lhs, std::span<const std::
 
 core::VoidOutcome ArtifactVerifier::verifyFile(const std::filesystem::path& file, const ExpectedArtifact& expected) {
     if (expected.size == 0 || expected.size > kMaxArtifactBytes) {
-        return fail(Error::invalidArgument("artifact: expected size is out of range"));
+        return fail(Error::invalidInput("artifact: expected size is out of range"));
     }
     const auto expectedDigest = detail::decodeHex(expected.sha256);
     if (expected.sha256.size() != 64 || !expectedDigest || expectedDigest->size() != kSha256Bytes) {
-        return fail(Error::invalidArgument("artifact: expected sha256 must be 64 hex characters"));
+        return fail(Error::invalidInput("artifact: expected sha256 must be 64 hex characters"));
     }
 
     std::error_code ec;
@@ -58,7 +58,7 @@ core::VoidOutcome ArtifactVerifier::verifyFile(const std::filesystem::path& file
         return fail(Error::storage("artifact: cannot stat file: " + ec.message()));
     }
     if (actualSize != expected.size) {
-        return fail(Error::invalidArgument("artifact: size does not match the manifest"));
+        return fail(Error::invalidInput("artifact: size does not match the manifest"));
     }
 
     std::ifstream in(file, std::ios::binary);
@@ -80,7 +80,7 @@ core::VoidOutcome ArtifactVerifier::verifyFile(const std::filesystem::path& file
         }
         total += count;
         if (total > expected.size) {
-            return fail(Error::invalidArgument("artifact: file is larger than the manifest allows"));
+            return fail(Error::invalidInput("artifact: file is larger than the manifest allows"));
         }
         if (EVP_DigestUpdate(ctx.get(), buffer.data(), count) != 1) {
             return fail(Error::unknown("artifact: SHA-256 update failed"));
@@ -90,7 +90,7 @@ core::VoidOutcome ArtifactVerifier::verifyFile(const std::filesystem::path& file
         return fail(Error::storage("artifact: read error"));
     }
     if (total != expected.size) {
-        return fail(Error::invalidArgument("artifact: file is shorter than the manifest says"));
+        return fail(Error::invalidInput("artifact: file is shorter than the manifest says"));
     }
 
     std::array<std::uint8_t, EVP_MAX_MD_SIZE> digest{};

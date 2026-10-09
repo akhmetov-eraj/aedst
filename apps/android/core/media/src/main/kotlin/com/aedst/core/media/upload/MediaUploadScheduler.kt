@@ -12,9 +12,14 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.workDataOf
+import com.aedst.core.common.ApplicationScope
+import com.aedst.core.common.DispatcherProvider
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -40,7 +45,12 @@ data class UploadProgress(
  * surviving process death and reboots (WorkManager persists it) — no custom scheduler.
  */
 @Singleton
-class MediaUploadScheduler @Inject constructor(@ApplicationContext private val context: Context) {
+class MediaUploadScheduler @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val staging: UploadStaging,
+    private val dispatchers: DispatcherProvider,
+    @ApplicationScope private val scope: CoroutineScope,
+) {
 
     private val workManager get() = WorkManager.getInstance(context)
 
@@ -66,9 +76,22 @@ class MediaUploadScheduler @Inject constructor(@ApplicationContext private val c
         return uploadId
     }
 
+    /** Stops the chain and removes the staged copy (the running step also removes it when it unwinds). */
     fun cancel(uploadId: String) {
         workManager.cancelUniqueWork(uniqueName(uploadId))
+        scope.launch(dispatchers.io) { staging.delete(uploadId) }
     }
+
+    /** Sign-out: every upload in flight belongs to the user who left. */
+    fun cancelAll() {
+        workManager.cancelAllWorkByTag(TAG_ALL)
+    }
+
+    /** Ids of the uploads whose chain has not finished (enqueued, running or waiting for a retry). */
+    suspend fun activeUploadIds(): Set<String> = workManager.getWorkInfosByTagFlow(TAG_ALL).first()
+        .filterNot { it.state.isFinished }
+        .mapNotNull(::uploadIdOf)
+        .toSet()
 
     /** Uploads attached to [taskId] (or every upload when `null`), newest state per upload. */
     fun observe(taskId: String? = null): Flow<List<UploadProgress>> =

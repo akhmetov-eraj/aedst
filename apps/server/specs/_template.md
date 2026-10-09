@@ -1,14 +1,14 @@
-# Спека: <module>/<feature>
+# Spec: <module>/<feature>
 
-Тип: Command | Query
-Модуль: <module>
-Статус: Черновик | Утверждено | Реализовано
+Type: Command | Query
+Module: <module>
+Status: Draft | Approved | Implemented
 
-## Контекст
+## Context
 
-<!-- Зачем это нужно, какую проблему решает. -->
+<!-- Why this is needed, what problem it solves. -->
 
-## Сценарии
+## Scenarios
 
 **Happy path**
 
@@ -16,17 +16,17 @@
 - When ...
 - Then ...
 
-**Граничные случаи**
+**Edge cases**
 
 - Given ...
 - When ...
 - Then ...
 
-## Ошибки
+## Errors
 
-| Условие | `kernel/errs.Kind` | `connect.Code` |
-| ------- | ------------------- | -------------- |
-|         |                      |                |
+| Condition | `sharederrors.Kind` | `connect.Code` |
+| --------- | ------------------- | -------------- |
+|           |                     |                |
 
 ## API
 
@@ -34,20 +34,20 @@
 rpc <Method>(<Method>Request) returns (<Method>Response);
 ```
 
-| Поле | Тип | Обязательно | Описание |
-| ---- | --- | ----------- | -------- |
+| Field | Type | Required | Description |
+| ----- | ---- | -------- | ----------- |
 
-## События
+## Events
 
-| Тип события | Версия | partition_key | Payload | Потребители |
-| ----------- | ------ | -------------- | ------- | ----------- |
+| Event type | Version | partition_key | Payload | Consumers |
+| ---------- | ------- | ------------- | ------- | --------- |
 
-## Кросс-модульные зависимости
+## Cross-module dependencies
 
-<!-- Синхронный вызов другого модуля (через его api/), если есть, и почему это не событие. -->
+<!-- A synchronous call to another module (through its api/), if any, and why it is not an event. -->
 
 ## NFR
 
-- Идемпотентность: требуется ли `Idempotency-Key`?
-- Таймаут:
-- Hot path: да/нет
+- Idempotency: is an `Idempotency-Key` required?
+- Timeout:
+- Hot path: yes/no
