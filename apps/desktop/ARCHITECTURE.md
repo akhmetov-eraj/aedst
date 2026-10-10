@@ -67,4 +67,4 @@ handling → prewarm network + refresh session.
 [0006](docs/adr/0006-platform-services-and-updates.md) platform/updates ·
 [0033](docs/adr/0033-feature-plugin-architecture.md) feature plugins ·
 [0034](docs/adr/0034-offline-outbox-and-client-gate.md) offline outbox, Idempotency-Key, client identification, forced upgrade ·
-[0035](docs/adr/0035-capability-negotiation.md) capability negotiation.
+[0035](docs/adr/0035-capability-negotiation.md) capability negotiation, [0036](docs/adr/0036-power-and-resume.md) power and resume.

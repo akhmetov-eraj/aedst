@@ -16,6 +16,7 @@
 #include "aedst/oidc/oidc_config.hpp"
 #include "aedst/outbox/outbox_service.hpp"
 #include "aedst/platform/notification_service.hpp"
+#include "aedst/platform/power_monitor.hpp"
 #include "aedst/platform/single_instance_guard.hpp"
 #include "aedst/platform/tray_notification_service.hpp"
 #include "aedst/telemetry/posthog_analytics_tracker.hpp"
@@ -104,6 +105,20 @@ void wireConnectivity(connectivity::ConnectivityMonitor& monitor, AppDependencie
     notifications->setOnline(!monitor.isOffline());
 }
 
+/// After a sleep the sockets are dead and the reachability signal may not change: rebuild the live connections now.
+void wirePowerResume(platform::PowerMonitor& power, AppDependencies& deps) {
+    outbox::OutboxService* outbox = &deps.outbox();
+    capabilities::CapabilitiesService* capabilities = &deps.capabilities();
+    feature::notifications::NotificationsViewModel* notifications = &deps.notificationsViewModel();
+    QObject::connect(&power, &platform::PowerMonitor::resumedFromSleep, &power,
+                     [outbox, capabilities, notifications]() {
+                         notifications->onSystemResumed();
+                         outbox->kick();
+                         capabilities->refresh();
+                     });
+    power.start();
+}
+
 /// Tray, notification clicks and the unread badge.
 void wireNotifications(QApplication& app, AppDependencies& deps, platform::TrayNotificationService& tray,
                        const QPointer<QQuickWindow>& window) {
@@ -173,6 +188,8 @@ int runApplication(QApplication& app, const StartupTrace& startup, const RunOpti
     // Reachability (Offline banner / disabled submit) and UI language + RTL layout.
     auto reachability = connectivity::ConnectivityMonitor::createDefault();
     wireConnectivity(*reachability, deps);
+    platform::PowerMonitor powerMonitor; // declared before the engine; stopped with the app
+    wirePowerResume(powerMonitor, deps);
     designsystem::TranslationLoader translations(
         {QStringLiteral("designsystem"), QStringLiteral("auth"), QStringLiteral("tasks"), QStringLiteral("search"),
          QStringLiteral("notifications"), QStringLiteral("media"), QStringLiteral("admin"), QStringLiteral("app")});

@@ -15,6 +15,8 @@ add_library(AedstPlatform STATIC
     include/aedst/platform/deep_link.hpp
     include/aedst/platform/notification_service.hpp
     include/aedst/platform/platform_info.hpp
+    include/aedst/platform/power_monitor.hpp
+    include/aedst/platform/resume_detector.hpp
     include/aedst/platform/single_instance_guard.hpp
     include/aedst/platform/toast_xml.hpp
     include/aedst/platform/tray_notification_service.hpp
@@ -22,6 +24,7 @@ add_library(AedstPlatform STATIC
     src/deep_link.cpp
     src/notification_service.cpp
     src/platform_info.cpp
+    src/power_monitor.cpp
     src/single_instance_guard.cpp
     src/toast_xml.cpp
     src/tray_notification_service.cpp

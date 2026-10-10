@@ -113,6 +113,8 @@ public:
     /// online polls immediately. The stream (when present) reconnects on its own.
     void setOnline(bool online);
     [[nodiscard]] bool isOnline() const noexcept { return online_; }
+    /// The machine woke up from sleep: replace the (dead) stream and poll once. No-op while signed out or offline.
+    void onSystemResumed();
     Q_INVOKABLE void pollNow();
 
     Q_INVOKABLE void reload();

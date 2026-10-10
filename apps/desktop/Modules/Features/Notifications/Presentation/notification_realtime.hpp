@@ -64,6 +64,9 @@ public:
 
     void start();
     void stop();
+    /// The machine woke up: its sockets are dead although nothing reported it. Drops the stream and opens a new one
+    /// now, without waiting for the idle watchdog or a backoff. No-op while stopped.
+    void reconnectNow();
 
     [[nodiscard]] Mode mode() const noexcept { return mode_; }
     [[nodiscard]] bool isStreaming() const noexcept { return mode_ == Mode::Streaming; }

@@ -74,6 +74,15 @@ void NotificationRealtime::stop() {
     setMode(Mode::Stopped);
 }
 
+void NotificationRealtime::reconnectNow() {
+    if (mode_ == Mode::Stopped) {
+        return;
+    }
+    qCInfo(lcNotifications, "Reconnecting the notification stream after resume");
+    failures_ = 0; // the outage was the machine's, not the server's
+    connectNow();
+}
+
 void NotificationRealtime::cancelStream() {
     ++connection_; // late callbacks of the old attempt are ignored
     idleTimer_.stop();

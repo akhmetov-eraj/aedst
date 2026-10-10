@@ -196,7 +196,7 @@ plog-converter -a GA:1,2 -t fullhtml build/pvs.log -o build/pvs-report
 - [ADR-0001 API contract client](docs/adr/0001-api-contract-client.md) - Connect over Qt Network + generated Protobuf, why not gRPC C++
 - [ADR-0002 dependency management](docs/adr/0002-dependency-management.md) - vcpkg, Qt pin, CI migration
 - [ADR-0003 secret storage](docs/adr/0003-secret-storage.md), [0004 transport policy](docs/adr/0004-transport-policy.md), [0005 database & threading](docs/adr/0005-local-database-and-threading.md), [0006 platform services & updates](docs/adr/0006-platform-services-and-updates.md)
-- [ADR-0022 to 0035](docs/adr/): telemetry/media/notifications, Windows and Linux only, OIDC, API client hardening, realtime notifications, local data thread, delivery/updates/signing, observability privacy, performance gate, licenses, feature plugins (0033), offline outbox and client gate (0034), capability negotiation (0035)
+- [ADR-0022 to 0036](docs/adr/): telemetry/media/notifications, Windows and Linux only, OIDC, API client hardening, realtime notifications, local data thread, delivery/updates/signing, observability privacy, performance gate, licenses, feature plugins (0033), offline outbox and client gate (0034), capability negotiation (0035), power and resume (0036)
 - [Performance baseline](docs/performance.md) - build/runtime switches, measuring, what was deliberately not done
 
 ```bash

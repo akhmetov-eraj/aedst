@@ -22,4 +22,14 @@ void NotificationsViewModel::setOnline(bool online) {
     }
 }
 
+void NotificationsViewModel::onSystemResumed() {
+    if (!running_ || !online_) {
+        return;
+    }
+    if (realtime_) {
+        realtime_->reconnectNow();
+    }
+    pollNow();
+}
+
 } // namespace aedst::feature::notifications
